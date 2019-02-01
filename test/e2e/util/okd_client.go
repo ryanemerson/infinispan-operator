@@ -329,7 +329,7 @@ func (c ExternalOKD) WaitForPods(ns, label string, required int, timeout time.Du
 			podReady := false
 			conditions := pod.Status.Conditions
 			for _, cond := range conditions {
-				if (cond.Type) == v1.ContainersReady {
+				if (cond.Type) == v1.ContainersReady && cond.Status == "True" {
 					podReady = true
 				}
 			}
