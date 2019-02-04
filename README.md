@@ -41,7 +41,7 @@ make run-local
 
 On other terminal, apply the resource template to instruct the operator to create a 3-node Infinispan cluster: 
 ```
-oc apply -f deploy/crds/infinispan_v1_infinispan_cr.yaml
+oc apply -f deploy/cr/cr_with_configmap.yaml
 ```
 
 Check with ```oc get pods```.
@@ -65,6 +65,6 @@ make run
 To create a cluster, apply
 
 ```
-oc apply -f deploy/crds/infinispan_v1_infinispan_cr.yaml
+oc apply -f deploy/cr/cr_with_configmap.yaml
 ```
 

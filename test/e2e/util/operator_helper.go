@@ -27,14 +27,14 @@ func Cleanup(client ExternalOKD, namespace string, stopCh chan struct{}) {
 	client.DeleteCRD("infinispans.infinispan.org")
 }
 
-func InstallConfigMap(ns string, okd *ExternalOKD) {
-	dir := GetRelativeDir("../../config/cloud-ephemeral.xml")
-	okd.CreateOrUpdateConfigMap("infinispan-app-configuration", dir, ns)
+func InstallConfigMap(ns string, name string, okd *ExternalOKD) {
+	file := GetFilePath("../../config/cloud-ephemeral.xml")
+	okd.CreateOrUpdateConfigMap(name, file, ns)
 }
 
 // Install resources from rbac.yaml required by the Infinispan operator
 func installRBAC(ns string, okd *ExternalOKD) {
-	filename := GetRelativeDir("../../deploy/rbac.yaml")
+	filename := GetFilePath("../../deploy/rbac.yaml")
 	f, err := os.Open(filename)
 	if err != nil {
 		panic(err)
@@ -58,7 +58,7 @@ func installRBAC(ns string, okd *ExternalOKD) {
 }
 
 func installCRD(okd *ExternalOKD) {
-	filename := GetRelativeDir("../../deploy/crd.yaml")
+	filename := GetFilePath("../../deploy/crd.yaml")
 	f, err := os.Open(filename)
 	if err != nil {
 		panic(err)
@@ -78,7 +78,7 @@ func runOperatorLocally(ns string, configLocation string, stopCh chan struct{}) 
 	launcher.Launch(launcher.Parameters{StopChannel: stopCh})
 }
 
-func GetRelativeDir(path string) string {
+func GetFilePath(path string) string {
 	dir, _ := os.Getwd()
 	absPath, _ := filepath.Abs(dir + "/" + path)
 	return absPath
