@@ -138,6 +138,27 @@ func (c ExternalOKD) CreateInfinispan(infinispan *api.Infinispan, namespace stri
 	}
 }
 
+// Deletes an Infinispan resource in the given namespace
+func (c ExternalOKD) DeleteInfinispan(name string, namespace string) {
+	ispnSvc := c.ispnClient.Infinispans(namespace)
+	e := ispnSvc.Delete(name, &deleteOpts)
+	if e != nil {
+		panic(e)
+	}
+	// Wait until deleted
+	err := wait.Poll(period, timeout, func() (done bool, err error) {
+		ispn, err := ispnSvc.Get(name, metaV1.GetOptions{})
+
+		if reflect.DeepEqual(api.Infinispan{}, *ispn) { // Non existent
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+
 // Creates or updates a config map based on a file
 func (c ExternalOKD) CreateOrUpdateConfigMap(name string, filePath string, namespace string) {
 	bytes, e := ioutil.ReadFile(filePath)
