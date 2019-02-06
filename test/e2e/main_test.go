@@ -21,8 +21,8 @@ func TestMain(m *testing.M) {
 	namespace := strings.ToLower(Namespace)
 	okd.NewProject(namespace)
 	stopCh := util.RunOperator(okd, Namespace, ConfigLocation)
-	defer util.Cleanup(*okd, Namespace, stopCh)
 	code := m.Run()
+	util.Cleanup(*okd, Namespace, stopCh)
 	os.Exit(code)
 }
 
