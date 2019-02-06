@@ -14,7 +14,7 @@ cache:
 before_script:
   - go get -u github.com/golang/dep/cmd/dep
   - sudo mount --make-shared /
-  - echo 'DOCKER_OPTS="-H tcp://127.0.0.1:2375 -H unix:///var/run/docker.sock --insecure-registry 172.30.0.0\/16"' | sudo tee /etc/default/docker > /dev/null
+  - echo 'DOCKER_OPTS="-H tcp://127.0.0.1:2375 -H unix:///var/run/docker.sock --insecure-registry 172.30.0.0/16"' | sudo tee /etc/default/docker > /dev/null
   - sudo service docker restart
   - sudo cat /etc/default/docker
   - ci/start-okd-3.11.sh
