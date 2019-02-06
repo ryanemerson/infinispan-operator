@@ -14,7 +14,7 @@ cache:
 before_script:
   - go get -u github.com/golang/dep/cmd/dep
   - sudo mount --make-shared /
-  - ci/start-okd-3.11.sh
+  - ci/start-okd-4.0.0.sh
 
 after_failure:
   - ps aux

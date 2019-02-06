@@ -48,7 +48,7 @@ var timeout = 120 * time.Second
 // constructs a new ExternalOKD client providing the path of kubeconfig file.
 func NewOKDClient(kubeConfigLocation string) *ExternalOKD {
 	c := new(ExternalOKD)
-	dir := GetFilePath(kubeConfigLocation)
+	dir := kubeConfigLocation
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: dir},
 		&clientcmd.ConfigOverrides{})

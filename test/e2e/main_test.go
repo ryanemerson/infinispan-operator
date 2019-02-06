@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const ConfigLocation = "../../openshift.local.clusterup/kube-apiserver/admin.kubeconfig"
+const ConfigLocation = "/tmp/openshift-dind-cluster/openshift/openshift.local.config/master/admin.kubeconfig"
 const Namespace = "namespace-for-testing"
 const TestTimeout = 5 * time.Minute
 
