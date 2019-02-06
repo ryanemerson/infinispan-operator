@@ -12,17 +12,17 @@ import (
 )
 
 const ConfigLocation = "../../openshift.local.clusterup/kube-apiserver/admin.kubeconfig"
+const Namespace = "namespace-for-testing"
+const TestTimeout = 5 * time.Minute
 
 var okd = util.NewOKDClient(ConfigLocation)
-
-const Namespace = "namespace-for-testing"
 
 func TestMain(m *testing.M) {
 	namespace := strings.ToLower(Namespace)
 	okd.NewProject(namespace)
+	stopCh := util.RunOperator(okd, Namespace, ConfigLocation)
+	defer util.Cleanup(*okd, Namespace, stopCh)
 	code := m.Run()
-	okd.DeleteProject(namespace)
-	okd.DeleteCRD("infinispans.infinispan.org")
 	os.Exit(code)
 }
 
@@ -39,9 +39,6 @@ func TestCreateClusterWithConfigMap(t *testing.T) {
 	// Install config map from deploy folder
 	configMapName := "test-config-map"
 	util.InstallConfigMap(Namespace, configMapName, okd)
-
-	stopCh := util.RunOperator(okd, Namespace, ConfigLocation)
-	defer close(stopCh)
 
 	// Create a resource using external config from a ConfigMap
 	spec := ispnv1.Infinispan{
@@ -63,13 +60,12 @@ func TestCreateClusterWithConfigMap(t *testing.T) {
 		},
 	}
 
-	defer okd.DeleteInfinispan("cache-infinispan", Namespace)
-
 	// Register it
 	okd.CreateInfinispan(&spec, Namespace)
+	defer okd.DeleteInfinispan("cache-infinispan", Namespace)
 
 	// Make sure 2 pods are started
-	err := okd.WaitForPods(Namespace, "app=infinispan-pod", 2, 2*time.Minute)
+	err := okd.WaitForPods(Namespace, "app=infinispan-pod", 2, TestTimeout)
 
 	if err != nil {
 		panic(err.Error())
@@ -78,9 +74,6 @@ func TestCreateClusterWithConfigMap(t *testing.T) {
 }
 
 func TestCreateWithInternalConfig(t *testing.T) {
-	stopCh := util.RunOperator(okd, Namespace, ConfigLocation)
-	defer close(stopCh)
-
 	// Create a resource without passing any config
 	spec := ispnv1.Infinispan{
 		TypeMeta: metav1.TypeMeta{
@@ -100,23 +93,24 @@ func TestCreateWithInternalConfig(t *testing.T) {
 	okd.CreateInfinispan(&spec, Namespace)
 
 	// Make sure 2 pods are started
-	err := okd.WaitForPods(Namespace, "clusterName=minimal", 2, 2*time.Minute)
+	err := okd.WaitForPods(Namespace, "clusterName=minimal", 2, TestTimeout)
 
 	// Cleanup resource
-	okd.DeleteInfinispan("cache-infinispan-1", Namespace)
+	defer okd.DeleteInfinispan("cache-infinispan-1", Namespace)
 
 	if err != nil {
 		panic(err.Error())
 	}
 
 	// Create another cluster with a pre-canned config
+	resourceName := "cache-infinispan-2"
 	spec = ispnv1.Infinispan{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "infinispan.org/v1",
 			Kind:       "Infinispan",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "cache-infinispan-2",
+			Name: resourceName,
 		},
 		Config: ispnv1.InfinispanConfig{
 			SourceType: ispnv1.Internal,
@@ -130,12 +124,11 @@ func TestCreateWithInternalConfig(t *testing.T) {
 
 	// Register it
 	okd.CreateInfinispan(&spec, Namespace)
+	// Cleanup resource
+	defer okd.DeleteInfinispan(resourceName, Namespace)
 
 	// Make sure 2 pods are started
-	err = okd.WaitForPods(Namespace, "clusterName=pre-canned-config", 2, 2*time.Minute)
-
-	// Cleanup resource
-	okd.DeleteInfinispan("cache-infinispan-2", Namespace)
+	err = okd.WaitForPods(Namespace, "clusterName=pre-canned-config", 2, TestTimeout)
 
 	if err != nil {
 		panic(err.Error())
