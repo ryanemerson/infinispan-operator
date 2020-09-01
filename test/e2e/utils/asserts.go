@@ -1,6 +1,10 @@
 package utils
 
-import "k8s.io/apimachinery/pkg/api/errors"
+import (
+	"fmt"
+
+	"k8s.io/apimachinery/pkg/api/errors"
+)
 
 // ExpectNoError checks if an error exists, and if so halts execution
 func ExpectNoError(err error) {
@@ -14,5 +18,11 @@ func ExpectNoError(err error) {
 func ExpectMaybeNotFound(err error) {
 	if err != nil && !errors.IsNotFound(err) {
 		panic(err.Error())
+	}
+}
+
+func ExpectNotFound(err error) {
+	if err == nil || !errors.IsNotFound(err) {
+		panic(fmt.Errorf("Unexpected error: %w", err))
 	}
 }

@@ -19,7 +19,6 @@ import (
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/infinispan/infinispan-operator/version"
 	routev1 "github.com/openshift/api/route/v1"
-	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1beta1 "k8s.io/api/networking/v1beta1"
@@ -40,6 +39,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+const (
+	DataMountPath        = "/opt/infinispan/server/data"
+	IdentitiesVolumeName = "identities-volume"
+	ConfigVolumeName     = "config-volume"
 )
 
 var log = logf.Log.WithName("controller_infinispan")
@@ -494,7 +499,7 @@ func (r *ReconcileInfinispan) destroyResources(infinispan *infinispanv1.Infinisp
 	// removing the Stateful Set should remove the rest.
 	// Then, stateful set could be controlled by Infinispan to keep current logic.
 
-	// Remove finalizer (we don't use it anymore) if it present, set owner reference for old PVCs, etc.
+	// Remove finalizer (we don't use it anymore) if it present and set owner reference for old PVCs
 	err := r.upgradeInfinispan(infinispan)
 	if err != nil {
 		return err
@@ -514,7 +519,7 @@ func (r *ReconcileInfinispan) destroyResources(infinispan *infinispanv1.Infinisp
 	err = r.client.Delete(context.TODO(),
 		&corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      infinispan.ObjectMeta.Name + "-configuration",
+				Name:      ServerConfigMapName(infinispan.ObjectMeta.Name),
 				Namespace: infinispan.ObjectMeta.Namespace,
 			},
 		})
@@ -657,7 +662,6 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 	lsPod := PodLabels(m.ObjectMeta.Name)
 
 	memory := resource.MustParse(m.Spec.Container.Memory)
-	cpuRequests, cpuLimits := m.GetCpuResources()
 
 	javaOptions, err := m.GetJavaOptions()
 	if err != nil {
@@ -665,8 +669,8 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 	}
 
 	envVars := []corev1.EnvVar{
-		{Name: "CONFIG_PATH", Value: "/etc/config/infinispan.yaml"},
-		{Name: "IDENTITIES_PATH", Value: "/etc/security/identities.yaml"},
+		{Name: "CONFIG_PATH", Value: consts.ServerConfigPath},
+		{Name: "IDENTITIES_PATH", Value: consts.ServerIdentitiesPath},
 		{Name: "JAVA_OPTIONS", Value: javaOptions},
 		{Name: "EXTRA_JAVA_OPTIONS", Value: m.Spec.Container.ExtraJvmOpts},
 		{Name: "DEFAULT_IMAGE", Value: consts.DefaultImageName},
@@ -733,36 +737,27 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 							PeriodSeconds:       10,
 							SuccessThreshold:    1,
 							TimeoutSeconds:      80},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								"cpu":    cpuRequests,
-								"memory": memory,
-							},
-							Limits: corev1.ResourceList{
-								"cpu":    cpuLimits,
-								"memory": memory,
-							},
-						},
+						Resources: m.Spec.Container.AsResourceRequirements(),
 						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "config-volume",
-							MountPath: "/etc/config",
+							Name:      ConfigVolumeName,
+							MountPath: consts.ServerConfigRoot,
 						}, {
-							Name:      "identities-volume",
-							MountPath: "/etc/security",
+							Name:      IdentitiesVolumeName,
+							MountPath: consts.ServerSecurityRoot,
 						}, {
 							Name:      m.Name,
-							MountPath: "/opt/infinispan/server/data",
+							MountPath: DataMountPath,
 						}},
 					}},
 					Volumes: []corev1.Volume{{
-						Name: "config-volume",
+						Name: ConfigVolumeName,
 						VolumeSource: corev1.VolumeSource{
 							ConfigMap: &corev1.ConfigMapVolumeSource{
 								LocalObjectReference: corev1.LocalObjectReference{Name: configMap.Name},
 							},
 						},
 					}, {
-						Name: "identities-volume",
+						Name: IdentitiesVolumeName,
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: secret.Name,
@@ -826,10 +821,10 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 			dep.Spec.Template.Spec.InitContainers = []corev1.Container{{
 				Image:   initContainerImage,
 				Name:    "chmod-pv",
-				Command: []string{"sh", "-c", "chmod -R g+w /opt/infinispan/server/data"},
+				Command: []string{"sh", "-c", "chmod -R g+w" + DataMountPath},
 				VolumeMounts: []corev1.VolumeMount{{
 					Name:      m.ObjectMeta.Name,
-					MountPath: "/opt/infinispan/server/data",
+					MountPath: DataMountPath,
 				}},
 			}}
 		}
@@ -929,7 +924,7 @@ func (r *ReconcileInfinispan) computeConfigMap(xsite *config.XSite, m *infinispa
 	if err != nil {
 		return nil, err
 	}
-	configYaml, err := yaml.Marshal(config)
+	configYaml, err := config.Yaml()
 	if err != nil {
 		return nil, err
 	}
@@ -940,14 +935,18 @@ func (r *ReconcileInfinispan) computeConfigMap(xsite *config.XSite, m *infinispa
 			Kind:       "ConfigMap",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name + "-configuration",
+			Name:      ServerConfigMapName(name),
 			Namespace: namespace,
 			Labels:    lsConfigMap,
 		},
-		Data: map[string]string{"infinispan.yaml": string(configYaml)},
+		Data: map[string]string{consts.ServerConfigFilename: string(configYaml)},
 	}
 
 	return configMap, nil
+}
+
+func ServerConfigMapName(name string) string {
+	return name + "-configuration"
 }
 
 func (r *ReconcileInfinispan) findSecret(m *infinispanv1.Infinispan) (*corev1.Secret, error) {
@@ -969,7 +968,7 @@ func (r *ReconcileInfinispan) secretForInfinispan(identities []byte, m *infinisp
 			Labels:    lsSecret,
 		},
 		Type:       corev1.SecretType("Opaque"),
-		StringData: map[string]string{"identities.yaml": string(identities)},
+		StringData: map[string]string{consts.ServerIdentitiesFilename: string(identities)},
 	}
 
 	// Set Infinispan instance as the owner and controller
@@ -1040,7 +1039,7 @@ func (r *ReconcileInfinispan) computeService(m *infinispanv1.Infinispan) *corev1
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
-			Selector: PodLabels(m.ObjectMeta.Name),
+			Selector: ServiceLabels(m.ObjectMeta.Name),
 			Ports: []corev1.ServicePort{
 				{
 					Port: consts.InfinispanPort,
@@ -1067,7 +1066,7 @@ func (r *ReconcileInfinispan) computePingService(m *infinispanv1.Infinispan) *co
 		Spec: corev1.ServiceSpec{
 			Type:      corev1.ServiceTypeClusterIP,
 			ClusterIP: corev1.ClusterIPNone,
-			Selector:  PodLabels(m.ObjectMeta.Name),
+			Selector:  ServiceLabels(m.ObjectMeta.Name),
 			Ports: []corev1.ServicePort{
 				{
 					Name: "ping",
@@ -1092,7 +1091,7 @@ func (r *ReconcileInfinispan) computeServiceExternal(m *infinispanv1.Infinispan)
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     externalServiceType,
-			Selector: PodLabels(m.ObjectMeta.Name),
+			Selector: ServiceLabels(m.ObjectMeta.Name),
 			Ports: []corev1.ServicePort{
 				{
 					Port:       int32(consts.InfinispanPort),
@@ -1409,7 +1408,7 @@ func (r *ReconcileInfinispan) reconcileEndpointSecret(ispn *infinispanv1.Infinis
 		statefulSet.Spec.Template.ObjectMeta.Annotations["updateDate"] = time.Now().String()
 		// Find and update secret in StatefulSet volume
 		for i, volumes := range statefulSet.Spec.Template.Spec.Volumes {
-			if volumes.Secret != nil && volumes.Name == "identities-volume" {
+			if volumes.Secret != nil && volumes.Name == IdentitiesVolumeName {
 				statefulSet.Spec.Template.Spec.Volumes[i].Secret.SecretName = secret.GetName()
 			}
 		}
@@ -1468,7 +1467,7 @@ func (r *ReconcileInfinispan) reconcileContainerConf(ispn *infinispanv1.Infinisp
 		}
 	}
 	if ispnContr.CPU != "" {
-		cpuReq, cpuLim := ispn.GetCpuResources()
+		cpuReq, cpuLim := ispn.Spec.Container.GetCpuResources()
 		previousCPUReq := res.Requests["cpu"]
 		previousCPULim := res.Limits["cpu"]
 		if cpuReq.Cmp(previousCPUReq) != 0 || cpuLim.Cmp(previousCPULim) != 0 {
@@ -1518,6 +1517,13 @@ func LabelsResource(name, resourceType string) map[string]string {
 
 func PodLabels(name string) map[string]string {
 	return LabelsResource(name, "infinispan-pod")
+}
+
+func ServiceLabels(name string) map[string]string {
+	return map[string]string{
+		"clusterName": name,
+		"app":         "infinispan-pod",
+	}
 }
 
 func ExternalServiceLabels(name string) map[string]string {

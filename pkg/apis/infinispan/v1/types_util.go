@@ -177,11 +177,26 @@ func (ispn *Infinispan) GetEncryptionSecretName() string {
 	return ispn.Spec.Security.EndpointEncryption.CertSecretName
 }
 
-func (ispn *Infinispan) GetCpuResources() (resource.Quantity, resource.Quantity) {
-	cpuLimits := resource.MustParse(ispn.Spec.Container.CPU)
+func (spec *InfinispanContainerSpec) GetCpuResources() (resource.Quantity, resource.Quantity) {
+	cpuLimits := resource.MustParse(spec.CPU)
 	cpuRequestsMillis := cpuLimits.MilliValue() / 2
 	cpuRequests := toMilliDecimalQuantity(cpuRequestsMillis)
 	return cpuRequests, cpuLimits
+}
+
+func (spec *InfinispanContainerSpec) AsResourceRequirements() corev1.ResourceRequirements {
+	memory := resource.MustParse(spec.Memory)
+	cpuRequests, cpuLimits := spec.GetCpuResources()
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			"cpu":    cpuRequests,
+			"memory": memory,
+		},
+		Limits: corev1.ResourceList{
+			"cpu":    cpuLimits,
+			"memory": memory,
+		},
+	}
 }
 
 func (ispn *Infinispan) GetJavaOptions() (string, error) {

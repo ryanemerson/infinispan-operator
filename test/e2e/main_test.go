@@ -90,6 +90,8 @@ func TestMain(m *testing.M) {
 			testKube.DeleteNamespace(namespace)
 			testKube.DeleteCRD("infinispans.infinispan.org")
 			testKube.DeleteCRD("caches.infinispan.org")
+			testKube.DeleteCRD("backup.infinispan.org")
+			testKube.DeleteCRD("restore.infinispan.org")
 			testKube.NewNamespace(namespace)
 		}
 		stopCh := testKube.RunOperator(namespace)
@@ -465,27 +467,26 @@ func genericTestForGracefulShutdown(clusterName string, modifier func(*ispnv1.In
 
 func waitForPodsOrFail(spec *ispnv1.Infinispan, num int) {
 	// Wait that "num" pods are up
-	testKube.WaitForPods(num, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
+	testKube.WaitForInfinispanPods(num, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
 	ispn := ispnv1.Infinispan{}
 	testKube.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: spec.Namespace, Name: spec.Name}, &ispn)
 	protocol := getSchemaForRest(&ispn)
 	pods := testKube.GetPods(spec.Name, tconst.Namespace)
 
-	expectedClusterSize := num
 	// Check that the cluster size is num querying the first pod
-	var lastErr error
 	cluster := newCluster(cconsts.DefaultOperatorUser, ispn.GetSecretName(), protocol, testKube.Kubernetes)
+	waitForClusterSize(num, pods[0].Name, cluster)
+}
+
+func waitForClusterSize(expectedClusterSize int, podName string, cluster *ispn.Cluster) {
+	var lastErr error
 	err := wait.Poll(time.Second, tconst.TestTimeout, func() (done bool, err error) {
-		value, err := cluster.GetClusterSize(pods[0].Name)
+		value, err := AssertClusterSize(expectedClusterSize, podName, cluster)
 		if err != nil {
 			lastErr = err
 			return false, nil
 		}
-		if value > expectedClusterSize {
-			return true, fmt.Errorf("more than expected nodes in cluster (expected=%v, actual=%v)", expectedClusterSize, value)
-		}
-
-		return value == num, nil
+		return value, err
 	})
 
 	if err == wait.ErrWaitTimeout && lastErr != nil {
@@ -493,6 +494,18 @@ func waitForPodsOrFail(spec *ispnv1.Infinispan, num int) {
 	}
 
 	tutils.ExpectNoError(err)
+}
+
+func AssertClusterSize(expectedClusterSize int, podName string, cluster *ispn.Cluster) (bool, error) {
+	value, err := cluster.GetClusterSize(podName)
+	if err != nil {
+		return false, err
+	}
+	if value > expectedClusterSize {
+		return true, fmt.Errorf("more than expected nodes in cluster (expected=%v, actual=%v)", expectedClusterSize, value)
+	}
+
+	return value == expectedClusterSize, nil
 }
 
 func TestExternalService(t *testing.T) {
@@ -521,7 +534,7 @@ func TestExternalService(t *testing.T) {
 	testKube.CreateInfinispan(&spec, tconst.Namespace)
 	defer testKube.DeleteInfinispan(&spec, tconst.SinglePodTimeout)
 
-	testKube.WaitForPods(1, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
+	testKube.WaitForInfinispanPods(1, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
 
 	pass, err := users.PasswordFromSecret(usr, spec.GetSecretName(), tconst.Namespace, testKube.Kubernetes)
 	tutils.ExpectNoError(err)
@@ -589,7 +602,7 @@ func TestExternalServiceWithAuth(t *testing.T) {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: "conn-secret-test"},
 		Type:       "Opaque",
-		StringData: map[string]string{"identities.yaml": string(identitiesYaml)},
+		StringData: map[string]string{cconsts.ServerIdentitiesFilename: string(identitiesYaml)},
 	}
 	testKube.CreateSecret(&secret, tconst.Namespace)
 	defer testKube.DeleteSecret(&secret)
@@ -616,7 +629,7 @@ func TestExternalServiceWithAuth(t *testing.T) {
 	testKube.CreateInfinispan(&spec, tconst.Namespace)
 	defer testKube.DeleteInfinispan(&spec, tconst.SinglePodTimeout)
 
-	testKube.WaitForPods(1, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
+	testKube.WaitForInfinispanPods(1, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
 
 	ispn := ispnv1.Infinispan{}
 	testKube.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: spec.Namespace, Name: spec.Name}, &ispn)
@@ -636,7 +649,7 @@ func TestExternalServiceWithAuth(t *testing.T) {
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: "conn-secret-test-1"},
 		Type:       "Opaque",
-		StringData: map[string]string{"identities.yaml": string(identitiesYaml)},
+		StringData: map[string]string{cconsts.ServerIdentitiesFilename: string(identitiesYaml)},
 	}
 	testKube.CreateSecret(&secret1, tconst.Namespace)
 	defer testKube.DeleteSecret(&secret1)
@@ -677,7 +690,7 @@ func TestExternalServiceWithAuth(t *testing.T) {
 	// The restart is ongoing and it would that more than 10 sec
 	// so we're not introducing any delay
 	time.Sleep(10 * time.Second)
-	testKube.WaitForPods(1, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
+	testKube.WaitForInfinispanPods(1, tconst.SinglePodTimeout, spec.Name, tconst.Namespace)
 	testAuthentication(schema, name, usr, newpass)
 }
 

@@ -10,4 +10,6 @@ echo "Using KUBECONFIG '$KUBECONFIG'"
 kubectl create ns ${NAMESPACE} || true
 kubectl apply -f deploy/crds/infinispan.org_infinispans_crd.yaml -n ${NAMESPACE}
 kubectl apply -f deploy/crds/infinispan.org_caches_crd.yaml -n ${NAMESPACE}
+kubectl apply -f deploy/crds/infinispan.org_backups_crd.yaml -n ${NAMESPACE}
+kubectl apply -f deploy/crds/infinispan.org_restores_crd.yaml -n ${NAMESPACE}
 WATCH_NAMESPACE=${NAMESPACE} ./build/_output/bin/infinispan-operator -kubeconfig $KUBECONFIG
