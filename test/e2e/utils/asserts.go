@@ -1,8 +1,6 @@
 package utils
 
 import (
-	"fmt"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -18,11 +16,5 @@ func ExpectNoError(err error) {
 func ExpectMaybeNotFound(err error) {
 	if err != nil && !errors.IsNotFound(err) {
 		panic(err.Error())
-	}
-}
-
-func ExpectNotFound(err error) {
-	if err == nil || !errors.IsNotFound(err) {
-		panic(fmt.Errorf("Unexpected error: %w", err))
 	}
 }
