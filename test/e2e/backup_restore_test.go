@@ -27,7 +27,6 @@ import (
 )
 
 func TestBackupRestore(t *testing.T) {
-	t.Parallel()
 	// Create a resource without passing any config
 	name := strcase.ToKebab(t.Name())
 	namespace := tconst.Namespace
