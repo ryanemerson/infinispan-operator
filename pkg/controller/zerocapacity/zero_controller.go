@@ -196,13 +196,28 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 	name := request.Name
 	namespace := request.Namespace
 	clusterName := instance.Cluster()
-	statefulset := &appsv1.StatefulSet{}
 	clusterKey := k8client.ObjectKey{
 		Namespace: namespace,
 		Name:      clusterName,
 	}
-	if err := z.Client.Get(ctx, clusterKey, statefulset); err != nil {
+
+	infinispan := &v1.Infinispan{}
+	if err := z.Client.Get(ctx, clusterKey, infinispan); err != nil {
 		retErr := fmt.Errorf("Unable to load Infinispan Cluster '%s': %w", clusterName, err)
+		if errors.IsNotFound(err) {
+			return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCluster}, retErr
+		}
+		return reconcile.Result{}, retErr
+	}
+
+	if err := ensureClusterStability(infinispan); err != nil {
+		return reconcile.Result{}, fmt.Errorf("Infinispan not stable: %w", err)
+	}
+
+	clusterKey.Name = infinispan.Status.StatefulSetName
+	statefulset := &appsv1.StatefulSet{}
+	if err := z.Client.Get(ctx, clusterKey, statefulset); err != nil {
+		retErr := fmt.Errorf("Unable to load Infinispan StatefulSet '%s': %w", clusterName, err)
 		if errors.IsNotFound(err) {
 			return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCluster}, retErr
 		}
@@ -238,6 +253,16 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 
 	// Update status
 	return reconcile.Result{}, instance.UpdatePhase(ZeroPending)
+}
+
+func ensureClusterStability(infinispan *v1.Infinispan) error {
+	conditions := map[string]metav1.ConditionStatus{
+		ispnCtrl.ConditionGracefulShutdown:   metav1.ConditionFalse,
+		ispnCtrl.ConditionPrelimChecksFailed: metav1.ConditionFalse,
+		ispnCtrl.ConditionStopping:           metav1.ConditionFalse,
+		ispnCtrl.ConditionWellFormed:         metav1.ConditionTrue,
+	}
+	return infinispan.ExpectConditionStatus(conditions, true)
 }
 
 func (z *Controller) execute(httpClient http.HttpClient, request reconcile.Request, instance Resource) (reconcile.Result, error) {
