@@ -94,14 +94,7 @@ func TestBackupRestore(t *testing.T) {
 		},
 		Spec: v2.RestoreSpec{
 			Cluster: targetCluster,
-			Volume: v2.RestoreVolumeSpec{
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: name,
-						ReadOnly:  true,
-					},
-				},
-			},
+			Backup: name,
 		},
 	}
 

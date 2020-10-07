@@ -35,12 +35,14 @@ import (
 
 // Adapter interface that allows the zero-capacity controller to interact with the underlying k8 resource
 type Resource interface {
-	// Returns the Spec used by the controller to connect to an Infinispan cluster and create the required resources
-	Spec() *Spec
+	// Returns the name of the Infinispan cluster CR that the zero-pod should join
+	Cluster() string
 	// The current execution phase of the controller
 	Phase() Phase
 	// Update the current state of the resource to reflect the most recent Phase
 	UpdatePhase(phase Phase) error
+	// Ensure that all prerequisite resources are available and create any required resources before returning the zero spec
+	Init() (*Spec, error)
 	// Perform the operation(s) that are required on the zero-capacity pod
 	Exec(client http.HttpClient) error
 	// Return true when the operation(s) have completed, otherwise false
@@ -57,8 +59,6 @@ type Reconciler interface {
 }
 
 type Spec struct {
-	// The name of the Infinispan CR cluster to join
-	Cluster string
 	// The VolumeSpec to utilise on the zero-capacity pod
 	Volume VolumeSpec
 	// The spec to be used by the zero-capacity pod
@@ -68,12 +68,8 @@ type Spec struct {
 }
 
 type VolumeSpec struct {
-	// If true, then a pvc is automatically created if no VolumeSource is provided
-	InitPvc bool
 	// Path within the container at which the volume should be mounted.
 	MountPath string
-	// Path within the mounted volume from which the container's volume should be mounted.
-	SubPath string
 	// The VolumeSource to utilise on the zero-capacity pod
 	VolumeSource corev1.VolumeSource
 }
@@ -162,7 +158,7 @@ func (z *Controller) Reconcile(request reconcile.Request) (reconcile.Result, err
 	}
 
 	infinispan := &v1.Infinispan{}
-	clusterName := instance.Spec().Cluster
+	clusterName := instance.Cluster()
 	clusterObjKey := client.ObjectKey{
 		Namespace: namespace,
 		Name:      clusterName,
@@ -199,50 +195,23 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 	ctx := context.Background()
 	name := request.Name
 	namespace := request.Namespace
-	spec := instance.Spec()
+	clusterName := instance.Cluster()
 	statefulset := &appsv1.StatefulSet{}
 	clusterKey := k8client.ObjectKey{
 		Namespace: namespace,
-		Name:      spec.Cluster,
+		Name:      clusterName,
 	}
 	if err := z.Client.Get(ctx, clusterKey, statefulset); err != nil {
+		retErr := fmt.Errorf("Unable to load Infinispan Cluster '%s': %w", clusterName, err)
 		if errors.IsNotFound(err) {
-			return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCluster}, fmt.Errorf("Unable to load Infinispan Cluster '%s': %w", spec.Cluster, err)
+			return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCluster}, retErr
 		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
+		return reconcile.Result{}, retErr
 	}
 
-	// If a VolumeSource has not been configured, then we create a new pvc that will not be deleted with the CR
-	if spec.Volume.InitPvc && spec.Volume.VolumeSource == (corev1.VolumeSource{}) {
-		err := z.Client.Create(ctx, &corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-			},
-			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: []corev1.PersistentVolumeAccessMode{
-					corev1.ReadWriteOnce,
-				},
-				Resources: corev1.ResourceRequirements{
-					Requests: corev1.ResourceList{
-						// TODO make configurable?
-						corev1.ResourceStorage: consts.DefaultPVSize,
-					},
-				},
-			},
-		})
-
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("Unable to create pvc: %w", err)
-		}
-
-		// TODO add volume name to Status so that if an existing volume is not provided, the user can see the name of the created one
-		spec.Volume.VolumeSource = corev1.VolumeSource{
-			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-				ClaimName: name,
-			},
-		}
+	spec, err := instance.Init()
+	if err != nil {
+		return reconcile.Result{}, err
 	}
 
 	configMap, err := z.configureZeroCapacity(name, namespace, spec, instance)
@@ -366,7 +335,6 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 		Name:      name,
 		MountPath: zeroSpec.Volume.MountPath,
-		SubPath:   zeroSpec.Volume.SubPath,
 	})
 	podSpec.Containers[0] = container
 
@@ -407,7 +375,7 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 
 func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, instance Resource) (*corev1.ConfigMap, error) {
 	clusterConfig := &corev1.ConfigMap{}
-	clusterConfigName := ispnCtrl.ServerConfigMapName(spec.Cluster)
+	clusterConfigName := ispnCtrl.ServerConfigMapName(instance.Cluster())
 	clusterKey := k8client.ObjectKey{
 		Namespace: namespace,
 		Name:      clusterConfigName,

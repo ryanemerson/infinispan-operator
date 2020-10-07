@@ -2,7 +2,6 @@ package v2alpha1
 
 import (
 	v1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -15,10 +14,8 @@ type BackupSpec struct {
 }
 
 type BackupVolumeSpec struct {
-	// Path within the mounted volume from which the container's volume should be mounted.
-	SubPath string `json:"subPath,optional,omitempty"`
-	// The VolumeSource to utilise on the zero-capacity pod
-	VolumeSource corev1.VolumeSource `json:"volumeSource,optional,omitempty"`
+	Storage          *string `json:"storage,optional,omitempty"`
+	StorageClassName *string `json:"storageClassName,optional,omitempty"`
 }
 
 type BackupResources struct {
@@ -52,6 +49,8 @@ type BackupStatus struct {
 	Phase BackupPhase `json:"phase"`
 	// Reason indicates the reason for any backup related failures.
 	Reason string `json:"reason,omitempty"`
+	// The name of the created PersistentVolumeClaim used to store the backup
+	PVC string `json:"pvc,omitempty"`
 }
 
 // +genclient

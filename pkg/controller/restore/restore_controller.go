@@ -9,6 +9,7 @@ import (
 	zero "github.com/infinispan/infinispan-operator/pkg/controller/zerocapacity"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +33,7 @@ type reconcileRestore struct {
 type restore struct {
 	instance *v2.Restore
 	client   client.Client
+	scheme   *runtime.Scheme
 }
 
 func Add(mgr manager.Manager) error {
@@ -45,7 +47,12 @@ func (r *reconcileRestore) ResourceInstance(key client.ObjectKey, ctrl *zero.Con
 	}
 
 	instance.ApplyDefaults()
-	return &restore{instance, r.Client}, nil
+	restore := &restore{
+		instance: instance,
+		client:   r.Client,
+		scheme:   ctrl.Scheme,
+	}
+	return restore, nil
 }
 
 func (r *reconcileRestore) Type() runtime.Object {
@@ -56,18 +63,8 @@ func (r *restore) AsMeta() metav1.Object {
 	return r.instance
 }
 
-func (r *restore) Spec() *zero.Spec {
-	spec := r.instance.Spec
-	return &zero.Spec{
-		Cluster: spec.Cluster,
-		Volume: zero.VolumeSpec{
-			MountPath:    DataMountPath,
-			SubPath:      spec.Volume.SubPath,
-			VolumeSource: spec.Volume.VolumeSource,
-		},
-		Container: spec.Container,
-		PodLabels: PodLabels(r.instance.Name, spec.Cluster),
-	}
+func (r *restore) Cluster() string {
+	return r.instance.Spec.Cluster
 }
 
 func (r *restore) Phase() zero.Phase {
@@ -84,11 +81,37 @@ func (r *restore) UpdatePhase(phase zero.Phase) error {
 	return nil
 }
 
+func (r *restore) Init() (*zero.Spec, error) {
+	backup := &v2.Backup{}
+	backupKey := client.ObjectKey{
+		Namespace: r.instance.Namespace,
+		Name:      r.instance.Spec.Backup,
+	}
+
+	if err := r.client.Get(ctx, backupKey, backup); err != nil {
+		return nil, fmt.Errorf("Unable to load Infinispan Backup '%s': %w", backupKey.Name, err)
+	}
+
+	return &zero.Spec{
+		Container: r.instance.Spec.Container,
+		PodLabels: PodLabels(r.instance.Name, backup.Spec.Cluster),
+		Volume: zero.VolumeSpec{
+			MountPath: DataMountPath,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: backup.Status.PVC,
+					ReadOnly:  true,
+				},
+			},
+		},
+	}, nil
+}
+
 func (r *restore) Exec(client http.HttpClient) error {
 	instance := r.instance
 	backupManager := backup.NewManager(instance.Name, client)
 	config := &backup.RestoreConfig{
-		Location:  fmt.Sprintf("%[1]s/%[2]s/%[2]s.zip", DataMountPath, instance.Spec.BackupName),
+		Location:  fmt.Sprintf("%[1]s/%[2]s/%[2]s.zip", DataMountPath, instance.Spec.Backup),
 		Resources: backup.Resources(instance.Spec.Resources),
 	}
 	return backupManager.Restore(instance.Name, config)

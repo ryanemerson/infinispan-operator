@@ -5,16 +5,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type RestoreResources = BackupResources
-type RestoreVolumeSpec = BackupVolumeSpec
-
 // BackupSpec defines the desired state of Backup
 type RestoreSpec struct {
-	Cluster    string                     `json:"cluster"`
-	BackupName string                     `json:"backupName,optional,omitempty"`
-	Volume     RestoreVolumeSpec          `json:"volume,optional,omitempty"`
-	Resources  RestoreResources           `json:"resources,optional,omitempty"`
-	Container  v1.InfinispanContainerSpec `json:"container,optional,omitempty"`
+	Cluster   string                     `json:"cluster"`
+	Backup    string                     `json:"backup"`
+	Resources RestoreResources           `json:"resources,optional,omitempty"`
+	Container v1.InfinispanContainerSpec `json:"container,optional,omitempty"`
+}
+
+type RestoreResources struct {
+	Caches       []string `json:"caches,optional,omitempty"`
+	CacheConfigs []string `json:"cacheConfigs,optional,omitempty"`
+	Counters     []string `json:"counters,optional,omitempty"`
+	ProtoSchemas []string `json:"protoSchemas,optional,omitempty"`
+	Scripts      []string `json:"scripts,optional,omitempty"`
 }
 
 type RestorePhase string
@@ -75,10 +79,6 @@ const (
 
 func (r *Restore) ApplyDefaults() {
 	s := &r.Spec
-	if s.BackupName == "" {
-		s.BackupName = r.Name
-	}
-
 	if s.Container.CPU == "" {
 		s.Container.CPU = DefaultRestoreCpuLimit
 	}
