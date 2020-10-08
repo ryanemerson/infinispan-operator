@@ -99,7 +99,7 @@ func (r *restore) Init() (*zero.Spec, error) {
 			MountPath: DataMountPath,
 			VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: backup.Status.PVC,
+					ClaimName: backup.Name,
 					ReadOnly:  true,
 				},
 			},

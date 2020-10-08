@@ -16,6 +16,7 @@ import (
 	ispnclient "github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	tconst "github.com/infinispan/infinispan-operator/test/e2e/constants"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
+	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8errors "k8s.io/apimachinery/pkg/api/errors"
@@ -61,13 +62,16 @@ func TestBackupRestore(t *testing.T) {
 	// Wait for the restore pod to join the cluster
 	waitForZeroPodCluster(name, namespace, clusterSize, cluster)
 
+	var backup *v2.Backup
 	eventually(func() (bool, error) {
-		backup := testKube.GetBackup(name, namespace)
+		backup = testKube.GetBackup(name, namespace)
 		if backup.Status.Phase == v2.BackupFailed {
 			return true, errors.New("Backup failed")
 		}
+
 		return v2.BackupSucceeded == backup.Status.Phase, nil
 	})
+	assert.Equal(t, fmt.Sprintf("pvc/%s", name), backup.Status.PVC)
 
 	// Wait for the backup pod to leave the cluster singifying that the backup has completed
 	waitForPodsOrFail(ispnSpec, clusterSize)
@@ -94,7 +98,7 @@ func TestBackupRestore(t *testing.T) {
 		},
 		Spec: v2.RestoreSpec{
 			Cluster: targetCluster,
-			Backup: name,
+			Backup:  name,
 		},
 	}
 

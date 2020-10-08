@@ -129,8 +129,7 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 		return nil, fmt.Errorf("Unable to set controler reference for pvc: %w", err)
 	}
 
-	pvcName := r.instance.Name
-	r.instance.Status.PVC = pvcName
+	r.instance.Status.PVC = fmt.Sprintf("pvc/%s", r.instance.Name)
 	if err = r.updateStatus(); err != nil {
 		return nil, err
 	}
@@ -140,7 +139,7 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 			MountPath: DataMountPath,
 			VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: pvcName,
+					ClaimName: r.instance.Name,
 				},
 			},
 		},
