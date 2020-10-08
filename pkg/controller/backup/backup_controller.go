@@ -102,8 +102,12 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 		}
 	}
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.client, pvc, func() error {
-		pvc.Spec = corev1.PersistentVolumeClaimSpec{
+	err = r.client.Create(ctx, &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      r.instance.Name,
+			Namespace: r.instance.Namespace,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
 			},
@@ -113,12 +117,16 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 				},
 			},
 			StorageClassName: volumeSpec.StorageClassName,
-		}
-		return controllerutil.SetControllerReference(r.instance, pvc, r.scheme)
+		},
 	})
 
 	if err != nil {
 		return nil, fmt.Errorf("Unable to create pvc: %w", err)
+	}
+
+	err = controllerutil.SetControllerReference(r.instance, pvc, r.scheme)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to set controler reference for pvc: %w", err)
 	}
 
 	pvcName := r.instance.Name
