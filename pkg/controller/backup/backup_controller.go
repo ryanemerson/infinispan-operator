@@ -11,6 +11,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -80,53 +81,9 @@ func (r *backupResource) UpdatePhase(phase zero.Phase) error {
 }
 
 func (r *backupResource) Init() (*zero.Spec, error) {
-	var err error
-	// TODO add labels
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.instance.Name,
-			Namespace: r.instance.Namespace,
-		},
-	}
-
-	volumeSpec := r.instance.Spec.Volume
-	var storage resource.Quantity
-	if volumeSpec.Storage == nil {
-		// TODO calculate based upon number of Pods in cluster
-		// ISPN- Utilise backup size estimate
-		storage = constants.DefaultPVSize
-	} else {
-		storage, err = resource.ParseQuantity(*volumeSpec.Storage)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	err = r.client.Create(ctx, &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.instance.Name,
-			Namespace: r.instance.Namespace,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
-			},
-			Resources: corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: storage,
-				},
-			},
-			StorageClassName: volumeSpec.StorageClassName,
-		},
-	})
-
+	err := r.getOrCreatePvc()
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create pvc: %w", err)
-	}
-
-	err = controllerutil.SetControllerReference(r.instance, pvc, r.scheme)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to set controler reference for pvc: %w", err)
+		return nil, err
 	}
 
 	r.instance.Status.PVC = fmt.Sprintf("pvc/%s", r.instance.Name)
@@ -146,6 +103,64 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 		Container: r.instance.Spec.Container,
 		PodLabels: PodLabels(r.instance.Name, r.instance.Spec.Cluster),
 	}, nil
+}
+
+func (r *backupResource) getOrCreatePvc() error {
+	pvc := &corev1.PersistentVolumeClaim{}
+	err := r.client.Get(ctx, client.ObjectKey{
+		Name:      r.instance.Name,
+		Namespace: r.instance.Namespace,
+	}, pvc)
+
+	// If the pvc already exists simply return
+	if err == nil {
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
+		return err
+	}
+
+	volumeSpec := r.instance.Spec.Volume
+	var storage resource.Quantity
+	if volumeSpec.Storage == nil {
+		// TODO calculate based upon number of Pods in cluster
+		// ISPN- Utilise backup size estimate
+		storage = constants.DefaultPVSize
+	} else {
+		storage, err = resource.ParseQuantity(*volumeSpec.Storage)
+		if err != nil {
+			return err
+		}
+	}
+
+	// TODO add labels
+	pvc = &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      r.instance.Name,
+			Namespace: r.instance.Namespace,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: storage,
+				},
+			},
+			StorageClassName: volumeSpec.StorageClassName,
+		},
+	}
+	if err = r.client.Create(ctx, pvc); err != nil {
+		return fmt.Errorf("Unable to create pvc: %w", err)
+	}
+
+	err = controllerutil.SetControllerReference(r.instance, pvc, r.scheme)
+	if err != nil {
+		return fmt.Errorf("Unable to set controler reference for pvc: %w", err)
+	}
+	return nil
 }
 
 func (r *backupResource) Exec(client http.HttpClient) error {
