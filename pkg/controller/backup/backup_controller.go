@@ -80,7 +80,7 @@ func (r *backupResource) UpdatePhase(phase zero.Phase) error {
 }
 
 func (r *backupResource) Init() (*zero.Spec, error) {
-
+	var err error
 	// TODO add labels
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -96,10 +96,13 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 		// ISPN- Utilise backup size estimate
 		storage = constants.DefaultPVSize
 	} else {
-		storage = resource.MustParse(*volumeSpec.Storage)
+		storage, err = resource.ParseQuantity(*volumeSpec.Storage)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.client, pvc, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, pvc, func() error {
 		pvc.Spec = corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
