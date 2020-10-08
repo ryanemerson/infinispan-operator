@@ -86,10 +86,12 @@ type Controller struct {
 type Phase string
 
 const (
-	// ZeroPending means the request has been accepted by the system, but the underlying resources are still
+	// ZeroInitializing means the request has been accepted by the system, but the underlying resources are still
 	// being initialized.
-	ZeroPending Phase = "Pending"
-	// ZeroRuning means that the zero capacity pod has been created and the required action initiated on the infinispan server.
+	ZeroInitializing Phase = "Initializing"
+	// ZeroInitialized means that all required resources have been initialized
+	ZeroInitialized Phase = "Initialized"
+	// ZeroRunning means that the required action has been initiated on the infinispan server.
 	ZeroRunning Phase = "Running"
 	// ZeroSucceeded means that the action on the server has completed and the zero pod has been terminated.
 	ZeroSucceeded Phase = "Succeeded"
@@ -152,6 +154,8 @@ func (z *Controller) Reconcile(request reconcile.Request) (reconcile.Result, err
 	phase := instance.Phase()
 	switch phase {
 	case "":
+		return reconcile.Result{}, instance.UpdatePhase(ZeroInitializing)
+	case ZeroInitializing:
 		return z.initializeResources(request, instance)
 	case ZeroSucceeded, ZeroFailed:
 		return z.cleanupResources(request)
@@ -184,7 +188,7 @@ func (z *Controller) Reconcile(request reconcile.Request) (reconcile.Result, err
 	}
 	httpClient := curl.New(httpConfig, z.Kube)
 
-	if phase == ZeroPending {
+	if phase == ZeroInitialized {
 		return z.execute(httpClient, request, instance)
 	}
 	// Phase must be ZeroRunning, so wait for execution to complete
@@ -252,7 +256,7 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 	}
 
 	// Update status
-	return reconcile.Result{}, instance.UpdatePhase(ZeroPending)
+	return reconcile.Result{}, instance.UpdatePhase(ZeroInitialized)
 }
 
 func ensureClusterStability(infinispan *v1.Infinispan) error {

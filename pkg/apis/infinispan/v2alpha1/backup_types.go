@@ -29,9 +29,11 @@ type BackupResources struct {
 type BackupPhase string
 
 const (
-	// BackupPending means the backup has been accepted by the system, but the underlying resources are still
+	// BackupInitializing means the request has been accepted by the system, but the underlying resources are still
 	// being initialized.
-	BackupPending BackupPhase = "Pending"
+	BackupInitializing BackupPhase = "Initializing"
+	// BackupInitialized means that all required resources have been initialized
+	BackupInitialized BackupPhase = "Initialized"
 	// BackupRunning means that the backup pod has been created and the backup process initiated on the infinispan server.
 	BackupRunning BackupPhase = "Running"
 	// BackupSucceeded means that the backup process on the server has completed and the backup pod has been terminated.

@@ -24,9 +24,11 @@ type RestoreResources struct {
 type RestorePhase string
 
 const (
-	// RestorePending means the Restore has been accepted by the system, but the underlying resources are still
+	// BackupInitializing means the request has been accepted by the system, but the underlying resources are still
 	// being initialized.
-	RestorePending RestorePhase = "Pending"
+	RestoreInitializing RestorePhase = "Initializing"
+	// RestoreInitialized means that all required resources have been initialized.
+	RestoreInitialized RestorePhase = "Initialized"
 	// RestoreRunning means that the Restore pod has been created and the Restore process initiated on the infinispan server.
 	RestoreRunning RestorePhase = "Running"
 	// RestoreSucceeded means that the Restore process on the server has completed and the Restore pod has been terminated.

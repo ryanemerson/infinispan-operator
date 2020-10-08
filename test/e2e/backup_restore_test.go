@@ -16,7 +16,6 @@ import (
 	ispnclient "github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	tconst "github.com/infinispan/infinispan-operator/test/e2e/constants"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
-	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8errors "k8s.io/apimachinery/pkg/api/errors"
@@ -59,21 +58,15 @@ func TestBackupRestore(t *testing.T) {
 	testKube.Create(backupSpec)
 	defer testKube.DeleteBackup(backupSpec)
 
-	// Wait for the restore pod to join the cluster
+	waitForValidBackupPhase(name, namespace, v2.BackupInitializing)
+	waitForValidBackupPhase(name, namespace, v2.BackupInitialized)
+
+	// Ensure the backup pod hased joined the cluster
 	waitForZeroPodCluster(name, namespace, clusterSize, cluster)
+	waitForValidBackupPhase(name, namespace, v2.BackupRunning)
+	waitForValidBackupPhase(name, namespace, v2.BackupSucceeded)
 
-	var backup *v2.Backup
-	eventually(func() (bool, error) {
-		backup = testKube.GetBackup(name, namespace)
-		if backup.Status.Phase == v2.BackupFailed {
-			return true, errors.New("Backup failed")
-		}
-
-		return v2.BackupSucceeded == backup.Status.Phase, nil
-	})
-	assert.Equal(t, fmt.Sprintf("pvc/%s", name), backup.Status.PVC)
-
-	// Wait for the backup pod to leave the cluster singifying that the backup has completed
+	// Ensure that the backup pod has left the cluster, by checking a cluster pod's size
 	waitForPodsOrFail(ispnSpec, clusterSize)
 
 	// 4. Delete the original cluster
@@ -105,16 +98,14 @@ func TestBackupRestore(t *testing.T) {
 	testKube.Create(restoreSpec)
 	defer testKube.DeleteRestore(restoreSpec)
 
-	// Wait for the restore pod to join the cluster
+	waitForValidRestorePhase(name, namespace, v2.RestoreInitializing)
+	waitForValidRestorePhase(name, namespace, v2.RestoreInitialized)
+
+	// Ensure the restore pod hased joined the cluster
 	waitForZeroPodCluster(name, namespace, clusterSize, cluster)
 
-	eventually(func() (bool, error) {
-		restore := testKube.GetRestore(name, namespace)
-		if restore.Status.Phase == v2.RestoreFailed {
-			return true, errors.New("Restore failed")
-		}
-		return v2.RestoreSucceeded == restore.Status.Phase, nil
-	})
+	waitForValidRestorePhase(name, namespace, v2.RestoreRunning)
+	waitForValidRestorePhase(name, namespace, v2.RestoreSucceeded)
 
 	// Ensure that the restore pod has left the cluster, by checking a cluster pod's size
 	waitForPodsOrFail(ispnSpec, clusterSize)
@@ -123,8 +114,25 @@ func TestBackupRestore(t *testing.T) {
 	assertNumEntries(cacheName, targetCluster+"-0", numEntries, cluster.Client)
 }
 
-func eventually(callback func() (bool, error)) {
-	err := wait.Poll(time.Second, tconst.TestTimeout, callback)
+func waitForValidBackupPhase(name, namespace string, phase v2.BackupPhase) {
+	err := wait.Poll(10*time.Millisecond, tconst.TestTimeout, func() (bool, error) {
+		backup := testKube.GetBackup(name, namespace)
+		if backup.Status.Phase == v2.BackupFailed && phase != v2.BackupFailed {
+			return true, errors.New("Backup failed")
+		}
+		return phase == backup.Status.Phase, nil
+	})
+	tutils.ExpectNoError(err)
+}
+
+func waitForValidRestorePhase(name, namespace string, phase v2.RestorePhase) {
+	err := wait.Poll(10*time.Millisecond, tconst.TestTimeout, func() (bool, error) {
+		restore := testKube.GetRestore(name, namespace)
+		if restore.Status.Phase == v2.RestoreFailed {
+			return true, errors.New("Restore failed")
+		}
+		return phase == restore.Status.Phase, nil
+	})
 	tutils.ExpectNoError(err)
 }
 
