@@ -15,7 +15,6 @@ import (
 	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -154,7 +153,6 @@ func (r *backupResource) getOrCreatePvc() error {
 		},
 	}
 	controllerutil.SetControllerReference(r.instance, pvc, r.scheme)
-	pvc.OwnerReferences[0].BlockOwnerDeletion = pointer.BoolPtr(false)
 	if err = r.client.Create(ctx, pvc); err != nil {
 		return fmt.Errorf("Unable to create pvc: %w", err)
 	}
