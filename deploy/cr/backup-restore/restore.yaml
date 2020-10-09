@@ -2,12 +2,6 @@ apiVersion: infinispan.org/v2alpha1
 kind: Restore
 metadata:
   name: test-backup-restore
-  labels:
-    name: infinispan-operator
 spec:
-  cluster: test-backup-restore-target
-  volume:
-    volumeSource:
-      persistentVolumeClaim:
-        claimName: test-backup-restore
-        readOnly:  true
+  backup: example-infinispan-backup
+  cluster: example-infinispan

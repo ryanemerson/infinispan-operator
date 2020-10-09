@@ -3,5 +3,4 @@ kind: Backup
 metadata:
   name: example-infinispan-backup
 spec:
-  path: asdasd
   cluster: example-infinispan
