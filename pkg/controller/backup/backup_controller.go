@@ -86,11 +86,8 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 		return nil, err
 	}
 
+	// Status is updated in the zero_controller when UpdatePhase is called
 	r.instance.Status.PVC = fmt.Sprintf("pvc/%s", r.instance.Name)
-	if err = r.updateStatus(); err != nil {
-		return nil, err
-	}
-
 	return &zero.Spec{
 		Volume: zero.VolumeSpec{
 			MountPath: DataMountPath,
