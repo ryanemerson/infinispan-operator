@@ -144,7 +144,7 @@ func clusterSpec(name, namespace string, replicas int) *v1.Infinispan {
 			Namespace: namespace,
 		},
 		Spec: v1.InfinispanSpec{
-			Image:    pointer.StringPtr("quay.io/remerson/server@sha256:4487ef128b798ce909b4fa5f74cbdf8c0270f99d62b7c922d3f5b0f9d462d728"),
+			Image:    pointer.StringPtr("quay.io/remerson/server@sha256:45036fafcd40e27729ab4444ad30e1e88509674fc99655fd918d2d142ba9483a"),
 			Replicas: int32(replicas),
 			Service: v1.InfinispanServiceSpec{
 				Type: v1.ServiceTypeDataGrid,

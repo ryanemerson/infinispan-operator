@@ -422,8 +422,7 @@ func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, i
 	if err != nil {
 		return nil, fmt.Errorf("Unable to parse existing config: %s", clusterConfigName)
 	}
-	// TODO uncomment
-	// config.Infinispan.ZeroCapacityNode = true
+	config.Infinispan.ZeroCapacityNode = true
 
 	yaml, err = config.Yaml()
 	if err != nil {
