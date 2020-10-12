@@ -261,10 +261,10 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 
 func ensureClusterStability(infinispan *v1.Infinispan) error {
 	conditions := map[string]metav1.ConditionStatus{
-		ispnCtrl.ConditionGracefulShutdown:   metav1.ConditionFalse,
-		ispnCtrl.ConditionPrelimChecksFailed: metav1.ConditionFalse,
-		ispnCtrl.ConditionStopping:           metav1.ConditionFalse,
-		ispnCtrl.ConditionWellFormed:         metav1.ConditionTrue,
+		v1.ConditionGracefulShutdown:   metav1.ConditionFalse,
+		v1.ConditionPrelimChecksFailed: metav1.ConditionFalse,
+		v1.ConditionStopping:           metav1.ConditionFalse,
+		v1.ConditionWellFormed:         metav1.ConditionTrue,
 	}
 	return infinispan.ExpectConditionStatus(conditions, true)
 }
