@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -415,6 +416,7 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 	}
 
 	pod.Spec = podSpec
+	pod.Spec.SecurityContext.FSGroup = pointer.Int64Ptr(185)
 }
 
 func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, instance Resource) (*corev1.ConfigMap, error) {
