@@ -41,7 +41,7 @@ func TestBackupRestore(t *testing.T) {
 	waitForPodsOrFail(ispnSpec, clusterSize)
 
 	// 2. Populate the cluster with some data to backup
-	cluster := newCluster(cconsts.DefaultOperatorUser, ispnSpec.GetSecretName(), "http", testKube.Kubernetes)
+	cluster := newCluster(cconsts.DefaultOperatorUser, ispnSpec.GetSecretName(), "https", testKube.Kubernetes)
 	cacheName := "someCache"
 	populateCache(cacheName, sourceCluster+"-0", numEntries, cluster.Client)
 
