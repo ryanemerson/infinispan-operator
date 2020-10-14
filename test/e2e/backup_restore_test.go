@@ -35,13 +35,15 @@ func TestBackupRestore(t *testing.T) {
 
 	// 1. Create initial source cluster
 	sourceCluster := name + "-source"
-	ispnSpec := clusterSpec(sourceCluster, namespace, clusterSize)
-	testKube.Create(ispnSpec)
-	defer testKube.DeleteInfinispan(ispnSpec, tconst.SinglePodTimeout)
-	waitForPodsOrFail(ispnSpec, clusterSize)
+	infinispan := clusterSpec(sourceCluster, namespace, clusterSize)
+
+	testKube.Create(infinispan)
+	defer testKube.DeleteInfinispan(infinispan, tconst.SinglePodTimeout)
+	waitForPodsOrFail(infinispan, clusterSize)
 
 	// 2. Populate the cluster with some data to backup
-	cluster := newCluster(cconsts.DefaultOperatorUser, ispnSpec.GetSecretName(), "https", testKube.Kubernetes)
+	protocol := getSchemaForRest(infinispan)
+	cluster := newCluster(cconsts.DefaultOperatorUser, infinispan.GetSecretName(), protocol, testKube.Kubernetes)
 	cacheName := "someCache"
 	populateCache(cacheName, sourceCluster+"-0", numEntries, cluster.Client)
 
@@ -67,21 +69,21 @@ func TestBackupRestore(t *testing.T) {
 	waitForValidBackupPhase(name, namespace, v2.BackupSucceeded)
 
 	// Ensure that the backup pod has left the cluster, by checking a cluster pod's size
-	waitForPodsOrFail(ispnSpec, clusterSize)
+	waitForPodsOrFail(infinispan, clusterSize)
 
 	// 4. Delete the original cluster
-	testKube.DeleteInfinispan(ispnSpec, tconst.SinglePodTimeout)
+	testKube.DeleteInfinispan(infinispan, tconst.SinglePodTimeout)
 	waitForNoCluster(sourceCluster)
 
 	// 5. Create a new cluster to restore the backup to
 	targetCluster := name + "-target"
-	ispnSpec = clusterSpec(targetCluster, namespace, clusterSize)
-	testKube.Create(ispnSpec)
-	defer testKube.DeleteInfinispan(ispnSpec, tconst.SinglePodTimeout)
-	waitForPodsOrFail(ispnSpec, clusterSize)
+	infinispan = clusterSpec(targetCluster, namespace, clusterSize)
+	testKube.Create(infinispan)
+	defer testKube.DeleteInfinispan(infinispan, tconst.SinglePodTimeout)
+	waitForPodsOrFail(infinispan, clusterSize)
 
 	// Recreate the cluster instance to use the credentials of the new cluster
-	cluster = newCluster(cconsts.DefaultOperatorUser, ispnSpec.GetSecretName(), "http", testKube.Kubernetes)
+	cluster = newCluster(cconsts.DefaultOperatorUser, infinispan.GetSecretName(), protocol, testKube.Kubernetes)
 
 	// 6. Restore the backed up data from the volume to the target cluster
 	restoreSpec := &v2.Restore{
@@ -108,7 +110,7 @@ func TestBackupRestore(t *testing.T) {
 	waitForValidRestorePhase(name, namespace, v2.RestoreSucceeded)
 
 	// Ensure that the restore pod has left the cluster, by checking a cluster pod's size
-	waitForPodsOrFail(ispnSpec, clusterSize)
+	waitForPodsOrFail(infinispan, clusterSize)
 
 	// 7. Ensure that all data is in the target cluster
 	assertNumEntries(cacheName, targetCluster+"-0", numEntries, cluster.Client)
