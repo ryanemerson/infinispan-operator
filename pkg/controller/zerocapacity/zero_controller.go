@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	k8client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -55,7 +55,7 @@ type Reconciler interface {
 	// The k8 struct being handled by this controller
 	Type() runtime.Object
 	// Create a new instance of the zero Resource wrapping the actual k8 type
-	ResourceInstance(key client.ObjectKey, ctrl *Controller) (Resource, error)
+	ResourceInstance(name types.NamespacedName, ctrl *Controller) (Resource, error)
 }
 
 type Spec struct {
@@ -163,7 +163,7 @@ func (z *Controller) Reconcile(request reconcile.Request) (reconcile.Result, err
 
 	infinispan := &v1.Infinispan{}
 	clusterName := instance.Cluster()
-	clusterObjKey := client.ObjectKey{
+	clusterObjKey := types.NamespacedName{
 		Namespace: namespace,
 		Name:      clusterName,
 	}
@@ -200,7 +200,7 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 	name := request.Name
 	namespace := request.Namespace
 	clusterName := instance.Cluster()
-	clusterKey := k8client.ObjectKey{
+	clusterKey := types.NamespacedName{
 		Namespace: namespace,
 		Name:      clusterName,
 	}
@@ -331,7 +331,7 @@ func wrapErr(old, new error) error {
 
 func (z *Controller) isZeroPodReady(request reconcile.Request, instance Resource) bool {
 	pod := &corev1.Pod{}
-	key := client.ObjectKey{
+	key := types.NamespacedName{
 		Name:      request.Name,
 		Namespace: request.Namespace,
 	}
@@ -420,7 +420,7 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, instance Resource) (*corev1.ConfigMap, error) {
 	clusterConfig := &corev1.ConfigMap{}
 	clusterConfigName := ispnCtrl.ServerConfigMapName(instance.Cluster())
-	clusterKey := k8client.ObjectKey{
+	clusterKey := types.NamespacedName{
 		Namespace: namespace,
 		Name:      clusterConfigName,
 	}

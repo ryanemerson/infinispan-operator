@@ -10,9 +10,9 @@ import (
 
 	ispnv1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
 	ispnv2 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v2alpha1"
+	backupCtrl "github.com/infinispan/infinispan-operator/pkg/controller/backup"
 	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
 	ispnctrl "github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
-	backupCtrl "github.com/infinispan/infinispan-operator/pkg/controller/backup"
 	restoreCtrl "github.com/infinispan/infinispan-operator/pkg/controller/restore"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/infinispan/infinispan-operator/pkg/launcher"
@@ -113,7 +113,7 @@ func (k TestKubernetes) DeleteNamespace(namespace string) {
 
 func (k TestKubernetes) GetBackup(name, namespace string) *ispnv2.Backup {
 	backup := &ispnv2.Backup{}
-	key := client.ObjectKey{
+	key := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
@@ -123,7 +123,7 @@ func (k TestKubernetes) GetBackup(name, namespace string) *ispnv2.Backup {
 
 func (k TestKubernetes) GetRestore(name, namespace string) *ispnv2.Restore {
 	restore := &ispnv2.Restore{}
-	key := client.ObjectKey{
+	key := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}

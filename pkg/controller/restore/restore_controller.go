@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -40,9 +41,9 @@ func Add(mgr manager.Manager) error {
 	return zero.CreateController(ControllerName, &reconcileRestore{mgr.GetClient()}, mgr)
 }
 
-func (r *reconcileRestore) ResourceInstance(key client.ObjectKey, ctrl *zero.Controller) (zero.Resource, error) {
+func (r *reconcileRestore) ResourceInstance(name types.NamespacedName, ctrl *zero.Controller) (zero.Resource, error) {
 	instance := &v2.Restore{}
-	if err := ctrl.Get(ctx, key, instance); err != nil {
+	if err := ctrl.Get(ctx, name, instance); err != nil {
 		return nil, err
 	}
 
@@ -83,7 +84,7 @@ func (r *restore) UpdatePhase(phase zero.Phase) error {
 
 func (r *restore) Init() (*zero.Spec, error) {
 	backup := &v2.Backup{}
-	backupKey := client.ObjectKey{
+	backupKey := types.NamespacedName{
 		Namespace: r.instance.Namespace,
 		Name:      r.instance.Spec.Backup,
 	}

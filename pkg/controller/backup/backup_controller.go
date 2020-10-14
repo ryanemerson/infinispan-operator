@@ -15,6 +15,7 @@ import (
 	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -44,7 +45,7 @@ func Add(mgr manager.Manager) error {
 	return zero.CreateController(ControllerName, &reconcileBackup{mgr.GetClient()}, mgr)
 }
 
-func (r *reconcileBackup) ResourceInstance(key client.ObjectKey, ctrl *zero.Controller) (zero.Resource, error) {
+func (r *reconcileBackup) ResourceInstance(key types.NamespacedName, ctrl *zero.Controller) (zero.Resource, error) {
 	instance := &v2.Backup{}
 	if err := ctrl.Get(ctx, key, instance); err != nil {
 		return nil, err
@@ -104,7 +105,7 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 
 func (r *backupResource) getOrCreatePvc() error {
 	pvc := &corev1.PersistentVolumeClaim{}
-	err := r.client.Get(ctx, client.ObjectKey{
+	err := r.client.Get(ctx, types.NamespacedName{
 		Name:      r.instance.Name,
 		Namespace: r.instance.Namespace,
 	}, pvc)
