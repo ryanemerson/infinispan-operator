@@ -234,7 +234,7 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 		return reconcile.Result{}, err
 	}
 
-	configMap, err := z.configureZeroCapacity(name, namespace, spec, instance)
+	configMap, err := z.configureZeroCapacity(name, namespace, spec, infinispan, instance)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("Unable to create zero-capacity configuration: %w", err)
 	}
@@ -288,7 +288,7 @@ func (z *Controller) waitForExecutionToComplete(httpClient http.HttpClient, requ
 	phase, err := instance.ExecStatus(httpClient)
 
 	if err != nil || phase == ZeroFailed {
-		z.Log.Error(err, "Execution failed", "request	.Name", request.Name)
+		z.Log.Error(err, "Execution failed", "request.Name", request.Name)
 		return reconcile.Result{}, instance.UpdatePhase(ZeroFailed)
 	}
 
@@ -352,11 +352,19 @@ func (z *Controller) isZeroPodReady(request reconcile.Request, instance Resource
 func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap, ispn *v1.Infinispan, zeroSpec *Spec,
 	pod *corev1.Pod, podSpec corev1.PodSpec) {
 
-	container := podSpec.Containers[0]
-	container.Name = name
-	container.Resources = zeroSpec.Container.AsResourceRequirements()
+	// Utilise the provided PodSpec as a base, overriding fields as required
+	pod.Spec = podSpec
+	var identitiesVol corev1.Volume
+	for _, v := range podSpec.Volumes {
+		if v.Name == ispnCtrl.IdentitiesVolumeName {
+			identitiesVol = v
+		}
+	}
 
 	dataVolName := name + "-data"
+	container := &pod.Spec.Containers[0]
+	container.Name = name
+	container.Resources = zeroSpec.Container.AsResourceRequirements()
 	container.VolumeMounts = []corev1.VolumeMount{
 		{
 			Name:      ispnCtrl.ConfigVolumeName,
@@ -376,19 +384,10 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 			Name:      name,
 			MountPath: zeroSpec.Volume.MountPath,
 		},
-		// Mount encryption volumes
-		ispnCtrl.EncryptionVolumeMount(ispn),
-	}
-	podSpec.Containers[0] = container
-
-	var identitiesVol corev1.Volume
-	for _, v := range podSpec.Volumes {
-		if v.Name == ispnCtrl.IdentitiesVolumeName {
-			identitiesVol = v
-		}
 	}
 
-	podSpec.Volumes = []corev1.Volume{
+	pod.Spec.SecurityContext.FSGroup = pointer.Int64Ptr(185)
+	pod.Spec.Volumes = []corev1.Volume{
 		// Volume for mounting zero-capacity yaml configmap
 		{
 			Name: ispnCtrl.ConfigVolumeName,
@@ -411,15 +410,12 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 		},
 		// Volume for identities file
 		identitiesVol,
-		// Volume for encrytpion
-		ispnCtrl.EncryptionVolume(ispn),
 	}
 
-	pod.Spec = podSpec
-	pod.Spec.SecurityContext.FSGroup = pointer.Int64Ptr(185)
+	ispnCtrl.AddVolumeForEncryption(ispn, &pod.Spec)
 }
 
-func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, instance Resource) (*corev1.ConfigMap, error) {
+func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, infinispan *v1.Infinispan, instance Resource) (*corev1.ConfigMap, error) {
 	clusterConfig := &corev1.ConfigMap{}
 	clusterConfigName := ispnCtrl.ServerConfigMapName(instance.Cluster())
 	clusterKey := types.NamespacedName{
@@ -444,6 +440,10 @@ func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, i
 		"org.infinispan.server.core":                 "debug",
 		"org.infinispan.server.core.backup":          "trace",
 		"org.infinispan.notifications.cachelistener": "trace",
+	}
+
+	if err := ispnCtrl.ConfigureServerEncryption(infinispan, config, z.Client); err != nil {
+		return nil, fmt.Errorf("Unable to configure zero-capacity encryption: %w", err)
 	}
 
 	yaml, err = config.Yaml()

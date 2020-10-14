@@ -203,12 +203,12 @@ func (spec *InfinispanContainerSpec) AsResourceRequirements() corev1.ResourceReq
 	cpuRequests, cpuLimits := spec.GetCpuResources()
 	return corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
-			"cpu":    cpuRequests,
-			"memory": memory,
+			corev1.ResourceCPU:    cpuRequests,
+			corev1.ResourceMemory: memory,
 		},
 		Limits: corev1.ResourceList{
-			"cpu":    cpuLimits,
-			"memory": memory,
+			corev1.ResourceCPU:    cpuLimits,
+			corev1.ResourceMemory: memory,
 		},
 	}
 }

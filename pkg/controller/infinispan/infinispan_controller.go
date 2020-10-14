@@ -842,7 +842,7 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 		reqLogger.Info("WARNING: Ephemeral storage configured. All data will be lost on cluster shutdown and restart.")
 	}
 
-	setupVolumesForEncryption(m, dep)
+	AddVolumeForEncryption(m, &dep.Spec.Template.Spec)
 
 	// Set Infinispan instance as the owner and controller
 	controllerutil.SetControllerReference(m, dep, r.scheme)
@@ -862,33 +862,29 @@ func setupServiceForEncryption(m *infinispanv1.Infinispan, ser *corev1.Service) 
 	}
 }
 
-func setupVolumesForEncryption(m *infinispanv1.Infinispan, dep *appsv1.StatefulSet) {
-	if m.GetEncryptionSecretName() != "" {
-		v := &dep.Spec.Template.Spec.Volumes
-		*v = append(*v, EncryptionVolume(m))
-		vm := &dep.Spec.Template.Spec.Containers[0].VolumeMounts
-		*vm = append(*vm, EncryptionVolumeMount(m))
+func AddVolumeForEncryption(i *infinispanv1.Infinispan, pod *corev1.PodSpec) {
+	secret := i.GetEncryptionSecretName()
+	if secret == "" {
+		return
 	}
-}
 
-func EncryptionVolumeMount(i *infinispanv1.Infinispan) corev1.VolumeMount {
-	return corev1.VolumeMount{
-		Name:      EncryptVolumeName,
-		MountPath: EncryptMountPath,
-	}
-}
-
-func EncryptionVolume(i *infinispanv1.Infinispan) corev1.Volume {
-	return corev1.Volume{Name: EncryptVolumeName,
+	v := &pod.Volumes
+	*v = append(*v, corev1.Volume{Name: EncryptVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			Secret: &corev1.SecretVolumeSource{
-				SecretName: i.GetEncryptionSecretName(),
+				SecretName: secret,
 			},
 		},
-	}
+	})
+
+	vm := &pod.Containers[0].VolumeMounts
+	*vm = append(*vm, corev1.VolumeMount{
+		Name:      EncryptVolumeName,
+		MountPath: EncryptMountPath,
+	})
 }
 
-func setupConfigForEncryption(m *infinispanv1.Infinispan, c *config.InfinispanConfiguration, client client.Client) error {
+func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanConfiguration, client client.Client) error {
 	if m.IsEncryptionCertFromService() {
 		if strings.Contains(m.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
 			c.Keystore.CrtPath = "/etc/encrypt"
@@ -904,13 +900,10 @@ func setupConfigForEncryption(m *infinispanv1.Infinispan, c *config.InfinispanCo
 		tlsSecret := &corev1.Secret{}
 		err := client.Get(context.TODO(), types.NamespacedName{Namespace: m.Namespace, Name: tlsSecretName}, tlsSecret)
 		if err != nil {
-			reqLogger := log.WithValues("Infinispan.Namespace", m.Namespace, "Infinispan.Name", m.Name)
 			if errors.IsNotFound(err) {
-				reqLogger.Error(err, "Secret %s for endpoint encryption not found.", tlsSecretName)
-				return err
+				return fmt.Errorf("Secret %s for endpoint encryption not found.", tlsSecretName)
 			}
-			reqLogger.Error(err, "Error in getting secret %s for endpoint encryption.", tlsSecretName)
-			return err
+			return fmt.Errorf("Error in getting secret %s for endpoint encryption: %w", tlsSecretName, err)
 		}
 		if _, ok := tlsSecret.Data["keystore.p12"]; ok {
 			// If user provide a keystore in secret then use it ...
@@ -934,7 +927,7 @@ func (r *ReconcileInfinispan) computeConfigMap(xsite *config.XSite, m *infinispa
 
 	loggingCategories := m.GetLogCategoriesForConfigMap()
 	config := config.CreateInfinispanConfiguration(name, loggingCategories, namespace, xsite)
-	err := setupConfigForEncryption(m, &config, r.client)
+	err := ConfigureServerEncryption(m, &config, r.client)
 	if err != nil {
 		return nil, err
 	}
