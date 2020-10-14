@@ -42,9 +42,11 @@ import (
 )
 
 const (
-	DataMountPath       = "/opt/infinispan/server/data"
-	IdentitiesVolumeName = "identities-volume"
+	DataMountPath        = "/opt/infinispan/server/data"
+	EncryptMountPath     = "/etc/encrypt"
 	ConfigVolumeName     = "config-volume"
+	EncryptVolumeName    = "encrypt-volume"
+	IdentitiesVolumeName = "identities-volume"
 )
 
 var log = logf.Log.WithName("controller_infinispan")
@@ -861,16 +863,28 @@ func setupServiceForEncryption(m *infinispanv1.Infinispan, ser *corev1.Service) 
 }
 
 func setupVolumesForEncryption(m *infinispanv1.Infinispan, dep *appsv1.StatefulSet) {
-	secretName := m.GetEncryptionSecretName()
-	if secretName != "" {
+	if m.GetEncryptionSecretName() != "" {
 		v := &dep.Spec.Template.Spec.Volumes
+		*v = append(*v, EncryptionVolume(m))
 		vm := &dep.Spec.Template.Spec.Containers[0].VolumeMounts
-		*vm = append(*vm, corev1.VolumeMount{Name: "encrypt-volume", MountPath: "/etc/encrypt"})
-		*v = append(*v, corev1.Volume{Name: "encrypt-volume",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: secretName,
-				}}})
+		*vm = append(*vm, EncryptionVolumeMount(m))
+	}
+}
+
+func EncryptionVolumeMount(i *infinispanv1.Infinispan) corev1.VolumeMount {
+	return corev1.VolumeMount{
+		Name:      EncryptVolumeName,
+		MountPath: EncryptMountPath,
+	}
+}
+
+func EncryptionVolume(i *infinispanv1.Infinispan) corev1.Volume {
+	return corev1.Volume{Name: EncryptVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: i.GetEncryptionSecretName(),
+			},
+		},
 	}
 }
 

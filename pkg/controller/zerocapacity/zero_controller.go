@@ -247,7 +247,7 @@ func (z *Controller) initializeResources(request reconcile.Request, instance Res
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, z.Client, pod, func() error {
-		z.configureBackupPod(name, configMap, spec, pod, statefulset.Spec.Template.Spec)
+		z.configureBackupPod(name, configMap, infinispan, spec, pod, statefulset.Spec.Template.Spec)
 		return controllerutil.SetControllerReference(instance.AsMeta(), pod, z.Scheme)
 	})
 
@@ -287,7 +287,7 @@ func (z *Controller) waitForExecutionToComplete(httpClient http.HttpClient, requ
 	phase, err := instance.ExecStatus(httpClient)
 
 	if err != nil || phase == ZeroFailed {
-		z.Log.Error(err, "Execution failed", "instance.Name", request.Name)
+		z.Log.Error(err, "Execution failed", "request	.Name", request.Name)
 		return reconcile.Result{}, instance.UpdatePhase(ZeroFailed)
 	}
 
@@ -348,23 +348,36 @@ func (z *Controller) isZeroPodReady(request reconcile.Request, instance Resource
 	return false
 }
 
-func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap, zeroSpec *Spec, pod *corev1.Pod, podSpec corev1.PodSpec) {
+func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap, ispn *v1.Infinispan, zeroSpec *Spec,
+	pod *corev1.Pod, podSpec corev1.PodSpec) {
+
 	container := podSpec.Containers[0]
 	container.Name = name
 	container.Resources = zeroSpec.Container.AsResourceRequirements()
 
-	// Override the statefulset data volume with Ephemeral vol as we're only interested in data related to CR
 	dataVolName := name + "-data"
-	container.VolumeMounts[2] = corev1.VolumeMount{
-		Name:      dataVolName,
-		MountPath: ispnCtrl.DataMountPath,
+	container.VolumeMounts = []corev1.VolumeMount{
+		{
+			Name:      ispnCtrl.ConfigVolumeName,
+			MountPath: consts.ServerConfigRoot,
+		},
+		{
+			Name:      ispnCtrl.IdentitiesVolumeName,
+			MountPath: consts.ServerSecurityRoot,
+		},
+		// Override the statefulset data volume with Ephemeral vol as we're only interested in data related to CR
+		{
+			Name:      dataVolName,
+			MountPath: ispnCtrl.DataMountPath,
+		},
+		// Mount configured volume at /zero path so that any created content is stored independent of server data
+		{
+			Name:      name,
+			MountPath: zeroSpec.Volume.MountPath,
+		},
+		// Mount encryption volumes
+		ispnCtrl.EncryptionVolumeMount(ispn),
 	}
-
-	// Mount configured volume at /zero path so that any created content is stored independent of server data
-	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-		Name:      name,
-		MountPath: zeroSpec.Volume.MountPath,
-	})
 	podSpec.Containers[0] = container
 
 	var identitiesVol corev1.Volume
@@ -397,6 +410,8 @@ func (z *Controller) configureBackupPod(name string, configMap *corev1.ConfigMap
 		},
 		// Volume for identities file
 		identitiesVol,
+		// Volume for encrytpion
+		ispnCtrl.EncryptionVolume(ispn),
 	}
 
 	pod.Spec = podSpec
@@ -423,6 +438,11 @@ func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, i
 		return nil, fmt.Errorf("Unable to parse existing config: %s", clusterConfigName)
 	}
 	config.Infinispan.ZeroCapacityNode = true
+	config.Logging.Categories = map[string]string{
+		"org.infinispan.server.core":                 "debug",
+		"org.infinispan.server.core.backup":          "trace",
+		"org.infinispan.notifications.cachelistener": "trace",
+	}
 
 	yaml, err = config.Yaml()
 	if err != nil {
