@@ -436,11 +436,7 @@ func (z *Controller) configureZeroCapacity(name, namespace string, spec *Spec, i
 		return nil, fmt.Errorf("Unable to parse existing config: %s", clusterConfigName)
 	}
 	config.Infinispan.ZeroCapacityNode = true
-	config.Logging.Categories = map[string]string{
-		"org.infinispan.server.core":                 "debug",
-		"org.infinispan.server.core.backup":          "trace",
-		"org.infinispan.notifications.cachelistener": "trace",
-	}
+	config.Infinispan.Locks.Owners = infinispan.Spec.Replicas
 
 	if err := ispnCtrl.ConfigureServerEncryption(infinispan, config, z.Client); err != nil {
 		return nil, fmt.Errorf("Unable to configure zero-capacity encryption: %w", err)

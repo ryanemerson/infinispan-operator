@@ -19,6 +19,12 @@ type InfinispanConfiguration struct {
 type Infinispan struct {
 	ClusterName      string `yaml:"clusterName"`
 	ZeroCapacityNode bool   `yaml:"zeroCapacityNode"`
+	Locks            Locks  `yaml:"locks"`
+}
+
+type Locks struct {
+	Owners      int32  `yaml:"owners,omitempty"`
+	Reliability string `yaml:"reliability,omitempty"`
 }
 
 // Keystore configuration info for connector encryption
