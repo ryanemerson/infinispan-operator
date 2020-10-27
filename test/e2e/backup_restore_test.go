@@ -23,7 +23,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -163,7 +162,6 @@ func cacheService(name, namespace string, replicas int) *v1.Infinispan {
 			Namespace: namespace,
 		},
 		Spec: v1.InfinispanSpec{
-			Image:    pointer.StringPtr("quay.io/remerson/server@sha256:45036fafcd40e27729ab4444ad30e1e88509674fc99655fd918d2d142ba9483a"),
 			Replicas: int32(replicas),
 		},
 	}
