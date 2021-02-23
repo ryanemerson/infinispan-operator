@@ -67,7 +67,7 @@ var MinimalSpec = ispnv1.Infinispan{
 }
 
 func TestMain(m *testing.M) {
-	tutils.RunOperator(m, testKube)
+	testKube.InstallOperator(m)
 }
 
 // Test operator and cluster version upgrade flow

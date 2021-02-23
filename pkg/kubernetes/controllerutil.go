@@ -47,7 +47,7 @@ func CreateOrPatch(ctx context.Context, c client.Client, obj runtime.Object, f c
 		}
 		return controllerutil.OperationResultCreated, nil
 	}
-	
+
 	// Create patches for the object and its possible status.
 	objPatch := client.MergeFrom(obj.DeepCopyObject())
 	statusPatch := client.MergeFrom(obj.DeepCopyObject())
