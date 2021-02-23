@@ -69,6 +69,25 @@ func TestMain(m *testing.M) {
 	tutils.RunOperator(m, testKube)
 }
 
+func TestStatusReproducer(t *testing.T) {
+	namespace := tutils.Namespace
+	ispn := MinimalSpec.DeepCopy()
+	ispn.Spec.Replicas = 1
+	ispn.Name = strcase.ToKebab(t.Name())
+	testKube.CreateInfinispan(ispn, namespace)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, ispn.Name, namespace)
+	kube.CreateOrPatch(context.TODO(), testKube.Kubernetes.Client, ispn, func() error {
+		if ispn.CreationTimestamp.IsZero() {
+			return errors.NewNotFound(v1.Resource("infinispan"), ispn.Name)
+		}
+		// Uncomment below line and the test will fail as ConditionUpgrade is never true
+		ispn.Spec.Replicas = 0
+		ispn.SetCondition(v1.ConditionUpgrade, metav1.ConditionTrue, "")
+		return nil
+	})
+	testKube.WaitForInfinispanCondition(ispn.Name, namespace, v1.ConditionUpgrade)
+}
+
 // Test operator and cluster version upgrade flow
 func TestOperatorUpgrade(t *testing.T) {
 	spec := DefaultSpec.DeepCopy()
