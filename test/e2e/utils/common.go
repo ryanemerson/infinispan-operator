@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -18,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/utils/pointer"
 )
 
 const EncryptionSecretNamePostfix = "secret-certs"
@@ -35,6 +37,14 @@ func EndpointEncryption(name string) *ispnv1.EndpointEncryption {
 	}
 }
 
+func EndpointEncryptionClientCert(name string, clientCert v1.ClientCertType) *v1.EndpointEncryption {
+	return &v1.EndpointEncryption{
+		Type:           v1.CertificateSourceTypeSecret,
+		CertSecretName: fmt.Sprintf("%s-%s", name, EncryptionSecretNamePostfix),
+		ClientCert:     clientCert,
+	}
+}
+
 func EncryptionSecret(name, namespace string) *corev1.Secret {
 	s := encryptionSecret(name, namespace)
 	s.StringData = map[string]string{
@@ -44,15 +54,22 @@ func EncryptionSecret(name, namespace string) *corev1.Secret {
 	return s
 }
 
-func EncryptionSecretKeystore(name, namespace string) *corev1.Secret {
+func EncryptionSecretKeystore(name, namespace string, keystore []byte) *corev1.Secret {
 	s := encryptionSecret(name, namespace)
 	s.StringData = map[string]string{
 		"alias":    "server",
-		"password": "password",
+		"password": KeystorePassword,
 	}
 	s.Data = map[string][]byte{
-		"keystore.p12": LoadFile("../utils/tls/keystore.p12"),
+		"keystore.p12": keystore,
 	}
+	return s
+}
+
+func EncryptionSecretClientTrustoreValidate(name, namespace string, keystore, truststore []byte) *corev1.Secret {
+	s := EncryptionSecretKeystore(name, namespace, keystore)
+	s.StringData["truststore-password"] = TruststorePassword
+	s.Data["truststore.p12"] = truststore
 	return s
 }
 
@@ -88,6 +105,7 @@ func DefaultSpec(testKube *TestKubernetes) *ispnv1.Infinispan {
 			Namespace: Namespace,
 		},
 		Spec: ispnv1.InfinispanSpec{
+			Image: pointer.StringPtr("infinispan/server:client-cert"),
 			Service: ispnv1.InfinispanServiceSpec{
 				Type: ispnv1.ServiceTypeDataGrid,
 			},
@@ -214,6 +232,20 @@ func clientForCluster(i *ispnv1.Infinispan, kube *TestKubernetes) HTTPClient {
 
 func HTTPClientAndHost(i *ispnv1.Infinispan, kube *TestKubernetes) (string, HTTPClient) {
 	client := clientForCluster(i, kube)
+	hostAddr := kube.WaitForExternalService(i.GetServiceExternalName(), i.Namespace, i.GetExposeType(), RouteTimeout, client)
+	return hostAddr, client
+}
+
+func HTTPSClientAndHost(i *v1.Infinispan, tlsConfig *tls.Config, kube *TestKubernetes) (string, HTTPClient) {
+	var client HTTPClient
+	if i.IsAuthenticationEnabled() {
+		user := constants.DefaultDeveloperUser
+		pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes)
+		ExpectNoError(err)
+		client = NewHTTPSClient(user, pass, tlsConfig)
+	} else {
+		client = NewHTTPSClientNoAuth(tlsConfig)
+	}
 	hostAddr := kube.WaitForExternalService(i.GetServiceExternalName(), i.Namespace, i.GetExposeType(), RouteTimeout, client)
 	return hostAddr, client
 }

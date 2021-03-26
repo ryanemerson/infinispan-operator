@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 
+	v1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
 	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
 	"gopkg.in/yaml.v2"
 )
@@ -12,6 +13,7 @@ type InfinispanConfiguration struct {
 	Infinispan  Infinispan   `yaml:"infinispan"`
 	JGroups     JGroups      `yaml:"jgroups"`
 	Keystore    Keystore     `yaml:"keystore,omitempty"`
+	Truststore  Truststore   `yaml:"truststore,omitempty"`
 	XSite       *XSite       `yaml:"xsite,omitempty"`
 	Logging     Logging      `yaml:"logging,omitempty"`
 	Endpoints   Endpoints    `yaml:"endpoints"`
@@ -33,6 +35,7 @@ type Infinispan struct {
 type Endpoints struct {
 	Authenticate   bool `yaml:"auth"`
 	DedicatedAdmin bool `yaml:"dedicatedAdmin"`
+	ClientCert     v1.ClientCertType
 }
 
 type Locks struct {
@@ -40,12 +43,20 @@ type Locks struct {
 	Reliability string `yaml:"reliability,omitempty"`
 }
 
-// Keystore configuration info for connector encryption
+// Keystore configuration info for endpoint encryption
 type Keystore struct {
 	Path     string
 	Password string
 	Alias    string
 	CrtPath  string `yaml:"crtPath,omitempty"`
+}
+
+// Truststore configuration info for endpoint encryption
+type Truststore struct {
+	CaFile   string `yaml:"cafile,omitempty"`
+	Certs    string `yaml:"certs,omitempty"`
+	Path     string `yaml:"path,omitempty"`
+	Password string
 }
 
 // JGroups configures clustering layer

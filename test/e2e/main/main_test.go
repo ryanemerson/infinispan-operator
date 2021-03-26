@@ -302,7 +302,8 @@ func TestTLSWithExistingKeystore(t *testing.T) {
 		EndpointEncryption: tutils.EndpointEncryption(spec.Name),
 	}
 	// Create secret
-	secret := tutils.EncryptionSecretKeystore(spec.Name, tutils.Namespace)
+	keystore, tlsConfig := tutils.CreateKeystore()
+	secret := tutils.EncryptionSecretKeystore(spec.Name, tutils.Namespace, keystore)
 	testKube.CreateSecret(secret)
 	defer testKube.DeleteSecret(secret)
 	// Register it
@@ -310,6 +311,45 @@ func TestTLSWithExistingKeystore(t *testing.T) {
 	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)
 	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
 	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+
+	// Ensure that we can connect to the endpoint with TLS
+	host, client := tutils.HTTPSClientAndHost(spec, tlsConfig, testKube)
+	checkRestConnection(host, client)
+}
+
+func checkRestConnection(hostAddr string, client tutils.HTTPClient) {
+	url := fmt.Sprintf("%v/rest/v2/cache-managers/default", hostAddr)
+	rsp, err := client.Get(url, nil)
+	tutils.ExpectNoError(err)
+	if rsp.StatusCode != http.StatusOK {
+		panic(httpError{rsp.StatusCode})
+	}
+}
+
+func TestClientCertValidate(t *testing.T) {
+	t.Parallel()
+	// Create a resource without passing any config
+	spec := tutils.DefaultSpec(testKube)
+	name := strcase.ToKebab(t.Name())
+	spec.Name = name
+	spec.Spec.Replicas = 1
+	spec.Spec.Security = ispnv1.InfinispanSecurity{
+		EndpointEncryption: tutils.EndpointEncryptionClientCert(spec.Name, ispnv1.ClientCertValidate),
+	}
+	// Create secret
+	keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(false)
+	secret := tutils.EncryptionSecretClientTrustoreValidate(spec.Name, tutils.Namespace, keystore, truststore)
+	testKube.CreateSecret(secret)
+	defer testKube.DeleteSecret(secret)
+	// Register it
+	testKube.CreateInfinispan(spec, tutils.Namespace)
+	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+
+	// Ensure that we can connect to the endpoint with TLS
+	host, client := tutils.HTTPSClientAndHost(spec, tlsConfig, testKube)
+	checkRestConnection(host, client)
 }
 
 // Test if spec.container.cpu update is handled

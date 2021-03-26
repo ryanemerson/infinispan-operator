@@ -34,14 +34,39 @@ type httpClientConfig struct {
 
 // NewHTTPClient return a new HTTPClient
 func NewHTTPClient(username, password, protocol string) HTTPClient {
-	return new(&username, &password, protocol)
+	return newClient(&username, &password, protocol, &tls.Config{
+		InsecureSkipVerify: true,
+	})
 }
 
 func NewHTTPClientNoAuth(protocol string) HTTPClient {
-	return new(nil, nil, protocol)
+	return newClient(nil, nil, protocol, &tls.Config{
+		InsecureSkipVerify: true,
+	})
 }
 
-func new(username, password *string, protocol string) HTTPClient {
+func NewHTTPSClientNoAuth(tlsConfig *tls.Config) HTTPClient {
+	return newClient(nil, nil, "https", tlsConfig)
+}
+
+func NewHTTPSClient(username, password string, tlsConfig *tls.Config) HTTPClient {
+	// return newClient(&username, &password, "https", tlsConfig)
+	return newClient(&username, &password, "https", &tls.Config{
+		InsecureSkipVerify: true,
+	})
+}
+
+func loadClientCertificate(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	// TODO add client cert
+	// p12 lib https://pkg.go.dev/software.sslmate.com/src/go-pkcs12#DecodeTrustStore
+	//
+	// https://gist.github.com/michaljemala/d6f4e01c4834bf47a9c4
+	// caCertPool := x509.NewCertPool()
+	// caCertPool.AppendCertsFromPEM(caCert)
+	return nil, nil
+}
+
+func newClient(username, password *string, protocol string, tlsConfig *tls.Config) HTTPClient {
 	return &httpClientConfig{
 		username:       username,
 		password:       password,
@@ -50,9 +75,7 @@ func new(username, password *string, protocol string) HTTPClient {
 		requestCounter: 0,
 		Client: &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
+				TLSClientConfig: tlsConfig,
 			},
 		},
 	}
