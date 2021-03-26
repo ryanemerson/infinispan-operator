@@ -45,11 +45,15 @@ import (
 )
 
 const (
-	DataMountPath             = "/opt/infinispan/server/data"
+	ServerRoot                = "/opt/infinispan/server"
+	DataMountPath             = ServerRoot + "/data"
 	DataMountVolume           = "data-volume"
-	CustomLibrariesMountPath  = "/opt/infinispan/server/lib/custom-libraries"
+	CustomLibrariesMountPath  = ServerRoot + "/lib/custom-libraries"
 	CustomLibrariesVolumeName = "custom-libraries"
 	EncryptMountPath          = "/etc/encrypt"
+	EncryptKeystoreName       = "keystore.p12"
+	EncryptKeystorePath       = ServerRoot + "/conf/keystore"
+	EncryptTruststoreName     = "truststore.p12"
 	ConfigVolumeName          = "config-volume"
 	EncryptVolumeName         = "encrypt-volume"
 	IdentitiesVolumeName      = "identities-volume"
@@ -1055,14 +1059,15 @@ func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanC
 		return nil
 	}
 	if m.IsEncryptionCertFromService() {
+		// TODO how to handle truststore here?
+		// Just use the openshift CA if ClientCert: Validate
+		// Is it possible to support ClientCert: Authenticate without Secret?
 		if strings.Contains(m.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
-			c.Keystore.CrtPath = "/etc/encrypt"
-			c.Keystore.Path = "/opt/infinispan/server/conf/keystore"
-			c.Keystore.Password = "password"
-			c.Keystore.Alias = "server"
+			configureNewKeystore(c)
 			return nil
 		}
 	}
+
 	// Fetch the tls secret if name is provided
 	tlsSecretName := m.GetEncryptionSecretName()
 	if tlsSecretName != "" {
@@ -1074,20 +1079,40 @@ func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanC
 			}
 			return fmt.Errorf("Error in getting secret %s for endpoint encryption: %w", tlsSecretName, err)
 		}
-		if _, ok := tlsSecret.Data["keystore.p12"]; ok {
+
+		secretContains := func(keys ...string) bool {
+			for _, k := range keys {
+				if _, ok := tlsSecret.Data[k]; !ok {
+					return false
+				}
+			}
+			return true
+		}
+
+		if secretContains(EncryptKeystoreName) {
 			// If user provide a keystore in secret then use it ...
-			c.Keystore.Path = "/etc/encrypt/keystore.p12"
-			c.Keystore.Password = string(tlsSecret.Data["password"])
-			c.Keystore.Alias = string(tlsSecret.Data["alias"])
-		} else {
-			// ... else suppose tls.key and tls.crt are provided
-			c.Keystore.CrtPath = "/etc/encrypt"
-			c.Keystore.Path = "/opt/infinispan/server/conf/keystore"
-			c.Keystore.Password = "password"
-			c.Keystore.Alias = "server"
+			c.Keystore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptKeystoreName)
+			c.Keystore.Password = tlsSecret.StringData["password"]
+			c.Keystore.Alias = tlsSecret.StringData["alias"]
+		} else if secretContains("tls.key", "tls.crt") {
+			configureNewKeystore(c)
+		}
+
+		// TODO How to allow arbritrary client certificates to be provided in the Secret for generating truststore?
+		// Iterate over all secret entries with prefix `client.trust.`?
+		if secretContains(EncryptTruststoreName) {
+			c.Truststore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptTruststoreName)
+			c.Truststore.Password = tlsSecret.StringData["truststore-password"]
 		}
 	}
 	return nil
+}
+
+func configureNewKeystore(c *config.InfinispanConfiguration) {
+	c.Keystore.CrtPath = EncryptMountPath
+	c.Keystore.Path = EncryptKeystorePath
+	c.Keystore.Password = "password"
+	c.Keystore.Alias = "alias"
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster
