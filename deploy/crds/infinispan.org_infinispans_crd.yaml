@@ -476,6 +476,13 @@ spec:
                       type: string
                     certServiceName:
                       type: string
+                    clientCert:
+                      description: ClientCertType specifies all the support client certificate validations
+                      enum:
+                        - None
+                        - Authenticate
+                        - Validate
+                      type: string
                     type:
                       description: CertificateSourceType specifies all the possible sources for the encryption certificate
                       enum:
@@ -627,6 +634,13 @@ spec:
                     certSecretName:
                       type: string
                     certServiceName:
+                      type: string
+                    clientCert:
+                      description: ClientCertType specifies all the support client certificate validations
+                      enum:
+                        - None
+                        - Authenticate
+                        - Validate
                       type: string
                     type:
                       description: CertificateSourceType specifies all the possible sources for the encryption certificate

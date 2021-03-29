@@ -38,6 +38,19 @@ const (
 	CertificateSourceTypeNoneNoEncryption CertificateSourceType = "None"
 )
 
+// ClientCertType specifies all the support client certificate validations
+// +kubebuilder:validation:Enum=None;Authenticate;Validate
+type ClientCertType string
+
+const (
+	// No client certificates required
+	ClientCertNone ClientCertType = "None"
+	// All client certificates must be in the configured truststore.
+	ClientCertAuthenticate ClientCertType = "Authenticate"
+	// Client certificates are validated against the CA in the truststore. It is not required for all client certificates to be contained in the trustore.
+	ClientCertValidate ClientCertType = "Validate"
+)
+
 // EndpointEncryption configuration
 type EndpointEncryption struct {
 	// +optional
@@ -46,6 +59,8 @@ type EndpointEncryption struct {
 	CertServiceName string `json:"certServiceName,omitempty"`
 	// +optional
 	CertSecretName string `json:"certSecretName,omitempty"`
+	// +optional
+	ClientCert ClientCertType `json:"clientCert,omitempty"`
 }
 
 // InfinispanServiceContainerSpec resource requirements specific for service

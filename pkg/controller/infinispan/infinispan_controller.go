@@ -20,7 +20,6 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan/resources"
 	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
-	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/infinispan/infinispan-operator/version"
 	routev1 "github.com/openshift/api/route/v1"
@@ -47,11 +46,11 @@ import (
 )
 
 const (
-	DataMountPath             = "/opt/infinispan/server/data"
+	ServerRoot                = "/opt/infinispan/server"
+	DataMountPath             = ServerRoot + "/data"
 	DataMountVolume           = "data-volume"
-	CustomLibrariesMountPath  = "/opt/infinispan/server/lib/custom-libraries"
+	CustomLibrariesMountPath  = ServerRoot + "/lib/custom-libraries"
 	CustomLibrariesVolumeName = "custom-libraries"
-	EncryptMountPath          = "/etc/encrypt"
 	ConfigVolumeName          = "config-volume"
 	EncryptVolumeName         = "encrypt-volume"
 	IdentitiesVolumeName      = "identities-volume"
@@ -991,6 +990,7 @@ func PodResources(spec infinispanv1.InfinispanContainerSpec) (*corev1.ResourceRe
 
 func PodEnv(i *infinispanv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
+		{Name: "DEBUG", Value: "TRUE"},
 		{Name: "CONFIG_PATH", Value: consts.ServerConfigPath},
 		// Prevent the image from generating a user if authentication disabled
 		{Name: "MANAGED_ENV", Value: "TRUE"},
@@ -1067,46 +1067,6 @@ func AddVolumeForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) bo
 		MountPath: EncryptMountPath,
 	})
 	return true
-}
-
-func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanConfiguration, client client.Client) error {
-	if m.IsEncryptionDisabled() {
-		return nil
-	}
-	if m.IsEncryptionCertFromService() {
-		if strings.Contains(m.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
-			c.Keystore.CrtPath = "/etc/encrypt"
-			c.Keystore.Path = "/opt/infinispan/server/conf/keystore"
-			c.Keystore.Password = "password"
-			c.Keystore.Alias = "server"
-			return nil
-		}
-	}
-	// Fetch the tls secret if name is provided
-	tlsSecretName := m.GetEncryptionSecretName()
-	if tlsSecretName != "" {
-		tlsSecret := &corev1.Secret{}
-		err := client.Get(context.TODO(), types.NamespacedName{Namespace: m.Namespace, Name: tlsSecretName}, tlsSecret)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return fmt.Errorf("Secret %s for endpoint encryption not found.", tlsSecretName)
-			}
-			return fmt.Errorf("Error in getting secret %s for endpoint encryption: %w", tlsSecretName, err)
-		}
-		if _, ok := tlsSecret.Data["keystore.p12"]; ok {
-			// If user provide a keystore in secret then use it ...
-			c.Keystore.Path = "/etc/encrypt/keystore.p12"
-			c.Keystore.Password = string(tlsSecret.Data["password"])
-			c.Keystore.Alias = string(tlsSecret.Data["alias"])
-		} else {
-			// ... else suppose tls.key and tls.crt are provided
-			c.Keystore.CrtPath = "/etc/encrypt"
-			c.Keystore.Path = "/opt/infinispan/server/conf/keystore"
-			c.Keystore.Password = "password"
-			c.Keystore.Alias = "server"
-		}
-	}
-	return nil
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster
