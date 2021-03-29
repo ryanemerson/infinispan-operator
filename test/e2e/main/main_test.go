@@ -290,6 +290,28 @@ func TestClusterFormationWithTLS(t *testing.T) {
 	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
 }
 
+// Test if the cluster is working correctly
+func TestTLSWithExistingKeystore(t *testing.T) {
+	t.Parallel()
+	// Create a resource without passing any config
+	spec := tutils.DefaultSpec(testKube)
+	name := strcase.ToKebab(t.Name())
+	spec.Name = name
+	spec.Spec.Replicas = 1
+	spec.Spec.Security = ispnv1.InfinispanSecurity{
+		EndpointEncryption: tutils.EndpointEncryption(spec.Name),
+	}
+	// Create secret
+	secret := tutils.EncryptionSecretKeystore(spec.Name, tutils.Namespace)
+	testKube.CreateSecret(secret)
+	defer testKube.DeleteSecret(secret)
+	// Register it
+	testKube.CreateInfinispan(spec, tutils.Namespace)
+	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+}
+
 // Test if spec.container.cpu update is handled
 func TestContainerCPUUpdateWithTwoReplicas(t *testing.T) {
 	var modifier = func(ispn *ispnv1.Infinispan) {
