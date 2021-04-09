@@ -26,7 +26,9 @@ import (
 )
 
 const (
-	ControllerName = "secret-controller"
+	ControllerName   = "secret-controller"
+	AdminUserKey     = "username"
+	AdminPasswordKey = "password"
 )
 
 var ctx = context.Background()
@@ -89,6 +91,20 @@ func (s *secretResource) Process() (reconcile.Result, error) {
 	} else {
 		// Patch secret to include any generated fields
 		updated, err := s.update(secret, func() error {
+			if secret.Data[consts.ServerIdentitiesFilename] != nil && secret.Data[AdminPasswordKey] == nil {
+				// Handle migration of old secret where only identities.yaml was present
+				secret.Data[AdminUserKey] = []byte(consts.DefaultOperatorUser)
+				pwd, err := users.FindPassword(consts.DefaultOperatorUser, secret.Data[consts.ServerIdentitiesFilename])
+				if err != nil {
+					return err
+				}
+				secret.Data[AdminPasswordKey] = []byte(pwd)
+			}
+
+			if err := adminIdentitiesYaml(secret); err != nil {
+				return err
+			}
+
 			return s.addCliProperties(secret)
 		})
 
@@ -115,19 +131,28 @@ func (s secretResource) createUserIdentitiesSecret() error {
 	if err != nil {
 		return err
 	}
-	return s.createSecret(s.infinispan.GetSecretName(), "infinispan-secret-identities", identities, false)
+	secret := s.secretSpec(s.infinispan.GetSecretName(), "infinispan-secret-identities")
+	secret.Data[consts.ServerIdentitiesFilename] = identities
+	return s.createSecret(secret)
 }
 
 func (s secretResource) createAdminIdentitiesSecret() error {
-	identities, err := users.GetAdminCredentials()
-	if err != nil {
+	secret := s.secretSpec(s.infinispan.GetAdminSecretName(), "infinispan-secret-admin-identities")
+	secret.Data[AdminUserKey] = []byte(consts.DefaultOperatorUser)
+	secret.Data[AdminPasswordKey] = []byte(users.GetRandomStringForAuth(16))
+
+	if err := adminIdentitiesYaml(secret); err != nil {
 		return err
 	}
-	return s.createSecret(s.infinispan.GetAdminSecretName(), "infinispan-secret-admin-identities", identities, true)
+
+	if err := s.addCliProperties(secret); err != nil {
+		return err
+	}
+	return s.createSecret(secret)
 }
 
-func (s secretResource) createSecret(name, label string, identities []byte, adminSecret bool) error {
-	secret := &corev1.Secret{
+func (s secretResource) secretSpec(name, label string) *corev1.Secret {
+	return &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Secret",
@@ -138,15 +163,11 @@ func (s secretResource) createSecret(name, label string, identities []byte, admi
 			Labels:    infinispan.LabelsResource(s.infinispan.Name, label),
 		},
 		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{consts.ServerIdentitiesFilename: identities},
+		Data: map[string][]byte{},
 	}
+}
 
-	if adminSecret {
-		if err := s.addCliProperties(secret); err != nil {
-			return err
-		}
-	}
-
+func (s secretResource) createSecret(secret *corev1.Secret) error {
 	s.log.Info(fmt.Sprintf("Creating Identities Secret %s", secret.Name))
 	_, err := controllerutil.CreateOrUpdate(ctx, s.client, secret, func() error {
 		return controllerutil.SetControllerReference(s.infinispan, secret, s.scheme)
@@ -155,6 +176,17 @@ func (s secretResource) createSecret(name, label string, identities []byte, admi
 	if err != nil {
 		return fmt.Errorf("Unable to create identities secret: %w", err)
 	}
+	return nil
+}
+
+func adminIdentitiesYaml(secret *corev1.Secret) error {
+	usr := string(secret.Data[AdminUserKey])
+	pwd := string(secret.Data[AdminPasswordKey])
+	identities, err := users.CreateIdentitiesFor(usr, pwd)
+	if err != nil {
+		return err
+	}
+	secret.Data[consts.ServerIdentitiesFilename] = identities
 	return nil
 }
 

@@ -27,7 +27,7 @@ var alphaChars = acceptedChars[8:]
 
 // getRandomStringForAuth generate a random string that can be used as a
 // user or pass for Infinispan
-func getRandomStringForAuth(size int) string {
+func GetRandomStringForAuth(size int) string {
 	b := make([]byte, size)
 	for i := range b {
 		if i == 0 {
@@ -55,13 +55,8 @@ func CreateIdentitiesFor(usr string, pass string) ([]byte, error) {
 }
 
 // GetUserCredentials get identities credentials in yaml format
-func GetAdminCredentials() ([]byte, error) {
-	return CreateIdentitiesFor(consts.DefaultOperatorUser, getRandomStringForAuth(16))
-}
-
-// GetUserCredentials get identities credentials in yaml format
 func GetUserCredentials() ([]byte, error) {
-	return CreateIdentitiesFor(consts.DefaultDeveloperUser, getRandomStringForAuth(16))
+	return CreateIdentitiesFor(consts.DefaultDeveloperUser, GetRandomStringForAuth(16))
 }
 
 // FindPassword finds a user's password

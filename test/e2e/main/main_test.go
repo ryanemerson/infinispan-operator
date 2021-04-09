@@ -221,6 +221,36 @@ func TestNodeWithEphemeralStorage(t *testing.T) {
 	}
 }
 
+func TestUpdateOperatorPassword(t *testing.T) {
+	t.Parallel()
+	// Create a resource without passing any config
+	spec := tutils.DefaultSpec(testKube)
+	name := strcase.ToKebab(t.Name())
+	spec.Name = name
+	// Register it
+	testKube.CreateInfinispan(spec, tutils.Namespace)
+	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+
+	newPassword := "supersecretoperatorpassword"
+	secret := testKube.GetSecret(spec.GetAdminSecretName(), spec.Namespace)
+	kube.CreateOrPatch(context.TODO(), testKube.Kubernetes.Client, secret, func() error {
+		secret.Data["password"] = []byte(newPassword)
+		return nil
+	})
+
+	err := wait.Poll(tutils.DefaultPollPeriod, tutils.SinglePodTimeout, func() (bool, error) {
+		secret = testKube.GetSecret(spec.GetAdminSecretName(), spec.Namespace)
+		identities := secret.Data[cconsts.ServerIdentitiesFilename]
+		pwd, err := users.FindPassword(cconsts.DefaultOperatorUser, identities)
+		tutils.ExpectNotFound(err)
+		fmt.Printf("Pwd=%s, Identities=%s", string(pwd), string(identities))
+		return pwd == newPassword, nil
+	})
+	tutils.ExpectNoError(err)
+}
+
 // Test if the cluster is working correctly
 func TestClusterFormation(t *testing.T) {
 	t.Parallel()

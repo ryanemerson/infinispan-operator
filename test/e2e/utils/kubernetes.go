@@ -20,6 +20,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/launcher"
 	routev1 "github.com/openshift/api/route/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -481,6 +482,16 @@ func (k TestKubernetes) Nodes() []string {
 func (k TestKubernetes) CreateSecret(secret *v1.Secret) {
 	err := k.Kubernetes.Client.Create(context.TODO(), secret)
 	ExpectNoError(err)
+}
+
+func (k TestKubernetes) GetSecret(name, namespace string) *corev1.Secret {
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectMaybeNotFound(k.Kubernetes.Client.Get(context.TODO(), key, secret))
+	return secret
 }
 
 // DeleteSecret deletes a secret
