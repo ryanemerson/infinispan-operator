@@ -327,17 +327,21 @@ func checkRestConnection(hostAddr string, client tutils.HTTPClient) {
 }
 
 func TestClientCertValidate(t *testing.T) {
+	testClientCert(ispnv1.ClientCertValidate, t)
+}
+
+func testClientCert(authType ispnv1.ClientCertType, t *testing.T) {
 	t.Parallel()
-	// Create a resource without passing any config
 	spec := tutils.DefaultSpec(testKube)
 	name := strcase.ToKebab(t.Name())
 	spec.Name = name
 	spec.Spec.Replicas = 1
 	spec.Spec.Security = ispnv1.InfinispanSecurity{
-		EndpointEncryption: tutils.EndpointEncryptionClientCert(spec.Name, ispnv1.ClientCertValidate),
+		EndpointEncryption: tutils.EndpointEncryptionClientCert(spec.Name, authType),
 	}
-	// Create secret
-	keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(false)
+
+	// Create the keystore & truststore for the server with a compatible client tls configuration
+	keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(authType == ispnv1.ClientCertAuthenticate)
 	secret := tutils.EncryptionSecretClientTrustoreValidate(spec.Name, tutils.Namespace, keystore, truststore)
 	testKube.CreateSecret(secret)
 	defer testKube.DeleteSecret(secret)

@@ -47,22 +47,28 @@ func CreateKeystore() (keystore []byte, clientTLSConf *tls.Config) {
 
 // Returns a keystore & truststore using a self-signed certificate, and the corresponding tls.Config required by clients to connect to the server
 // If authenticate is true, then the returned truststore contains all client certificates, otherwise it simply contains the CA for validation
-func CreateKeyAndTruststore(authenticate bool) (keystore []byte, trustore []byte, clientTLSConf *tls.Config) {
+func CreateKeyAndTruststore(authenticate bool) (keystore []byte, truststore []byte, clientTLSConf *tls.Config) {
 	ca := ca()
 	server := cert("server", ca)
 	keystore = createKeystore(ca, server)
 
 	client := cert("client", ca)
-	trustore = createTruststore(ca, client, authenticate)
+	truststore = createTruststore(ca, client, authenticate)
 
-	certificate, err := tls.X509KeyPair(client.getCertPEM(), client.getPrivateKeyPEM())
-	ExpectNoError(err)
+	clientCertBytes := append(client.getCertPEM(), client.getPrivateKeyPEM()...)
+	// TODO remove
+	ioutil.WriteFile(tmpFile("client.pem"), clientCertBytes, 0777)
 
 	certpool := x509.NewCertPool()
 	certpool.AddCert(ca.cert)
+
 	clientTLSConf = &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		RootCAs:      certpool,
+		GetClientCertificate: func(t *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			certificate, err := tls.X509KeyPair(client.getCertPEM(), client.getPrivateKeyPEM())
+			return &certificate, err
+		},
+		RootCAs:    certpool,
+		ServerName: "server",
 	}
 	return
 }
@@ -158,7 +164,7 @@ func createKeystore(ca, server *certHolder) []byte {
 	ioutil.WriteFile(certFile, append(server.getCertPEM(), ca.getCertPEM()...), fileMode)
 
 	cmd := exec.Command("openssl", "pkcs12", "-export", "-in", certFile, "-inkey", privKeyFile,
-		"-name", server.cert.Subject.CommonName, "-out", generatedKeystore, "-password", "pass:"+KeystorePassword)
+		"-name", server.cert.Subject.CommonName, "-out", generatedKeystore, "-password", "pass:"+KeystorePassword, "-noiter", "-nomaciter")
 	ExpectNoError(cmd.Run())
 
 	keystore, err := ioutil.ReadFile(generatedKeystore)
@@ -169,7 +175,8 @@ func createKeystore(ca, server *certHolder) []byte {
 func createTruststore(ca, client *certHolder, authenticate bool) []byte {
 	var fileMode os.FileMode = 0777
 	ExpectNoError(os.MkdirAll(tmpDir, fileMode))
-	defer os.RemoveAll(tmpDir)
+	// TODO uncomment
+	// defer os.RemoveAll(tmpDir)
 
 	certFile := tmpFile("trust_cert.pem")
 	generatedTruststore := tmpFile("truststore.p12")
@@ -187,8 +194,9 @@ func createTruststore(ca, client *certHolder, authenticate bool) []byte {
 	// openssl cannot create pkcs12 in a way that java likes
 	// TOOD use keytool instead :(
 	// keytool -keystore tuststore.p12 -alias ca -import -file /tmp/infinispan/operator/tls/trust_cert.pem -noprompt -storepass secret
-	cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "ca", "-import", "-file", certFile, "-noprompt", "-storepass", TruststorePassword)
+	// TODO try just using this library instead? https://pkg.go.dev/software.sslmate.com/src/go-pkcs12?utm_source=godoc
 	// cmd := exec.Command("openssl", "pkcs12", "-export", "-nokeys", "-in", certFile, "-out", generatedTruststore, "-password", "pass:"+TruststorePassword)
+	cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "ca", "-import", "-file", certFile, "-noprompt", "-storepass", TruststorePassword)
 	ExpectNoError(cmd.Run())
 
 	truststore, err := ioutil.ReadFile(generatedTruststore)

@@ -50,20 +50,7 @@ func NewHTTPSClientNoAuth(tlsConfig *tls.Config) HTTPClient {
 }
 
 func NewHTTPSClient(username, password string, tlsConfig *tls.Config) HTTPClient {
-	// return newClient(&username, &password, "https", tlsConfig)
-	return newClient(&username, &password, "https", &tls.Config{
-		InsecureSkipVerify: true,
-	})
-}
-
-func loadClientCertificate(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-	// TODO add client cert
-	// p12 lib https://pkg.go.dev/software.sslmate.com/src/go-pkcs12#DecodeTrustStore
-	//
-	// https://gist.github.com/michaljemala/d6f4e01c4834bf47a9c4
-	// caCertPool := x509.NewCertPool()
-	// caCertPool.AppendCertsFromPEM(caCert)
-	return nil, nil
+	return newClient(&username, &password, "https", tlsConfig)
 }
 
 func newClient(username, password *string, protocol string, tlsConfig *tls.Config) HTTPClient {

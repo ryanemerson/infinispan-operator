@@ -246,6 +246,7 @@ func HTTPSClientAndHost(i *v1.Infinispan, tlsConfig *tls.Config, kube *TestKuber
 	} else {
 		client = NewHTTPSClientNoAuth(tlsConfig)
 	}
+
 	hostAddr := kube.WaitForExternalService(i.GetServiceExternalName(), i.Namespace, i.GetExposeType(), RouteTimeout, client)
 	return hostAddr, client
 }
