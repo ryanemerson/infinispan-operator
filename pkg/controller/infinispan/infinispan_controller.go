@@ -997,6 +997,7 @@ func PodResources(spec infinispanv1.InfinispanContainerSpec) (*corev1.ResourceRe
 
 func PodEnv(i *infinispanv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
+		{Name: "DEBUG", Value: "TRUE"},
 		{Name: "CONFIG_PATH", Value: consts.ServerConfigPath},
 		// Prevent the image from generating a user if authentication disabled
 		{Name: "MANAGED_ENV", Value: "TRUE"},
@@ -1137,6 +1138,7 @@ func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanC
 					c.Truststore.Certs = clientCerts
 				}
 			}
+			c.Endpoints.ClientCert = string(m.Spec.Security.EndpointEncryption.ClientCert)
 		}
 	}
 	return nil

@@ -19,6 +19,14 @@ type HTTPClient interface {
 	Post(path, payload string, headers map[string]string) (*http.Response, error)
 }
 
+type authType int
+
+const (
+	authNone authType = iota
+	authDigest
+	authCert
+)
+
 type authenticationRealm struct {
 	Username, Password, Realm, NONCE, QOP, Opaque, Algorithm string
 }
@@ -28,36 +36,42 @@ type httpClientConfig struct {
 	username       *string
 	password       *string
 	protocol       string
+	auth           authType
 	authRealm      *authenticationRealm
 	requestCounter int
 }
 
 // NewHTTPClient return a new HTTPClient
 func NewHTTPClient(username, password, protocol string) HTTPClient {
-	return newClient(&username, &password, protocol, &tls.Config{
+	return newClient(authDigest, &username, &password, protocol, &tls.Config{
 		InsecureSkipVerify: true,
 	})
 }
 
 func NewHTTPClientNoAuth(protocol string) HTTPClient {
-	return newClient(nil, nil, protocol, &tls.Config{
+	return newClient(authNone, nil, nil, protocol, &tls.Config{
 		InsecureSkipVerify: true,
 	})
 }
 
 func NewHTTPSClientNoAuth(tlsConfig *tls.Config) HTTPClient {
-	return newClient(nil, nil, "https", tlsConfig)
+	return newClient(authNone, nil, nil, "https", tlsConfig)
+}
+
+func NewHTTPSClientCertAuth(tlsConfig *tls.Config) HTTPClient {
+	return newClient(authCert, nil, nil, "https", tlsConfig)
 }
 
 func NewHTTPSClient(username, password string, tlsConfig *tls.Config) HTTPClient {
-	return newClient(&username, &password, "https", tlsConfig)
+	return newClient(authDigest, &username, &password, "https", tlsConfig)
 }
 
-func newClient(username, password *string, protocol string, tlsConfig *tls.Config) HTTPClient {
+func newClient(auth authType, username, password *string, protocol string, tlsConfig *tls.Config) HTTPClient {
 	return &httpClientConfig{
 		username:       username,
 		password:       password,
 		protocol:       protocol,
+		auth:           auth,
 		authRealm:      nil,
 		requestCounter: 0,
 		Client: &http.Client{
@@ -94,7 +108,7 @@ func (c *httpClientConfig) Post(path, payload string, headers map[string]string)
 }
 
 func (c *httpClientConfig) exec(req *http.Request, headers map[string]string) (*http.Response, error) {
-	if c.isAuthRequired() {
+	if c.auth == authDigest {
 		if c.authRealm == nil {
 			rsp, err := c.Do(req)
 			ExpectNoError(err)
@@ -112,10 +126,6 @@ func (c *httpClientConfig) exec(req *http.Request, headers map[string]string) (*
 	}
 	rsp, err := c.Do(req)
 	return rsp, err
-}
-
-func (c *httpClientConfig) isAuthRequired() bool {
-	return c.username != nil
 }
 
 func getAuthorization(username, password string, resp *http.Response) *authenticationRealm {

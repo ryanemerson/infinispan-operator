@@ -39,7 +39,7 @@ const (
 )
 
 // ClientCertType specifies all the support client certificate validations
-// +kubebuilder:validation:Enum=None;none;Authenticate;authenticate;Validate;validate
+// +kubebuilder:validation:Enum=None;Authenticate;Validate
 type ClientCertType string
 
 const (

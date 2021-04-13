@@ -238,13 +238,17 @@ func HTTPClientAndHost(i *ispnv1.Infinispan, kube *TestKubernetes) (string, HTTP
 
 func HTTPSClientAndHost(i *v1.Infinispan, tlsConfig *tls.Config, kube *TestKubernetes) (string, HTTPClient) {
 	var client HTTPClient
-	if i.IsAuthenticationEnabled() {
-		user := constants.DefaultDeveloperUser
-		pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes)
-		ExpectNoError(err)
-		client = NewHTTPSClient(user, pass, tlsConfig)
+	if i.Spec.Security.EndpointEncryption.ClientCert == ispnv1.ClientCertAuthenticate {
+		client = NewHTTPSClientCertAuth(tlsConfig)
 	} else {
-		client = NewHTTPSClientNoAuth(tlsConfig)
+		if i.IsAuthenticationEnabled() {
+			user := constants.DefaultDeveloperUser
+			pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes)
+			ExpectNoError(err)
+			client = NewHTTPSClient(user, pass, tlsConfig)
+		} else {
+			client = NewHTTPSClientNoAuth(tlsConfig)
+		}
 	}
 
 	hostAddr := kube.WaitForExternalService(i.GetServiceExternalName(), i.Namespace, i.GetExposeType(), RouteTimeout, client)

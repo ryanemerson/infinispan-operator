@@ -178,26 +178,33 @@ func createTruststore(ca, client *certHolder, authenticate bool) []byte {
 	// TODO uncomment
 	// defer os.RemoveAll(tmpDir)
 
-	certFile := tmpFile("trust_cert.pem")
+	caPemFile := tmpFile("trust_ca.pem")
 	generatedTruststore := tmpFile("truststore.p12")
 
-	var certs []byte
-	if authenticate {
-		certs = append(ca.getCertPEM(), client.getCertPEM()...)
-	} else {
-		certs = ca.getCertPEM()
-	}
-	bagAttributes := "Certificate bag\nBag Attributes\n    friendlyName: ca\n    2.16.840.1.113894.746875.1.1: <Unsupported tag 6>\n"
-	certs = append([]byte(bagAttributes), certs...)
-	ioutil.WriteFile(certFile, certs, fileMode)
+	// var certs []byte
+	// if authenticate {
+	// 	certs = append(ca.getCertPEM(), client.getCertPEM()...)
+	// } else {
+	// 	certs = ca.getCertPEM()
+	// }
+	// bagAttributes := "Certificate bag\nBag Attributes\n    friendlyName: ca\n    2.16.840.1.113894.746875.1.1: <Unsupported tag 6>\n"
+	// certs = append([]byte(bagAttributes), certs...)
+	ioutil.WriteFile(caPemFile, ca.getCertPEM(), fileMode)
 
 	// openssl cannot create pkcs12 in a way that java likes
 	// TOOD use keytool instead :(
 	// keytool -keystore tuststore.p12 -alias ca -import -file /tmp/infinispan/operator/tls/trust_cert.pem -noprompt -storepass secret
 	// TODO try just using this library instead? https://pkg.go.dev/software.sslmate.com/src/go-pkcs12?utm_source=godoc
 	// cmd := exec.Command("openssl", "pkcs12", "-export", "-nokeys", "-in", certFile, "-out", generatedTruststore, "-password", "pass:"+TruststorePassword)
-	cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "ca", "-import", "-file", certFile, "-noprompt", "-storepass", TruststorePassword)
+	cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "ca", "-import", "-file", caPemFile, "-noprompt", "-storepass", TruststorePassword)
 	ExpectNoError(cmd.Run())
+
+	if authenticate {
+		clientPemFile := tmpFile("trust_client.pem")
+		ioutil.WriteFile(clientPemFile, client.getCertPEM(), fileMode)
+		cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "client", "-import", "-file", clientPemFile, "-noprompt", "-storepass", TruststorePassword)
+		ExpectNoError(cmd.Run())
+	}
 
 	truststore, err := ioutil.ReadFile(generatedTruststore)
 	ExpectNoError(err)

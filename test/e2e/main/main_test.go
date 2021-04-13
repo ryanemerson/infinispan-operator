@@ -330,6 +330,10 @@ func TestClientCertValidate(t *testing.T) {
 	testClientCert(ispnv1.ClientCertValidate, t)
 }
 
+func TestClientCertAuthenticate(t *testing.T) {
+	testClientCert(ispnv1.ClientCertAuthenticate, t)
+}
+
 func testClientCert(authType ispnv1.ClientCertType, t *testing.T) {
 	t.Parallel()
 	spec := tutils.DefaultSpec(testKube)

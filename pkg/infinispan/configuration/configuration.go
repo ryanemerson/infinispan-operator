@@ -3,7 +3,6 @@ package configuration
 import (
 	"fmt"
 
-	v1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
 	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
 	"gopkg.in/yaml.v2"
 )
@@ -33,9 +32,9 @@ type Infinispan struct {
 }
 
 type Endpoints struct {
-	Authenticate   bool `yaml:"auth"`
-	DedicatedAdmin bool `yaml:"dedicatedAdmin"`
-	ClientCert     v1.ClientCertType
+	Authenticate   bool   `yaml:"auth"`
+	DedicatedAdmin bool   `yaml:"dedicatedAdmin"`
+	ClientCert     string `yaml:"clientCert"`
 }
 
 type Locks struct {
