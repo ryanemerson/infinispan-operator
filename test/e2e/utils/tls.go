@@ -65,6 +65,28 @@ func CreateKeystore() (keystore []byte, clientTLSConf *tls.Config) {
 	return
 }
 
+func CreateKeystoreAndClientCerts() (keystore []byte, caPem []byte, clientPem []byte, clientTLSConf *tls.Config) {
+	ca := ca()
+	server := cert("server", ca)
+	keystore = createKeystore(ca, server)
+	client := cert("client", ca)
+
+	certpool := x509.NewCertPool()
+	certpool.AddCert(ca.cert)
+
+	caPem = ca.getCertPEM()
+	clientPem = client.getCertPEM()
+	clientTLSConf = &tls.Config{
+		GetClientCertificate: func(t *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			certificate, err := tls.X509KeyPair(client.getCertPEM(), client.getPrivateKeyPEM())
+			return &certificate, err
+		},
+		RootCAs:    certpool,
+		ServerName: ServerName,
+	}
+	return
+}
+
 // Returns a keystore & truststore using a self-signed certificate, and the corresponding tls.Config required by clients to connect to the server
 // If authenticate is true, then the returned truststore contains all client certificates, otherwise it simply contains the CA for validation
 func CreateKeyAndTruststore(authenticate bool) (keystore []byte, truststore []byte, clientTLSConf *tls.Config) {

@@ -2,9 +2,12 @@ package infinispan
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha1"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"reflect"
@@ -44,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	p12 "software.sslmate.com/src/go-pkcs12"
 )
 
 const (
@@ -1121,22 +1125,45 @@ func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanC
 		}
 
 		if m.IsClientCertEnabled() {
-			// If the user explicitly provides a truststore use that, otherwise look for individual client certificates
+			// If the user explicitly provides a truststore use that, otherwise look for individual client certificates and create one
+			c.Truststore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptTruststoreName)
 			if secretContains(EncryptTruststoreName) {
-				c.Truststore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptTruststoreName)
 				c.Truststore.Password = string(tlsSecret.Data["truststore-password"])
 			} else {
-				var clientCerts string
-				for k := range tlsSecret.Data {
-					if strings.HasPrefix(k, EncryptClientCertPrefix) {
-						clientCerts = fmt.Sprintf("%s%s/%s ", clientCerts, EncryptMountPath, k)
+				// TODO make const
+				c.Truststore.Password = "password"
+				clientCerts := []*x509.Certificate{}
+				if secretContains(EncryptClientCAName) {
+					block, _ := pem.Decode(tlsSecret.Data[EncryptClientCAName])
+					cert, err := x509.ParseCertificate(block.Bytes)
+					if err != nil {
+						return fmt.Errorf("Unable to parse CA certificate '%s': %w", EncryptClientCAName, err)
+					}
+					clientCerts = append(clientCerts, cert)
+				}
+				for certKey := range tlsSecret.Data {
+					if strings.HasPrefix(certKey, EncryptClientCertPrefix) {
+						block, _ := pem.Decode(tlsSecret.Data[certKey])
+						cert, err := x509.ParseCertificate(block.Bytes)
+						if err != nil {
+							return fmt.Errorf("Unable to parse client certificate '%s': %w", certKey, err)
+						}
+						clientCerts = append(clientCerts, cert)
 					}
 				}
-				if clientCerts != "" {
-					// TODO finish and add config-generator code
-					// c.Truststore.CaFile = EncryptClientCAName
-					c.Truststore.Certs = clientCerts
+				truststore, err := p12.EncodeTrustStore(rand.Reader, clientCerts, c.Truststore.Password)
+				if err != nil {
+					return fmt.Errorf("Unable to create truststore with user provided cert files: %w", err)
 				}
+
+				_, err = kube.CreateOrPatch(context.TODO(), client, tlsSecret, func() error {
+					if tlsSecret.CreationTimestamp.IsZero() {
+						return errors.NewNotFound(corev1.Resource("secret"), tlsSecretName)
+					}
+					tlsSecret.Data[EncryptTruststoreName] = truststore
+					tlsSecret.Data["truststore-password"] = []byte("password")
+					return nil
+				})
 			}
 			c.Endpoints.ClientCert = string(m.Spec.Security.EndpointEncryption.ClientCert)
 		}

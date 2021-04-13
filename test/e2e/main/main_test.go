@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -333,28 +334,57 @@ func checkRestConnection(hostAddr string, client tutils.HTTPClient) {
 }
 
 func TestClientCertValidate(t *testing.T) {
-	testClientCert(ispnv1.ClientCertValidate, t)
+	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+		authType = ispnv1.ClientCertValidate
+		keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(false)
+		secret = tutils.EncryptionSecretClientTrustore(name, tutils.Namespace, keystore, truststore)
+		return
+	})
 }
 
 func TestClientCertAuthenticate(t *testing.T) {
-	testClientCert(ispnv1.ClientCertAuthenticate, t)
+	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+		authType = ispnv1.ClientCertAuthenticate
+		keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(true)
+		secret = tutils.EncryptionSecretClientTrustore(name, tutils.Namespace, keystore, truststore)
+		return
+	})
 }
 
-func testClientCert(authType ispnv1.ClientCertType, t *testing.T) {
+func TestClientCertGeneratedTruststoreAuthenticate(t *testing.T) {
+	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+		authType = ispnv1.ClientCertAuthenticate
+		keystore, caCert, clientCert, tlsConfig := tutils.CreateKeystoreAndClientCerts()
+		secret = tutils.EncryptionSecretClientCert(name, tutils.Namespace, keystore, caCert, clientCert)
+		return
+	})
+}
+
+func TestClientCertGeneratedTruststoreValidate(t *testing.T) {
+	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+		authType = ispnv1.ClientCertValidate
+		keystore, caCert, _, tlsConfig := tutils.CreateKeystoreAndClientCerts()
+		secret = tutils.EncryptionSecretClientCert(name, tutils.Namespace, keystore, caCert, nil)
+		return
+	})
+}
+
+func testClientCert(t *testing.T, initializer func(string) (v1.ClientCertType, *corev1.Secret, *tls.Config)) {
 	t.Parallel()
 	spec := tutils.DefaultSpec(testKube)
 	name := strcase.ToKebab(t.Name())
 	spec.Name = name
 	spec.Spec.Replicas = 1
+
+	// Create the keystore & truststore for the server with a compatible client tls configuration
+	authType, secret, tlsConfig := initializer(name)
 	spec.Spec.Security = ispnv1.InfinispanSecurity{
 		EndpointEncryption: tutils.EndpointEncryptionClientCert(spec.Name, authType),
 	}
 
-	// Create the keystore & truststore for the server with a compatible client tls configuration
-	keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(authType == ispnv1.ClientCertAuthenticate)
-	secret := tutils.EncryptionSecretClientTrustoreValidate(spec.Name, tutils.Namespace, keystore, truststore)
 	testKube.CreateSecret(secret)
 	defer testKube.DeleteSecret(secret)
+
 	// Register it
 	testKube.CreateInfinispan(spec, tutils.Namespace)
 	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)

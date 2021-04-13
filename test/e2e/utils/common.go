@@ -59,7 +59,14 @@ func EncryptionSecretKeystore(name, namespace string, keystore []byte) *corev1.S
 	return s
 }
 
-func EncryptionSecretClientTrustoreValidate(name, namespace string, keystore, truststore []byte) *corev1.Secret {
+func EncryptionSecretClientCert(name, namespace string, keystore, caCert, clientCert []byte) *corev1.Secret {
+	s := EncryptionSecretKeystore(name, namespace, keystore)
+	s.Data["trust.ca"] = caCert
+	s.Data["trust.cert.client"] = clientCert
+	return s
+}
+
+func EncryptionSecretClientTrustore(name, namespace string, keystore, truststore []byte) *corev1.Secret {
 	s := EncryptionSecretKeystore(name, namespace, keystore)
 	s.StringData["truststore-password"] = TruststorePassword
 	s.Data["truststore.p12"] = truststore
