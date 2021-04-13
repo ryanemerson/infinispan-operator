@@ -280,14 +280,20 @@ func TestClusterFormationWithTLS(t *testing.T) {
 	spec.Spec.Security = ispnv1.InfinispanSecurity{
 		EndpointEncryption: tutils.EndpointEncryption(spec.Name),
 	}
-	// Create secret
-	testKube.CreateSecret(tutils.EncryptionSecret(spec.Name, tutils.Namespace))
-	defer testKube.DeleteSecret(tutils.EncryptionSecret(spec.Name, tutils.Namespace))
+	// Create secret with server certificates
+	cert, privKey, tlsConfig := tutils.CreateServerCertificates()
+	secret := tutils.EncryptionSecret(spec.Name, tutils.Namespace, privKey, cert)
+	testKube.CreateSecret(secret)
+	defer testKube.DeleteSecret(secret)
 	// Register it
 	testKube.CreateInfinispan(spec, tutils.Namespace)
 	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)
 	testKube.WaitForInfinispanPods(2, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
 	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+
+	// Ensure that we can connect to the endpoint with TLS
+	host, client := tutils.HTTPSClientAndHost(spec, tlsConfig, testKube)
+	checkRestConnection(host, client)
 }
 
 // Test if the cluster is working correctly
@@ -441,9 +447,10 @@ func TestEndpointEncryptionUpdate(t *testing.T) {
 		},
 	}
 
-	// Create secret
-	testKube.CreateSecret(tutils.EncryptionSecret(spec.Name, tutils.Namespace))
-	defer testKube.DeleteSecret(tutils.EncryptionSecret(spec.Name, tutils.Namespace))
+	// Create secret with server certificates
+	cert, privKey, tlsConfig := tutils.CreateServerCertificates()
+	secret := tutils.EncryptionSecret(spec.Name, tutils.Namespace, privKey, cert)
+	testKube.CreateSecret(secret)
 
 	var modifier = func(ispn *ispnv1.Infinispan) {
 		ispn.Spec.Security = ispnv1.InfinispanSecurity{
@@ -452,6 +459,9 @@ func TestEndpointEncryptionUpdate(t *testing.T) {
 	}
 	var verifier = func(ss *appsv1.StatefulSet) {
 		testKube.WaitForInfinispanCondition(ss.Name, ss.Namespace, ispnv1.ConditionWellFormed)
+		// Ensure that we can connect to the endpoint with TLS
+		host, client := tutils.HTTPSClientAndHost(spec, tlsConfig, testKube)
+		checkRestConnection(host, client)
 	}
 
 	genericTestForContainerUpdated(*spec, modifier, verifier)

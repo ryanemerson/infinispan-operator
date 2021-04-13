@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	ServerName         = "server"
 	KeystorePassword   = "secret"
 	TruststorePassword = "secret"
 	keyBits            = 2048
@@ -33,16 +34,33 @@ type certHolder struct {
 	certBytes  []byte
 }
 
+// Returns the public and private keys o
+func CreateServerCertificates() (publicKey, privateKey []byte, clientTLSConf *tls.Config) {
+	ca := ca()
+	server := cert(ServerName, ca)
+	publicKey = server.getCertPEM()
+	privateKey = server.getPrivateKeyPEM()
+
+	certpool := x509.NewCertPool()
+	certpool.AddCert(ca.cert)
+	clientTLSConf = &tls.Config{
+		RootCAs:    certpool,
+		ServerName: ServerName,
+	}
+	return
+}
+
 // Returns a keystore using a self-signed certificate, and the corresponding tls.Config required by clients to connect to the server
 func CreateKeystore() (keystore []byte, clientTLSConf *tls.Config) {
 	ca := ca()
-	server := cert("server", ca)
+	server := cert(ServerName, ca)
 	keystore = createKeystore(ca, server)
 
 	certpool := x509.NewCertPool()
 	certpool.AddCert(ca.cert)
 	clientTLSConf = &tls.Config{
-		RootCAs: certpool,
+		RootCAs:    certpool,
+		ServerName: ServerName,
 	}
 	return
 }
@@ -66,7 +84,7 @@ func CreateKeyAndTruststore(authenticate bool) (keystore []byte, truststore []by
 			return &certificate, err
 		},
 		RootCAs:    certpool,
-		ServerName: "server",
+		ServerName: ServerName,
 	}
 	return
 }

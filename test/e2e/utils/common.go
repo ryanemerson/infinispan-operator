@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,12 +23,6 @@ import (
 
 const EncryptionSecretNamePostfix = "secret-certs"
 
-func LoadFile(path string) []byte {
-	b, err := ioutil.ReadFile(path)
-	ExpectNoError(err)
-	return b
-}
-
 func EndpointEncryption(name string) *ispnv1.EndpointEncryption {
 	return &ispnv1.EndpointEncryption{
 		Type:           v1.CertificateSourceTypeSecret,
@@ -45,11 +38,11 @@ func EndpointEncryptionClientCert(name string, clientCert v1.ClientCertType) *v1
 	}
 }
 
-func EncryptionSecret(name, namespace string) *corev1.Secret {
+func EncryptionSecret(name, namespace string, privKey, cert []byte) *corev1.Secret {
 	s := encryptionSecret(name, namespace)
-	s.StringData = map[string]string{
-		"tls.key": string(LoadFile("../utils/tls/tls.key")),
-		"tls.crt": string(LoadFile("../utils/tls/tls.crt")),
+	s.Data = map[string][]byte{
+		"tls.key": privKey,
+		"tls.crt": cert,
 	}
 	return s
 }
@@ -238,7 +231,8 @@ func HTTPClientAndHost(i *ispnv1.Infinispan, kube *TestKubernetes) (string, HTTP
 
 func HTTPSClientAndHost(i *v1.Infinispan, tlsConfig *tls.Config, kube *TestKubernetes) (string, HTTPClient) {
 	var client HTTPClient
-	if i.Spec.Security.EndpointEncryption.ClientCert != ispnv1.ClientCertNone {
+	clientCert := i.Spec.Security.EndpointEncryption.ClientCert
+	if clientCert != "" && clientCert != ispnv1.ClientCertNone {
 		client = NewHTTPSClientCert(tlsConfig)
 	} else {
 		if i.IsAuthenticationEnabled() {

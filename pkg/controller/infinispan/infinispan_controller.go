@@ -1148,7 +1148,7 @@ func configureNewKeystore(c *config.InfinispanConfiguration) {
 	c.Keystore.CrtPath = EncryptMountPath
 	c.Keystore.Path = EncryptKeystorePath
 	c.Keystore.Password = "password"
-	c.Keystore.Alias = "alias"
+	c.Keystore.Alias = "server"
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster

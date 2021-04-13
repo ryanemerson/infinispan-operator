@@ -34,7 +34,7 @@ type Infinispan struct {
 type Endpoints struct {
 	Authenticate   bool   `yaml:"auth"`
 	DedicatedAdmin bool   `yaml:"dedicatedAdmin"`
-	ClientCert     string `yaml:"clientCert"`
+	ClientCert     string `yaml:"clientCert,omitempty"`
 }
 
 type Locks struct {

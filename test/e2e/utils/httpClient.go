@@ -109,16 +109,13 @@ func (c *httpClientConfig) Post(path, payload string, headers map[string]string)
 
 func (c *httpClientConfig) exec(req *http.Request, headers map[string]string) (*http.Response, error) {
 	if c.auth == authDigest {
-		if c.authRealm == nil {
-			rsp, err := c.Do(req)
-			ExpectNoError(err)
-			if rsp.StatusCode != http.StatusUnauthorized {
-				return rsp, fmt.Errorf("Expected 401 DIGEST response before content: %v", rsp)
-			}
-			c.authRealm = getAuthorization(*c.username, *c.password, rsp)
+		rsp, err := c.Do(req)
+		ExpectNoError(err)
+		if rsp.StatusCode != http.StatusUnauthorized {
+			return rsp, fmt.Errorf("Expected 401 DIGEST response before content: %v", rsp)
 		}
-		c.requestCounter++
-		authStr := getAuthString(c.authRealm, req.URL, req.Method, c.requestCounter)
+		c.authRealm = getAuthorization(*c.username, *c.password, rsp)
+		authStr := getAuthString(c.authRealm, req.URL, req.Method, 0)
 		for header, value := range headers {
 			req.Header.Add(header, value)
 		}
