@@ -60,7 +60,7 @@ type EndpointEncryption struct {
 	// +optional
 	CertSecretName string `json:"certSecretName,omitempty"`
 	// +optional
-	ClientCert ClientCertType `json:"clientCert,optional,omitempty"`
+	ClientCert ClientCertType `json:"clientCert,omitempty"`
 }
 
 // InfinispanServiceContainerSpec resource requirements specific for service

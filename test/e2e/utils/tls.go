@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	p12 "software.sslmate.com/src/go-pkcs12"
 )
 
 const (
@@ -55,10 +57,6 @@ func CreateKeyAndTruststore(authenticate bool) (keystore []byte, truststore []by
 	client := cert("client", ca)
 	truststore = createTruststore(ca, client, authenticate)
 
-	clientCertBytes := append(client.getCertPEM(), client.getPrivateKeyPEM()...)
-	// TODO remove
-	ioutil.WriteFile(tmpFile("client.pem"), clientCertBytes, 0777)
-
 	certpool := x509.NewCertPool()
 	certpool.AddCert(ca.cert)
 
@@ -87,11 +85,9 @@ func ca() *certHolder {
 			OrganizationalUnit: []string{"Infinispan"},
 			Locality:           []string{"Red Hat"},
 		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().AddDate(10, 0, 0),
-		IsCA:      true,
-		// ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		// KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(10, 0, 0),
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 		PublicKeyAlgorithm:    x509.RSA,
 		SignatureAlgorithm:    x509.SHA256WithRSA,
@@ -123,15 +119,9 @@ func cert(name string, ca *certHolder) *certHolder {
 			OrganizationalUnit: []string{"Infinispan"},
 			Locality:           []string{"Red Hat"},
 		},
-		Issuer: ca.cert.Subject,
-		// IPAddresses:        []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().AddDate(10, 0, 0),
-		// SubjectKeyId: []byte{1, 2, 3, 4, 6},
-		// TODO required? Used in java testsuite
-		// Extensions: ,
-		// ExtKeyUsage:        []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		// KeyUsage:           x509.KeyUsageDigitalSignature,
+		Issuer:             ca.cert.Subject,
+		NotBefore:          time.Now(),
+		NotAfter:           time.Now().AddDate(10, 0, 0),
 		PublicKeyAlgorithm: x509.RSA,
 		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
@@ -151,62 +141,41 @@ func cert(name string, ca *certHolder) *certHolder {
 }
 
 func createKeystore(ca, server *certHolder) []byte {
+	// It's not possible to use the p12 library as we get the following error
+	// TLS handshake failed: javax.net.ssl.SSLException: error:1417A0C1:SSL routines:tls_post_process_client_hello:no shared cipher
+	// keystore, err := p12.Encode(rand.Reader, server.privateKey, server.cert, []*x509.Certificate{ca.cert}, KeystorePassword)
 	var fileMode os.FileMode = 0777
 	ExpectNoError(os.MkdirAll(tmpDir, fileMode))
 	defer os.RemoveAll(tmpDir)
 
 	privKeyFile := tmpFile("server_key.pem")
 	certFile := tmpFile("server_cert.pem")
-	generatedKeystore := tmpFile("keystore.p12")
+	keystorefile := tmpFile("keystore.p12")
 
-	ioutil.WriteFile(privKeyFile, server.getPrivateKeyPEM(), fileMode)
-	// TODO do we need to include the CA here or just server?
-	ioutil.WriteFile(certFile, append(server.getCertPEM(), ca.getCertPEM()...), fileMode)
+	err := ioutil.WriteFile(privKeyFile, server.getPrivateKeyPEM(), fileMode)
+	ExpectNoError(err)
+
+	err = ioutil.WriteFile(certFile, append(server.getCertPEM(), ca.getCertPEM()...), fileMode)
+	ExpectNoError(err)
 
 	cmd := exec.Command("openssl", "pkcs12", "-export", "-in", certFile, "-inkey", privKeyFile,
-		"-name", server.cert.Subject.CommonName, "-out", generatedKeystore, "-password", "pass:"+KeystorePassword, "-noiter", "-nomaciter")
+		"-name", server.cert.Subject.CommonName, "-out", keystorefile, "-password", "pass:"+KeystorePassword, "-noiter", "-nomaciter")
 	ExpectNoError(cmd.Run())
 
-	keystore, err := ioutil.ReadFile(generatedKeystore)
+	keystore, err := ioutil.ReadFile(keystorefile)
 	ExpectNoError(err)
 	return keystore
 }
 
 func createTruststore(ca, client *certHolder, authenticate bool) []byte {
-	var fileMode os.FileMode = 0777
-	ExpectNoError(os.MkdirAll(tmpDir, fileMode))
-	// TODO uncomment
-	// defer os.RemoveAll(tmpDir)
-
-	caPemFile := tmpFile("trust_ca.pem")
-	generatedTruststore := tmpFile("truststore.p12")
-
-	// var certs []byte
-	// if authenticate {
-	// 	certs = append(ca.getCertPEM(), client.getCertPEM()...)
-	// } else {
-	// 	certs = ca.getCertPEM()
-	// }
-	// bagAttributes := "Certificate bag\nBag Attributes\n    friendlyName: ca\n    2.16.840.1.113894.746875.1.1: <Unsupported tag 6>\n"
-	// certs = append([]byte(bagAttributes), certs...)
-	ioutil.WriteFile(caPemFile, ca.getCertPEM(), fileMode)
-
-	// openssl cannot create pkcs12 in a way that java likes
-	// TOOD use keytool instead :(
-	// keytool -keystore tuststore.p12 -alias ca -import -file /tmp/infinispan/operator/tls/trust_cert.pem -noprompt -storepass secret
-	// TODO try just using this library instead? https://pkg.go.dev/software.sslmate.com/src/go-pkcs12?utm_source=godoc
-	// cmd := exec.Command("openssl", "pkcs12", "-export", "-nokeys", "-in", certFile, "-out", generatedTruststore, "-password", "pass:"+TruststorePassword)
-	cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "ca", "-import", "-file", caPemFile, "-noprompt", "-storepass", TruststorePassword)
-	ExpectNoError(cmd.Run())
-
+	var trustCerts []*x509.Certificate
+	// Only add the client certificate to the truststore if we require authentication
 	if authenticate {
-		clientPemFile := tmpFile("trust_client.pem")
-		ioutil.WriteFile(clientPemFile, client.getCertPEM(), fileMode)
-		cmd := exec.Command("keytool", "-keystore", generatedTruststore, "-alias", "client", "-import", "-file", clientPemFile, "-noprompt", "-storepass", TruststorePassword)
-		ExpectNoError(cmd.Run())
+		trustCerts = []*x509.Certificate{ca.cert, client.cert}
+	} else {
+		trustCerts = []*x509.Certificate{ca.cert}
 	}
-
-	truststore, err := ioutil.ReadFile(generatedTruststore)
+	truststore, err := p12.EncodeTrustStore(rand.Reader, trustCerts, "secret")
 	ExpectNoError(err)
 	return truststore
 }
@@ -218,24 +187,21 @@ func tmpFile(name string) string {
 // Return the private key in PEM format
 func (c *certHolder) getPrivateKeyPEM() []byte {
 	privKeyPEM := new(bytes.Buffer)
-	pem.Encode(privKeyPEM, &pem.Block{
+	err := pem.Encode(privKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(c.privateKey),
 	})
+	ExpectNoError(err)
 	return privKeyPEM.Bytes()
 }
 
 // Return the certificate in PEM format
 func (c *certHolder) getCertPEM() []byte {
 	cert := new(bytes.Buffer)
-	pem.Encode(cert, &pem.Block{
+	err := pem.Encode(cert, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: c.certBytes,
 	})
+	ExpectNoError(err)
 	return cert.Bytes()
-}
-
-// Return the PEM bytes of the private key and the certificate
-func (c *certHolder) getPEM() []byte {
-	return append(c.getPrivateKeyPEM(), c.getPrivateKeyPEM()...)
 }

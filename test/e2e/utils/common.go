@@ -238,8 +238,8 @@ func HTTPClientAndHost(i *ispnv1.Infinispan, kube *TestKubernetes) (string, HTTP
 
 func HTTPSClientAndHost(i *v1.Infinispan, tlsConfig *tls.Config, kube *TestKubernetes) (string, HTTPClient) {
 	var client HTTPClient
-	if i.Spec.Security.EndpointEncryption.ClientCert == ispnv1.ClientCertAuthenticate {
-		client = NewHTTPSClientCertAuth(tlsConfig)
+	if i.Spec.Security.EndpointEncryption.ClientCert != ispnv1.ClientCertNone {
+		client = NewHTTPSClientCert(tlsConfig)
 	} else {
 		if i.IsAuthenticationEnabled() {
 			user := constants.DefaultDeveloperUser

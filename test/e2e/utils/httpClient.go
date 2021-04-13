@@ -58,7 +58,7 @@ func NewHTTPSClientNoAuth(tlsConfig *tls.Config) HTTPClient {
 	return newClient(authNone, nil, nil, "https", tlsConfig)
 }
 
-func NewHTTPSClientCertAuth(tlsConfig *tls.Config) HTTPClient {
+func NewHTTPSClientCert(tlsConfig *tls.Config) HTTPClient {
 	return newClient(authCert, nil, nil, "https", tlsConfig)
 }
 

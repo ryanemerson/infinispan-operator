@@ -704,11 +704,8 @@ spec:
                       description: ClientCertType specifies all the support client certificate validations
                       enum:
                         - None
-                        - none
                         - Authenticate
-                        - authenticate
                         - Validate
-                        - validate
                       type: string
                     type:
                       description: CertificateSourceType specifies all the possible sources for the encryption certificate
@@ -866,11 +863,8 @@ spec:
                       description: ClientCertType specifies all the support client certificate validations
                       enum:
                         - None
-                        - none
                         - Authenticate
-                        - authenticate
                         - Validate
-                        - validate
                       type: string
                     type:
                       description: CertificateSourceType specifies all the possible sources for the encryption certificate
