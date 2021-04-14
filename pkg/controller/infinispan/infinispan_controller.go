@@ -1088,6 +1088,11 @@ func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanC
 		// TODO how to handle truststore here?
 		// Just use the openshift CA if ClientCert: Validate
 		// Is it possible to support ClientCert: Authenticate without Secret?
+
+		// TODO add service-ca.crt to truststore
+		// /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+		// Also support addition of trust.client. certs for if authentication is enabled
+		// Reuse truststore logic further down
 		if strings.Contains(m.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
 			configureNewKeystore(c)
 			return nil

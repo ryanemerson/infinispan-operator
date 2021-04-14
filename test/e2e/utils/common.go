@@ -62,7 +62,9 @@ func EncryptionSecretKeystore(name, namespace string, keystore []byte) *corev1.S
 func EncryptionSecretClientCert(name, namespace string, keystore, caCert, clientCert []byte) *corev1.Secret {
 	s := EncryptionSecretKeystore(name, namespace, keystore)
 	s.Data["trust.ca"] = caCert
-	s.Data["trust.cert.client"] = clientCert
+	if clientCert != nil {
+		s.Data["trust.cert.client"] = clientCert
+	}
 	return s
 }
 
