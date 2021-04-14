@@ -2,12 +2,9 @@ package infinispan
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha1"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"reflect"
@@ -23,7 +20,6 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan/resources"
 	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
-	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/infinispan/infinispan-operator/version"
 	routev1 "github.com/openshift/api/route/v1"
@@ -47,7 +43,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	p12 "software.sslmate.com/src/go-pkcs12"
 )
 
 const (
@@ -56,12 +51,6 @@ const (
 	DataMountVolume           = "data-volume"
 	CustomLibrariesMountPath  = ServerRoot + "/lib/custom-libraries"
 	CustomLibrariesVolumeName = "custom-libraries"
-	EncryptClientCertPrefix   = "trust.cert."
-	EncryptClientCAName       = "trust.ca"
-	EncryptKeystoreName       = "keystore.p12"
-	EncryptKeystorePath       = ServerRoot + "/conf/keystore"
-	EncryptMountPath          = "/etc/encrypt"
-	EncryptTruststoreName     = "truststore.p12"
 	ConfigVolumeName          = "config-volume"
 	EncryptVolumeName         = "encrypt-volume"
 	IdentitiesVolumeName      = "identities-volume"
@@ -1078,109 +1067,6 @@ func AddVolumeForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) bo
 		MountPath: EncryptMountPath,
 	})
 	return true
-}
-
-func ConfigureServerEncryption(m *infinispanv1.Infinispan, c *config.InfinispanConfiguration, client client.Client) error {
-	if m.IsEncryptionDisabled() {
-		return nil
-	}
-	if m.IsEncryptionCertFromService() {
-		// TODO how to handle truststore here?
-		// Just use the openshift CA if ClientCert: Validate
-		// Is it possible to support ClientCert: Authenticate without Secret?
-
-		// TODO add service-ca.crt to truststore
-		// /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
-		// Also support addition of trust.client. certs for if authentication is enabled
-		// Reuse truststore logic further down
-		if strings.Contains(m.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
-			configureNewKeystore(c)
-			return nil
-		}
-	}
-
-	// Fetch the tls secret if name is provided
-	tlsSecretName := m.GetEncryptionSecretName()
-	if tlsSecretName != "" {
-		tlsSecret := &corev1.Secret{}
-		err := client.Get(context.TODO(), types.NamespacedName{Namespace: m.Namespace, Name: tlsSecretName}, tlsSecret)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return fmt.Errorf("Secret %s for endpoint encryption not found.", tlsSecretName)
-			}
-			return fmt.Errorf("Error in getting secret %s for endpoint encryption: %w", tlsSecretName, err)
-		}
-
-		secretContains := func(keys ...string) bool {
-			for _, k := range keys {
-				if _, ok := tlsSecret.Data[k]; !ok {
-					return false
-				}
-			}
-			return true
-		}
-
-		if secretContains(EncryptKeystoreName) {
-			// If user provide a keystore in secret then use it ...
-			c.Keystore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptKeystoreName)
-			c.Keystore.Password = string(tlsSecret.Data["password"])
-			c.Keystore.Alias = string(tlsSecret.Data["alias"])
-		} else if secretContains("tls.key", "tls.crt") {
-			configureNewKeystore(c)
-		}
-
-		if m.IsClientCertEnabled() {
-			// If the user explicitly provides a truststore use that, otherwise look for individual client certificates and create one
-			c.Truststore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptTruststoreName)
-			if secretContains(EncryptTruststoreName) {
-				c.Truststore.Password = string(tlsSecret.Data["truststore-password"])
-			} else {
-				// TODO make const
-				c.Truststore.Password = "password"
-				clientCerts := []*x509.Certificate{}
-				if secretContains(EncryptClientCAName) {
-					block, _ := pem.Decode(tlsSecret.Data[EncryptClientCAName])
-					cert, err := x509.ParseCertificate(block.Bytes)
-					if err != nil {
-						return fmt.Errorf("Unable to parse CA certificate '%s': %w", EncryptClientCAName, err)
-					}
-					clientCerts = append(clientCerts, cert)
-				}
-				for certKey := range tlsSecret.Data {
-					if strings.HasPrefix(certKey, EncryptClientCertPrefix) {
-						block, _ := pem.Decode(tlsSecret.Data[certKey])
-						cert, err := x509.ParseCertificate(block.Bytes)
-						if err != nil {
-							return fmt.Errorf("Unable to parse client certificate '%s': %w", certKey, err)
-						}
-						clientCerts = append(clientCerts, cert)
-					}
-				}
-				truststore, err := p12.EncodeTrustStore(rand.Reader, clientCerts, c.Truststore.Password)
-				if err != nil {
-					return fmt.Errorf("Unable to create truststore with user provided cert files: %w", err)
-				}
-
-				_, err = kube.CreateOrPatch(context.TODO(), client, tlsSecret, func() error {
-					if tlsSecret.CreationTimestamp.IsZero() {
-						return errors.NewNotFound(corev1.Resource("secret"), tlsSecretName)
-					}
-					tlsSecret.Data[EncryptTruststoreName] = truststore
-					tlsSecret.Data["truststore-password"] = []byte("password")
-					return nil
-				})
-			}
-			c.Endpoints.ClientCert = string(m.Spec.Security.EndpointEncryption.ClientCert)
-		}
-	}
-	return nil
-}
-
-func configureNewKeystore(c *config.InfinispanConfiguration) {
-	c.Keystore.CrtPath = EncryptMountPath
-	c.Keystore.Path = EncryptKeystorePath
-	c.Keystore.Password = "password"
-	c.Keystore.Alias = "server"
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster
