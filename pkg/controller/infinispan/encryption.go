@@ -29,6 +29,8 @@ const (
 	EncryptTruststorePassword = "password"
 )
 
+var ctx = context.TODO()
+
 func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfiguration, client client.Client) error {
 	if i.IsEncryptionDisabled() {
 		return nil
@@ -41,10 +43,19 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 		c.Keystore.Alias = "server"
 	}
 
-	// Fetch the tls secret if name is provided
 	tlsSecretName := i.GetEncryptionSecretName()
+	if tlsSecretName == "" {
+		if i.IsClientCertEnabled() {
+			// It's not possible for client cert to be configured if no tls secret is provided by the user or via a
+			// encryption service, as no certificates are available to be added to the server's truststore, resulting
+			// in no client's being able to authenticate with the server.
+			return fmt.Errorf("Field 'CertSecretName' must be provided for '%s' or '%s' to be configured", v1.ClientCertAuthenticate, v1.ClientCertNone)
+		}
+		return nil
+	}
+
 	tlsSecret := &corev1.Secret{}
-	err := client.Get(context.TODO(), types.NamespacedName{Namespace: i.Namespace, Name: tlsSecretName}, tlsSecret)
+	err := client.Get(ctx, types.NamespacedName{Namespace: i.Namespace, Name: tlsSecretName}, tlsSecret)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return fmt.Errorf("Secret %s for endpoint encryption not found.", tlsSecretName)
@@ -60,7 +71,7 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 				if err != nil {
 					return err
 				}
-				configureClientCert(caPem, i, c, tlsSecret, client)
+				return configureClientCert(caPem, i, c, tlsSecret, client)
 			}
 			return nil
 		}
@@ -86,7 +97,7 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 
 	if i.IsClientCertEnabled() {
 		caPem := tlsSecret.Data[EncryptClientCAName]
-		configureClientCert(caPem, i, c, tlsSecret, client)
+		return configureClientCert(caPem, i, c, tlsSecret, client)
 	}
 	return nil
 }
@@ -108,12 +119,13 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 			certs = append(certs, tlsSecret.Data[certKey])
 		}
 	}
+
 	truststore, err := generateTruststore(certs, EncryptTruststorePassword)
 	if err != nil {
 		return err
 	}
 
-	_, err = kube.CreateOrPatch(context.TODO(), client, tlsSecret, func() error {
+	_, err = kube.CreateOrPatch(ctx, client, tlsSecret, func() error {
 		if tlsSecret.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(corev1.Resource("secret"), m.GetEncryptionSecretName())
 		}
@@ -126,14 +138,24 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 
 func generateTruststore(pemFiles [][]byte, password string) ([]byte, error) {
 	certs := []*x509.Certificate{}
-	for _, p := range pemFiles {
-		// While block != nil, continue to parse
-		for block, rest := pem.Decode(p); block != nil; p = rest {
-			cert, err := x509.ParseCertificate(block.Bytes)
-			if err != nil {
-				return nil, fmt.Errorf("Unable to parse certificate: %w", err)
+	for _, pemFile := range pemFiles {
+		pemRaw := pemFile
+		for {
+			block, rest := pem.Decode(pemRaw)
+			if block == nil {
+				break
 			}
-			certs = append(certs, cert)
+
+			if block.Type == "CERTIFICATE" {
+				cert, err := x509.ParseCertificate(block.Bytes)
+				if err != nil {
+					return nil, fmt.Errorf("Unable to parse certificate: %w", err)
+				}
+				certs = append(certs, cert)
+			} else {
+				log.Info(fmt.Sprintf("Ingoring pem entry type %s when generating truststore. Only CERTIFICATE is supported.", block.Type))
+			}
+			pemRaw = rest
 		}
 	}
 	truststore, err := p12.EncodeTrustStore(rand.Reader, certs, password)
