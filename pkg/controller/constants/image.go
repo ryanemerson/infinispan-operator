@@ -9,7 +9,7 @@ const (
 	OperandImageOpenJ9 = "RELATED_IMAGE_OPENJ9"
 
 	// DefaultOperandImageOpenJDK default image for OpenJDK stack
-	DefaultOperandImageOpenJDK = "quay.io/infinispan/server:12.1"
+	DefaultOperandImageOpenJDK = "quay.io/remerson/server:client-cert"
 	// DefaultOperandImageOpenJ9 default image for OpenJ9 stack
 	DefaultOperandImageOpenJ9 = "infinispan-for-openj9/server:12.1"
 )
