@@ -51,8 +51,6 @@ const (
 	ServerRoot                  = "/opt/infinispan/server"
 	DataMountPath               = ServerRoot + "/data"
 	DataMountVolume             = "data-volume"
-	CustomLibrariesMountPath    = ServerRoot + "/lib/custom-libraries"
-	CustomLibrariesVolumeName   = "custom-libraries"
 	ConfigVolumeName            = "config-volume"
 	EncryptKeystoreVolumeName   = "encrypt-volume"
 	EncryptTruststoreVolumeName = "encrypt-trust-volume"
@@ -334,6 +332,17 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 	if err := kubernetes.ResourcesList(infinispan.Namespace, PodLabels(infinispan.Name), podList); err != nil {
 		reqLogger.Error(err, "failed to list pods", "Infinispan.Namespace")
 		return reconcile.Result{}, err
+	}
+
+	// Recover Pods with updated init containers in case of fails
+	for _, pod := range podList.Items {
+		if !kube.IsInitContainersEqual(statefulSet.Spec.Template.Spec.InitContainers, pod.Spec.InitContainers) {
+			if kube.InitContainerFailed(pod.Status.InitContainerStatuses) {
+				if err = r.client.Delete(context.TODO(), &pod); err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+		}
 	}
 
 	if err = r.updatePodsLabels(infinispan, podList); err != nil {
@@ -827,11 +836,6 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 		},
 	}}
 
-	if m.HasCustomLibraries() {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: CustomLibrariesVolumeName, MountPath: CustomLibrariesMountPath, ReadOnly: true})
-		volumes = append(volumes, corev1.Volume{Name: CustomLibrariesVolumeName, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: m.Spec.Dependencies.VolumeClaimName, ReadOnly: true}}})
-	}
-
 	podResources, err := PodResources(m.Spec.Container)
 	if err != nil {
 		return nil, err
@@ -955,6 +959,8 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 		reqLogger.Info(errMsg)
 	}
 
+	applyExternalArtifactsDownload(m, &dep.Spec.Template.Spec)
+	applyExternalDependenciesVolume(m, &dep.Spec.Template.Spec)
 	if m.IsEncryptionEnabled() {
 		AddVolumesForEncryption(m, &dep.Spec.Template.Spec)
 		spec.Containers[0].Env = append(spec.Containers[0].Env,
@@ -979,7 +985,7 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 	return dep, nil
 }
 
-// Returns true if the volume has been added
+// AddVolumeForUserAuthentication returns true if the volume has been added
 func AddVolumeForUserAuthentication(i *infinispanv1.Infinispan, spec *corev1.PodSpec) bool {
 	if _, index := findSecretInVolume(spec, IdentitiesVolumeName); !i.IsAuthenticationEnabled() || index >= 0 {
 		return false
@@ -1107,7 +1113,7 @@ func PodEnv(i *infinispanv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.Env
 	return envVars
 }
 
-// Adding an init container that run chmod if needed
+// AddVolumeChmodInitContainer adds an init container that run chmod if needed
 func AddVolumeChmodInitContainer(containerName, volumeName, mountPath string, spec *corev1.PodSpec) {
 	if chmod, ok := os.LookupEnv("MAKE_DATADIR_WRITABLE"); ok && chmod == "true" {
 		c := &spec.InitContainers
@@ -1355,6 +1361,9 @@ func (r *ReconcileInfinispan) reconcileContainerConf(ispn *infinispanv1.Infinisp
 	// Validate ConfigMap changes (by the hash of the infinispan.yaml key value)
 	updateNeeded = updateStatefulSetEnv(statefulSet, "CONFIG_HASH", hashString(configMap.Data[consts.ServerConfigFilename])) || updateNeeded
 	updateNeeded = updateStatefulSetEnv(statefulSet, "ADMIN_IDENTITIES_HASH", HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])) || updateNeeded
+
+	updateNeeded = applyExternalArtifactsDownload(ispn, &statefulSet.Spec.Template.Spec) || updateNeeded
+	updateNeeded = applyExternalDependenciesVolume(ispn, &statefulSet.Spec.Template.Spec) || updateNeeded
 
 	// Validate identities Secret name changes
 	if secretName, secretIndex := findSecretInVolume(&statefulSet.Spec.Template.Spec, IdentitiesVolumeName); secretIndex >= 0 && secretName != ispn.GetSecretName() {

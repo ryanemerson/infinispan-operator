@@ -41,6 +41,11 @@ var (
 	ExposeServiceType    = constants.GetEnvWithDefault("EXPOSE_SERVICE_TYPE", "NodePort")
 
 	OperatorUpgradeStateFlow = []ispnv1.ConditionType{ispnv1.ConditionUpgrade, ispnv1.ConditionStopping, ispnv1.ConditionWellFormed}
+
+	WebServerName       = "external-libs-web-server"
+	WebServerImageName  = "quay.io/openshift-scale/nginx"
+	WebServerRootFolder = "/usr/share/nginx/html"
+	WebServerPortNumber = 8080
 )
 
 // Options used when deleting resources
