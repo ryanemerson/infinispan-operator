@@ -20,13 +20,14 @@ import (
 )
 
 const (
-	EncryptClientCertPrefix   = "trust.cert."
-	EncryptClientCAName       = "trust.ca"
-	EncryptKeystoreName       = "keystore.p12"
-	EncryptKeystorePath       = ServerRoot + "/conf/keystore"
-	EncryptMountPath          = "/etc/encrypt"
-	EncryptTruststoreName     = "truststore.p12"
-	EncryptTruststorePassword = "password"
+	EncryptClientCertPrefix      = "trust.cert."
+	EncryptClientCAName          = "trust.ca"
+	EncryptKeystoreName          = "keystore.p12"
+	EncryptKeystorePath          = ServerRoot + "/conf/keystore"
+	EncryptMountPath             = "/etc/encrypt"
+	EncryptTruststoreName        = "truststore.p12"
+	EncryptTruststorePassword    = "password"
+	EncryptTruststorePasswordKey = "truststore-password"
 )
 
 var ctx = context.TODO()
@@ -107,10 +108,19 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 	c.Truststore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptTruststoreName)
 	c.Endpoints.ClientCert = string(m.Spec.Security.EndpointEncryption.ClientCert)
 
+	password, passswordProvided := tlsSecret.Data[EncryptTruststorePasswordKey]
+
 	// If secret already contains a truststore only configure the password
 	if _, ok := tlsSecret.Data[EncryptTruststoreName]; ok {
-		c.Truststore.Password = string(tlsSecret.Data["truststore-password"])
+		if !passswordProvided {
+			return fmt.Errorf("The '%s' key must be provided when configuring an existing Truststore", EncryptTruststorePasswordKey)
+		}
+		c.Truststore.Password = string(password)
 		return nil
+	}
+
+	if !passswordProvided {
+		password = []byte(EncryptTruststorePassword)
 	}
 
 	certs := [][]byte{caPem}
@@ -120,7 +130,7 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 		}
 	}
 
-	truststore, err := generateTruststore(certs, EncryptTruststorePassword)
+	truststore, err := generateTruststore(certs, string(password))
 	if err != nil {
 		return err
 	}
@@ -130,7 +140,7 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 			return errors.NewNotFound(corev1.Resource("secret"), m.GetEncryptionSecretName())
 		}
 		tlsSecret.Data[EncryptTruststoreName] = truststore
-		tlsSecret.Data["truststore-password"] = []byte("password")
+		tlsSecret.Data[EncryptTruststorePasswordKey] = []byte(password)
 		return nil
 	})
 	return err
