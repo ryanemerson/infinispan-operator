@@ -277,7 +277,7 @@ func (ispn *Infinispan) GetSiteServiceName() string {
 // GetEndpointScheme returns the protocol scheme used by the Infinispan cluster
 func (ispn *Infinispan) GetEndpointScheme() string {
 	endPointSchema := corev1.URISchemeHTTP
-	if ispn.IsEncryptionCertSourceDefined() && !ispn.IsEncryptionDisabled() {
+	if ispn.IsEncryptionEnabled() {
 		endPointSchema = corev1.URISchemeHTTPS
 	}
 	return strings.ToLower(string(endPointSchema))
@@ -408,10 +408,9 @@ func (ispn *Infinispan) IsUpgradeNeeded(logger logr.Logger) bool {
 	return false
 }
 
-// IsEncryptionDisabled returns true if encryption is disable by configuration
-func (ispn *Infinispan) IsEncryptionDisabled() bool {
+func (ispn *Infinispan) IsEncryptionEnabled() bool {
 	ee := ispn.Spec.Security.EndpointEncryption
-	return ee != nil && ee.Type == CertificateSourceTypeNoneNoEncryption
+	return ee != nil && ee.Type != CertificateSourceTypeNoneNoEncryption
 }
 
 // IsEncryptionCertFromService returns true if encryption certificates comes from a cluster service

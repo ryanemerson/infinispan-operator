@@ -33,7 +33,7 @@ const (
 var ctx = context.TODO()
 
 func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfiguration, client client.Client) error {
-	if i.IsEncryptionDisabled() {
+	if !i.IsEncryptionEnabled() {
 		return nil
 	}
 

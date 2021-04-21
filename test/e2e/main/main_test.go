@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -106,6 +107,68 @@ func TestUpdateOperatorPassword(t *testing.T) {
 		return pwd == newPassword, nil
 	})
 	tutils.ExpectNoError(err)
+}
+
+func TestUpdateTlsSecret(t *testing.T) {
+	t.Parallel()
+	// Create a resource without passing any config
+	spec := tutils.DefaultSpec(testKube)
+	name := strcase.ToKebab(t.Name())
+	spec.Name = name
+	spec.Spec.Replicas = 1
+	spec.Spec.Security = ispnv1.InfinispanSecurity{
+		EndpointEncryption: tutils.EndpointEncryption(spec.Name),
+	}
+
+	// Create secret
+	keystore, tlsConfig := tutils.CreateKeystore()
+	secret := tutils.EncryptionSecretKeystore(spec.Name, tutils.Namespace, keystore)
+	testKube.CreateSecret(secret)
+	defer testKube.DeleteSecret(secret)
+
+	// Create Cluster
+	testKube.CreateInfinispan(spec, tutils.Namespace)
+	defer testKube.DeleteInfinispan(spec, tutils.SinglePodTimeout)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+
+	// Ensure that we can connect to the endpoint with TLS
+	host, client := tutils.HTTPSClientAndHost(spec, tlsConfig, testKube)
+	checkRestConnection(host, client)
+
+	namespacedName := types.NamespacedName{Namespace: spec.Namespace, Name: spec.Name}
+	// Get the cluster's StatefulSet and current generation
+	ss := appsv1.StatefulSet{}
+	tutils.ExpectNoError(testKube.Kubernetes.Client.Get(context.TODO(), namespacedName, &ss))
+	originalGeneration := ss.Status.ObservedGeneration
+
+	// Update secret to contain new keystore
+	newKeystore, newTlsConfig := tutils.CreateKeystore()
+	if bytes.Equal(keystore, newKeystore) {
+		panic("Expected new keystore")
+	}
+
+	secret = testKube.GetSecret(secret.Name, secret.Namespace)
+	secret.Data[ispnctrl.EncryptKeystoreName] = newKeystore
+	testKube.UpdateSecret(secret)
+
+	// Wait for a new generation to appear
+	err := wait.Poll(tutils.DefaultPollPeriod, tutils.SinglePodTimeout, func() (done bool, err error) {
+		tutils.ExpectNoError(testKube.Kubernetes.Client.Get(context.TODO(), namespacedName, &ss))
+		return ss.Status.ObservedGeneration >= originalGeneration+1, nil
+	})
+	tutils.ExpectNoError(err)
+
+	// Wait that current and update revisions match. This ensure that the rolling upgrade completes
+	err = wait.Poll(tutils.DefaultPollPeriod, tutils.SinglePodTimeout, func() (done bool, err error) {
+		tutils.ExpectNoError(testKube.Kubernetes.Client.Get(context.TODO(), namespacedName, &ss))
+		return ss.Status.CurrentRevision == ss.Status.UpdateRevision, nil
+	})
+	tutils.ExpectNoError(err)
+
+	// Ensure that we can connect to the endpoint with the new TLS settings
+	host, client = tutils.HTTPSClientAndHost(spec, newTlsConfig, testKube)
+	checkRestConnection(host, client)
 }
 
 // Test if single node working correctly

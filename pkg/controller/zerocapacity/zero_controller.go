@@ -406,7 +406,10 @@ func (z *Controller) zeroPodSpec(name, namespace, configMap string, podSecurityC
 	}
 
 	ispnCtrl.AddVolumeForUserAuthentication(ispn, &pod.Spec)
-	ispnCtrl.AddVolumeForEncryption(ispn, &pod.Spec)
+
+	if ispn.IsEncryptionEnabled() {
+		ispnCtrl.AddVolumeForEncryption(ispn, &pod.Spec)
+	}
 	return pod, nil
 }
 

@@ -448,7 +448,7 @@ func computeRoute(ispn *ispnv1.Infinispan) *routev1.Route {
 			},
 		},
 	}
-	if ispn.GetEncryptionSecretName() != "" && !ispn.IsEncryptionDisabled() {
+	if ispn.IsEncryptionEnabled() {
 		route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
 	}
 
@@ -485,7 +485,7 @@ func computeIngress(ispn *ispnv1.Infinispan) *networkingv1beta1.Ingress {
 										ServicePort: intstr.IntOrString{IntVal: consts.InfinispanUserPort}}}}},
 					}}},
 		}}
-	if ispn.GetEncryptionSecretName() != "" && !ispn.IsEncryptionDisabled() {
+	if ispn.IsEncryptionEnabled() {
 		ingress.Spec.TLS = []networkingv1beta1.IngressTLS{
 			{
 				Hosts: []string{ispn.Spec.Expose.Host},
