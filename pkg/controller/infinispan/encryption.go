@@ -163,7 +163,7 @@ func generateTruststore(pemFiles [][]byte, password string) ([]byte, error) {
 				}
 				certs = append(certs, cert)
 			} else {
-				log.Info(fmt.Sprintf("Ingoring pem entry type %s when generating truststore. Only CERTIFICATE is supported.", block.Type))
+				log.Info(fmt.Sprintf("Ignoring pem entry type %s when generating truststore. Only CERTIFICATE is supported.", block.Type))
 			}
 			pemRaw = rest
 		}
