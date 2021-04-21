@@ -18,7 +18,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/utils/pointer"
 )
 
 const EncryptionSecretNamePostfix = "secret-certs"
@@ -107,7 +106,6 @@ func DefaultSpec(testKube *TestKubernetes) *ispnv1.Infinispan {
 			Namespace: Namespace,
 		},
 		Spec: ispnv1.InfinispanSpec{
-			Image: pointer.StringPtr("infinispan/server:client-cert"),
 			Service: ispnv1.InfinispanServiceSpec{
 				Type: ispnv1.ServiceTypeDataGrid,
 			},

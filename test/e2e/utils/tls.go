@@ -15,6 +15,9 @@ import (
 	"os/exec"
 	"time"
 
+	certUtil "k8s.io/client-go/util/cert"
+	"k8s.io/client-go/util/keyutil"
+
 	p12 "software.sslmate.com/src/go-pkcs12"
 )
 
@@ -228,7 +231,7 @@ func tmpFile(name string) string {
 func (c *certHolder) getPrivateKeyPEM() []byte {
 	privKeyPEM := new(bytes.Buffer)
 	err := pem.Encode(privKeyPEM, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
+		Type:  keyutil.RSAPrivateKeyBlockType,
 		Bytes: x509.MarshalPKCS1PrivateKey(c.privateKey),
 	})
 	ExpectNoError(err)
@@ -239,7 +242,7 @@ func (c *certHolder) getPrivateKeyPEM() []byte {
 func (c *certHolder) getCertPEM() []byte {
 	cert := new(bytes.Buffer)
 	err := pem.Encode(cert, &pem.Block{
-		Type:  "CERTIFICATE",
+		Type:  certUtil.CertificateBlockType,
 		Bytes: c.certBytes,
 	})
 	ExpectNoError(err)

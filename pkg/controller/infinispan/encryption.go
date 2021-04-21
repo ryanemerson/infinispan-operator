@@ -14,7 +14,7 @@ import (
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
+	certUtil "k8s.io/client-go/util/cert"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	p12 "software.sslmate.com/src/go-pkcs12"
 )
@@ -56,12 +56,8 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 	}
 
 	tlsSecret := &corev1.Secret{}
-	err := client.Get(ctx, types.NamespacedName{Namespace: i.Namespace, Name: tlsSecretName}, tlsSecret)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return fmt.Errorf("Secret %s for endpoint encryption not found.", tlsSecretName)
-		}
-		return fmt.Errorf("Error in getting secret %s for endpoint encryption: %w", tlsSecretName, err)
+	if result, err := kube.LookupResource(tlsSecretName, i.Namespace, tlsSecret, client, log); result != nil {
+		return err
 	}
 
 	if i.IsEncryptionCertFromService() {
@@ -108,18 +104,18 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 	c.Truststore.Path = fmt.Sprintf("%s/%s", EncryptMountPath, EncryptTruststoreName)
 	c.Endpoints.ClientCert = string(m.Spec.Security.EndpointEncryption.ClientCert)
 
-	password, passswordProvided := tlsSecret.Data[EncryptTruststorePasswordKey]
+	password, passwordProvided := tlsSecret.Data[EncryptTruststorePasswordKey]
 
 	// If secret already contains a truststore only configure the password
 	if _, ok := tlsSecret.Data[EncryptTruststoreName]; ok {
-		if !passswordProvided {
+		if !passwordProvided {
 			return fmt.Errorf("The '%s' key must be provided when configuring an existing Truststore", EncryptTruststorePasswordKey)
 		}
 		c.Truststore.Password = string(password)
 		return nil
 	}
 
-	if !passswordProvided {
+	if !passwordProvided {
 		password = []byte(EncryptTruststorePassword)
 	}
 
@@ -140,14 +136,14 @@ func configureClientCert(caPem []byte, m *v1.Infinispan, c *config.InfinispanCon
 			return errors.NewNotFound(corev1.Resource("secret"), m.GetEncryptionSecretName())
 		}
 		tlsSecret.Data[EncryptTruststoreName] = truststore
-		tlsSecret.Data[EncryptTruststorePasswordKey] = []byte(password)
+		tlsSecret.Data[EncryptTruststorePasswordKey] = password
 		return nil
 	})
 	return err
 }
 
 func generateTruststore(pemFiles [][]byte, password string) ([]byte, error) {
-	certs := []*x509.Certificate{}
+	var certs []*x509.Certificate
 	for _, pemFile := range pemFiles {
 		pemRaw := pemFile
 		for {
@@ -156,7 +152,7 @@ func generateTruststore(pemFiles [][]byte, password string) ([]byte, error) {
 				break
 			}
 
-			if block.Type == "CERTIFICATE" {
+			if block.Type == certUtil.CertificateBlockType {
 				cert, err := x509.ParseCertificate(block.Bytes)
 				if err != nil {
 					return nil, fmt.Errorf("Unable to parse certificate: %w", err)
