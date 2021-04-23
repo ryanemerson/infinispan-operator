@@ -42,6 +42,32 @@ func TestMain(m *testing.M) {
 	tutils.RunOperator(m, testKube)
 }
 
+// Reproduce 401 error on cache creation when #replicas > 1
+func TestCreateCacheMultipleReplicas(t *testing.T) {
+	clusterSize := 2
+	infinispan := tutils.DefaultSpec(testKube)
+	name := strcase.ToKebab(t.Name())
+	infinispan.Name = name
+	infinispan.Spec.Replicas = int32(clusterSize)
+
+	// 1. Create initial source cluster
+	testKube.Create(infinispan)
+	defer testKube.DeleteInfinispan(infinispan, tutils.SinglePodTimeout)
+	testKube.WaitForInfinispanPods(clusterSize, tutils.SinglePodTimeout, infinispan.Name, tutils.Namespace)
+	testKube.WaitForInfinispanCondition(name, tutils.Namespace, v1.ConditionWellFormed)
+
+	// 2. Populate the cluster with some data
+	hostAddr, client := tutils.HTTPClientAndHost(infinispan, testKube)
+	url := fmt.Sprintf("%s/rest/v2/caches/%s", hostAddr, "someCache")
+	config := "{\"distributed-cache\":{\"mode\":\"SYNC\", \"statistics\":\"true\"}}"
+	headers := map[string]string{"Content-Type": "application/json"}
+	rsp, err := client.Post(url, config, headers)
+	tutils.ExpectNoError(err)
+	if rsp.StatusCode != http.StatusOK {
+		panic(fmt.Sprintf("Unexpected response code %d", rsp.StatusCode))
+	}
+}
+
 // Test operator and cluster version upgrade flow
 func TestOperatorUpgrade(t *testing.T) {
 	spec := tutils.DefaultSpec(testKube)
