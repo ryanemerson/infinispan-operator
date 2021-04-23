@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
@@ -25,11 +26,9 @@ type authenticationRealm struct {
 
 type httpClientConfig struct {
 	*http.Client
-	username       *string
-	password       *string
-	protocol       string
-	authRealm      *authenticationRealm
-	requestCounter int
+	username *string
+	password *string
+	protocol string
 }
 
 // NewHTTPClient return a new HTTPClient
@@ -43,11 +42,9 @@ func NewHTTPClientNoAuth(protocol string) HTTPClient {
 
 func new(username, password *string, protocol string) HTTPClient {
 	return &httpClientConfig{
-		username:       username,
-		password:       password,
-		protocol:       protocol,
-		authRealm:      nil,
-		requestCounter: 0,
+		username: username,
+		password: password,
+		protocol: protocol,
 		Client: &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
@@ -85,16 +82,13 @@ func (c *httpClientConfig) Post(path, payload string, headers map[string]string)
 
 func (c *httpClientConfig) exec(req *http.Request, headers map[string]string) (*http.Response, error) {
 	if c.isAuthRequired() {
-		if c.authRealm == nil {
-			rsp, err := c.Do(req)
-			ExpectNoError(err)
-			if rsp.StatusCode != http.StatusUnauthorized {
-				return rsp, fmt.Errorf("Expected 401 DIGEST response before content: %v", rsp)
-			}
-			c.authRealm = getAuthorization(*c.username, *c.password, rsp)
+		rsp, err := c.Do(req)
+		ExpectNoError(err)
+		if rsp.StatusCode != http.StatusUnauthorized {
+			return rsp, fmt.Errorf("Expected 401 DIGEST response before content: %v", rsp)
 		}
-		c.requestCounter++
-		authStr := getAuthString(c.authRealm, req.URL, req.Method, c.requestCounter)
+		authRealm := getAuthorization(*c.username, *c.password, rsp)
+		authStr := getAuthString(authRealm, req.URL, req.Method, 0)
 		for header, value := range headers {
 			req.Header.Add(header, value)
 		}
@@ -144,7 +138,7 @@ func getAuthString(auth *authenticationRealm, url *url.URL, method string, nc in
 	ha2 := hex.EncodeToString(h.Sum(nil))
 
 	nc_str := fmt.Sprintf("%08x", nc)
-	hnc := "MTM3MDgw"
+	hnc := getCnonce()
 
 	respdig := fmt.Sprintf("%s:%s:%s:%s:%s:%s", ha1, auth.NONCE, nc_str, hnc, auth.QOP, ha2)
 	h = md5.New()
@@ -166,4 +160,10 @@ func getAuthString(auth *authenticationRealm, url *url.URL, method string, nc in
 	}
 
 	return "Digest " + base
+}
+
+func getCnonce() string {
+	b := make([]byte, 8)
+	io.ReadFull(rand.Reader, b)
+	return fmt.Sprintf("%x", b)[:16]
 }
