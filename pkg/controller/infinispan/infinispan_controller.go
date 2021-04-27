@@ -94,14 +94,7 @@ func secondaryResourceTypes() []SecondaryResourceType {
 				return false
 			}},
 		},
-		{&corev1.Secret{}, predicate.Funcs{
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				return true
-			},
-			DeleteFunc: func(e event.DeleteEvent) bool {
-				return true
-			}},
-		},
+		{&corev1.Secret{}, predicate.Funcs{}},
 	}
 }
 
