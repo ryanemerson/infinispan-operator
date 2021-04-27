@@ -175,8 +175,16 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 
 	// Fetch the Infinispan instance
 	infinispan := &infinispanv1.Infinispan{}
-	if result, err := kube.LookupResource(request.Name, request.Namespace, infinispan, r.client, reqLogger); result != nil {
-		return *result, err
+	if err := r.client.Get(context.TODO(), request.NamespacedName, infinispan); err != nil {
+		if errors.IsNotFound(err) {
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			reqLogger.Info("Infinispan resource not found. Ignoring since object must be deleted")
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		return reconcile.Result{}, err
 	}
 
 	var preliminaryChecksResult *reconcile.Result
