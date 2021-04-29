@@ -144,3 +144,14 @@ data:
     trust.cert.client1: "Some cert byte string"
     trust.cert.client2: "Some cert byte string"
 ```
+
+#### Client Configuration
+Clients can access the Openshift CA cert by one of two means.
+
+1. Annotating a configmap with `service.beta.openshift.io/inject-cabundle:true` and retrieving the ca bundle:
+
+```quote
+Other services can request that the CA bundle for the service CA be injected into API service or config map resources by annotating with service.beta.openshift.io/inject-cabundle: true to support validating certificates generated from the service CA. In response, the Operator writes its current CA bundle to the CABundle field of an API service or as service-ca.crt to a config map.
+```
+
+2. Accessing the bundle in a pod via `/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt`
