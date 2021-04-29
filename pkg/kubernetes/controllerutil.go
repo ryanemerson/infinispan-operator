@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-logr/logr"
 	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
+	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -162,4 +165,35 @@ func LookupResource(name, namespace string, resource runtime.Object, client clie
 		return &reconcile.Result{}, err
 	}
 	return nil, nil
+}
+
+func LookupOperatorTokenSecret(client client.Client, logger logr.Logger) (secret *corev1.Secret, err error) {
+	operatorName, err := k8sutil.GetOperatorName()
+	if err != nil {
+		return
+	}
+
+	operatorNamespace, err := k8sutil.GetOperatorNamespace()
+	if err != nil {
+		return
+	}
+
+	var result *reconcile.Result
+	serviceAccount := &corev1.ServiceAccount{}
+	if result, err = LookupResource(operatorName, operatorNamespace, serviceAccount, client, logger); result != nil {
+		return
+	}
+
+	var secretRef corev1.ObjectReference
+	for _, s := range serviceAccount.Secrets {
+		if strings.Contains(s.Name, "-token-") {
+			secretRef = s
+		}
+	}
+
+	secret = &corev1.Secret{}
+	if result, err = LookupResource(secretRef.Name, secretRef.Namespace, secret, client, logger); result != nil {
+		return nil, err
+	}
+	return
 }

@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"strings"
 
 	v1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
@@ -64,10 +63,12 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 		if strings.Contains(i.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
 			configureNewKeystore(c)
 			if i.IsClientCertEnabled() {
-				caPem, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt")
+				tokenSecret, err := kube.LookupOperatorTokenSecret(client, log)
 				if err != nil {
 					return err
 				}
+
+				caPem := tokenSecret.Data["service-ca.crt"]
 				return configureClientCert(caPem, i, c, tlsSecret, client)
 			}
 			return nil
