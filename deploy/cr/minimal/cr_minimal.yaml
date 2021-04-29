@@ -3,4 +3,7 @@ kind: Infinispan
 metadata:
   name: example-infinispan
 spec:
-  replicas: 2
+  replicas: 1
+  security:
+    endpointEncryption:
+      clientCert: Validate

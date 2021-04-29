@@ -167,33 +167,53 @@ func LookupResource(name, namespace string, resource runtime.Object, client clie
 	return nil, nil
 }
 
-func LookupOperatorTokenSecret(client client.Client, logger logr.Logger) (secret *corev1.Secret, err error) {
+// getOperatorNamespace returns the operator namespace or the WATCH_NAMESPACE
+// value if the operator is running outside the cluster.
+// "OSDK_FORCE_RUN_MODE"="local" must be set if running locally (not in the cluster)
+func GetOperatorNamespace() (string, error) {
+	operatorNs, err := k8sutil.GetOperatorNamespace()
+	// This makes everything works even running outside the cluster
+	if err == k8sutil.ErrRunLocal {
+		var operatorWatchNs string
+		operatorWatchNs, err = k8sutil.GetWatchNamespace()
+		if operatorWatchNs != "" {
+			operatorNs = strings.Split(operatorWatchNs, ",")[0]
+		}
+	}
+	return operatorNs, err
+}
+
+func LookupOperatorTokenSecret(client client.Client, logger logr.Logger) (*corev1.Secret, error) {
 	operatorName, err := k8sutil.GetOperatorName()
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	operatorNamespace, err := k8sutil.GetOperatorNamespace()
+	operatorNamespace, err := GetOperatorNamespace()
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	var result *reconcile.Result
+	ctx := context.TODO()
 	serviceAccount := &corev1.ServiceAccount{}
-	if result, err = LookupResource(operatorName, operatorNamespace, serviceAccount, client, logger); result != nil {
-		return
+	if err := client.Get(ctx, types.NamespacedName{Namespace: operatorNamespace, Name: operatorName}, serviceAccount); err != nil {
+		return nil, fmt.Errorf("Unable to retrieve operator ServiceAccount: %w", err)
 	}
 
-	var secretRef corev1.ObjectReference
+	var secretRef *corev1.ObjectReference
 	for _, s := range serviceAccount.Secrets {
 		if strings.Contains(s.Name, "-token-") {
-			secretRef = s
+			secretRef = &s
 		}
 	}
 
-	secret = &corev1.Secret{}
-	if result, err = LookupResource(secretRef.Name, secretRef.Namespace, secret, client, logger); result != nil {
-		return nil, err
+	if secretRef == nil {
+		return nil, fmt.Errorf("Unable to find operator token secret")
 	}
-	return
+
+	secret := &corev1.Secret{}
+	if err := client.Get(ctx, types.NamespacedName{Namespace: operatorNamespace, Name: secretRef.Name}, secret); err != nil {
+		return nil, fmt.Errorf("Unable to retrieve operator token Secret: %w", err)
+	}
+	return secret, err
 }

@@ -68,6 +68,8 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 					return err
 				}
 
+				// Change the secret type from SecretTypeTLS so that additional keys can be used
+				tlsSecret.Type = corev1.SecretTypeOpaque
 				caPem := tokenSecret.Data["service-ca.crt"]
 				return configureClientCert(caPem, i, c, tlsSecret, client)
 			}
