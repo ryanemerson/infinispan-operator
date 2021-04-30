@@ -109,7 +109,8 @@ func TestUpdateOperatorPassword(t *testing.T) {
 	tutils.ExpectNoError(err)
 }
 
-func TestUpdateTlsSecret(t *testing.T) {
+// TODO make more generic and add TestUpdateTruststoreSecret
+func TestUpdateKeystoreSecret(t *testing.T) {
 	t.Parallel()
 	// Create a resource without passing any config
 	spec := tutils.DefaultSpec(testKube)

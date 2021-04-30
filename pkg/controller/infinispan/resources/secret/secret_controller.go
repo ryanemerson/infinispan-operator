@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
 	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
 	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan/resources"
-	users "github.com/infinispan/infinispan-operator/pkg/infinispan/security"
+	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +27,11 @@ import (
 )
 
 const (
-	ControllerName = "secret-controller"
+	ControllerName               = "secret-controller"
+	EncryptClientCertPrefix      = "trust.cert."
+	EncryptClientCAName          = "trust.ca"
+	EncryptTruststorePassword    = "password"
+	EncryptTruststorePasswordKey = "truststore-password"
 )
 
 var ctx = context.Background()
@@ -73,6 +78,26 @@ func Add(mgr manager.Manager) error {
 }
 
 func (s *secretResource) Process() (reconcile.Result, error) {
+	// Set the Keystore secret controller reference so that we can receive reconcile events via EnqueueRequestForOwner
+	i := s.infinispan
+	keystoreSecret := &corev1.Secret{}
+	if result, err := kube.LookupResource(i.GetKeystoreSecretName(), i.Namespace, keystoreSecret, s.client, s.log); result != nil {
+		return *result, err
+	}
+
+	_, err := controllerutil.CreateOrUpdate(context.TODO(), s.client, keystoreSecret, func() error {
+		return controllerutil.SetControllerReference(i, keystoreSecret, s.scheme)
+	})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Reconcile Encryption Secrets
+	if result, err := s.reconcileTruststoreSecret(); result != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Reconcile Credential Secrets
 	if err := s.reconcileAdminSecret(); err != nil {
 		return reconcile.Result{}, nil
 	}
@@ -91,7 +116,7 @@ func (s *secretResource) Process() (reconcile.Result, error) {
 }
 
 func (s secretResource) createUserIdentitiesSecret() error {
-	identities, err := users.GetUserCredentials()
+	identities, err := security.GetUserCredentials()
 	if err != nil {
 		return err
 	}
@@ -124,6 +149,95 @@ func (s secretResource) createSecret(name, label string, identities []byte) erro
 	return nil
 }
 
+func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
+	i := s.infinispan
+	if !i.IsClientCertEnabled() {
+		return nil, nil
+	}
+
+	trustSecretName := s.infinispan.GetTruststoreSecretName()
+	generateTruststore := func(caPem []byte, data map[string][]byte) error {
+		_, passwordProvided := data[EncryptTruststorePasswordKey]
+		if _, ok := data[consts.EncryptTruststoreName]; ok {
+			if !passwordProvided {
+				return fmt.Errorf("The '%s' key must be provided when configuring an existing Truststore", EncryptTruststorePasswordKey)
+			}
+		} else {
+			data[EncryptTruststorePasswordKey] = []byte(EncryptTruststorePassword)
+		}
+
+		certs := [][]byte{caPem}
+		for certKey := range data {
+			if strings.HasPrefix(certKey, EncryptClientCertPrefix) {
+				certs = append(certs, data[certKey])
+			}
+		}
+		password := string(data[EncryptTruststorePasswordKey])
+		truststore, err := security.GenerateTruststore(certs, password)
+		if err != nil {
+			return err
+		}
+		data[consts.EncryptTruststoreName] = truststore
+		return nil
+	}
+
+	trustSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      trustSecretName,
+			Namespace: i.Namespace,
+		},
+	}
+
+	if i.IsEncryptionCertFromService() {
+		// Get secret if it exists
+		// If it exists, create ts with client certs
+		// Else create secret and just use service-ca.crt
+		operatorTokenSecret, err := kube.LookupOperatorTokenSecret(s.client, s.log)
+		if err != nil {
+			return &reconcile.Result{}, err
+		}
+		caPem := operatorTokenSecret.Data["service-ca.crt"]
+
+		_, err = kube.CreateOrPatch(ctx, s.client, trustSecret, func() error {
+			if err := generateTruststore(caPem, trustSecret.Data); err != nil {
+				return err
+			}
+			return controllerutil.SetControllerReference(i, trustSecret, s.scheme)
+		})
+		if err != nil {
+			return &reconcile.Result{}, err
+		}
+		return nil, nil
+	}
+
+	if trustSecretName == "" {
+		// It's not possible for client cert to be configured if no truststore secret is provided by the user
+		// as no certificates are available to be added to the server's truststore, resulting in no client's
+		// being able to authenticate with the server.
+		return &reconcile.Result{}, fmt.Errorf("Field 'ClientCertSecretName' must be provided for '%s' or '%s' to be configured",
+			ispnv1.ClientCertAuthenticate, ispnv1.ClientCertNone)
+	}
+
+	if result, err := kube.LookupResource(trustSecretName, i.Namespace, trustSecret, s.client, s.log); result != nil {
+		return result, err
+	}
+
+	_, err := kube.CreateOrPatch(ctx, s.client, trustSecret, func() error {
+		if trustSecret.CreationTimestamp.IsZero() {
+			return errors.NewNotFound(corev1.Resource("secret"), i.GetKeystoreSecretName())
+		}
+		caPem := trustSecret.Data[EncryptClientCAName]
+		if err := generateTruststore(caPem, trustSecret.Data); err != nil {
+			return err
+		}
+		return controllerutil.SetControllerReference(i, trustSecret, s.scheme)
+	})
+	if err != nil {
+		return &reconcile.Result{}, err
+	}
+	return nil, err
+}
+
 func (s secretResource) reconcileAdminSecret() error {
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -134,7 +248,7 @@ func (s secretResource) reconcileAdminSecret() error {
 
 	_, err := kube.CreateOrPatch(ctx, s.client, adminSecret, func() error {
 		if adminSecret.CreationTimestamp.IsZero() {
-			identities, err := users.GetAdminCredentials()
+			identities, err := security.GetAdminCredentials()
 			if err != nil {
 				return err
 			}
@@ -151,11 +265,11 @@ func (s secretResource) reconcileAdminSecret() error {
 		password := string(pass)
 		if !ok || password == "" {
 			var usrErr error
-			if password, usrErr = users.FindPassword(consts.DefaultOperatorUser, adminSecret.Data[consts.ServerIdentitiesFilename]); usrErr != nil {
+			if password, usrErr = security.FindPassword(consts.DefaultOperatorUser, adminSecret.Data[consts.ServerIdentitiesFilename]); usrErr != nil {
 				return usrErr
 			}
 		}
-		identities, err := users.CreateIdentitiesFor(consts.DefaultOperatorUser, password)
+		identities, err := security.CreateIdentitiesFor(consts.DefaultOperatorUser, password)
 		if err != nil {
 			return err
 		}

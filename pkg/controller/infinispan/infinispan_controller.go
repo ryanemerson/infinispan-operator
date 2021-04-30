@@ -46,15 +46,16 @@ import (
 )
 
 const (
-	ServerRoot                = "/opt/infinispan/server"
-	DataMountPath             = ServerRoot + "/data"
-	DataMountVolume           = "data-volume"
-	CustomLibrariesMountPath  = ServerRoot + "/lib/custom-libraries"
-	CustomLibrariesVolumeName = "custom-libraries"
-	ConfigVolumeName          = "config-volume"
-	EncryptVolumeName         = "encrypt-volume"
-	IdentitiesVolumeName      = "identities-volume"
-	AdminIdentitiesVolumeName = "admin-identities-volume"
+	ServerRoot                  = "/opt/infinispan/server"
+	DataMountPath               = ServerRoot + "/data"
+	DataMountVolume             = "data-volume"
+	CustomLibrariesMountPath    = ServerRoot + "/lib/custom-libraries"
+	CustomLibrariesVolumeName   = "custom-libraries"
+	ConfigVolumeName            = "config-volume"
+	EncryptKeystoreVolumeName   = "encrypt-volume"
+	EncryptTruststoreVolumeName = "encrypt-trust-volume"
+	IdentitiesVolumeName        = "identities-volume"
+	AdminIdentitiesVolumeName   = "admin-identities-volume"
 )
 
 var log = logf.Log.WithName("controller_infinispan")
@@ -231,20 +232,19 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 		return *result, err
 	}
 
-	var tlsSecret *corev1.Secret
+	var keystoreSecret *corev1.Secret
 	if infinispan.IsEncryptionEnabled() {
-		tlsSecret = &corev1.Secret{}
-		if result, err := kube.LookupResource(infinispan.GetEncryptionSecretName(), infinispan.Namespace, tlsSecret, r.client, reqLogger); result != nil {
+		keystoreSecret = &corev1.Secret{}
+		if result, err := kube.LookupResource(infinispan.GetKeystoreSecretName(), infinispan.Namespace, keystoreSecret, r.client, reqLogger); result != nil {
 			return *result, err
 		}
+	}
 
-		// Set the controller reference to be the Infinispan CR so that we can receive reconcile events via EnqueueRequestForOwner
-		res, err := controllerutil.CreateOrUpdate(ctx, r.client, tlsSecret, func() error {
-			return controllerutil.SetControllerReference(infinispan, tlsSecret, r.scheme)
-		})
-
-		if err != nil || res != controllerutil.OperationResultNone {
-			return reconcile.Result{}, err
+	var trustSecret *corev1.Secret
+	if infinispan.IsClientCertEnabled() {
+		trustSecret = &corev1.Secret{}
+		if result, err := kube.LookupResource(infinispan.GetTruststoreSecretName(), infinispan.Namespace, trustSecret, r.client, reqLogger); result != nil {
+			return *result, err
 		}
 	}
 
@@ -256,7 +256,7 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 		reqLogger.Info("Configuring the StatefulSet")
 
 		// Define a new StatefulSet
-		statefulSet, err = r.statefulSetForInfinispan(infinispan, adminSecret, userSecret, tlsSecret, configMap)
+		statefulSet, err = r.statefulSetForInfinispan(infinispan, adminSecret, userSecret, keystoreSecret, trustSecret, configMap)
 		if err != nil {
 			reqLogger.Error(err, "failed to configure new StatefulSet")
 			return reconcile.Result{}, err
@@ -350,7 +350,7 @@ func (r *ReconcileInfinispan) Reconcile(request reconcile.Request) (reconcile.Re
 
 	// Here where to reconcile with spec updates that reflect into
 	// changes to statefulset.spec.container.
-	res, err = r.reconcileContainerConf(infinispan, statefulSet, configMap, adminSecret, userSecret, tlsSecret, reqLogger)
+	res, err = r.reconcileContainerConf(infinispan, statefulSet, configMap, adminSecret, userSecret, keystoreSecret, reqLogger)
 	if res != nil {
 		return *res, err
 	}
@@ -728,7 +728,8 @@ func (r *ReconcileInfinispan) updatePodsLabels(m *infinispanv1.Infinispan, podLi
 }
 
 // statefulSetForInfinispan returns an infinispan StatefulSet object
-func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispan, adminSecret, userSecret, tlsSecret *corev1.Secret, configMap *corev1.ConfigMap) (*appsv1.StatefulSet, error) {
+func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispan, adminSecret, userSecret, keystoreSecret, trustSecret *corev1.Secret,
+	configMap *corev1.ConfigMap) (*appsv1.StatefulSet, error) {
 	reqLogger := log.WithValues("Request.Namespace", m.Namespace, "Request.Name", m.Name)
 	lsPod := PodLabels(m.Name)
 	labelsForPod := PodLabels(m.Name)
@@ -904,12 +905,20 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 	}
 
 	if m.IsEncryptionEnabled() {
-		AddVolumeForEncryption(m, &dep.Spec.Template.Spec)
+		AddVolumesForEncryption(m, &dep.Spec.Template.Spec)
 		spec.Containers[0].Env = append(spec.Containers[0].Env,
 			corev1.EnvVar{
-				Name:  "ENCRYPTION_HASH",
-				Value: HashMap(tlsSecret.Data),
+				Name:  "KEYSTORE_HASH",
+				Value: HashMap(keystoreSecret.Data),
 			})
+
+		if m.IsClientCertEnabled() {
+			spec.Containers[0].Env = append(spec.Containers[0].Env,
+				corev1.EnvVar{
+					Name:  "TRUSTSTORE_HASH",
+					Value: HashMap(trustSecret.Data),
+				})
+		}
 	}
 
 	// Set Infinispan instance as the owner and controller
@@ -1068,25 +1077,33 @@ func chmodInitContainer(containerName, volumeName, mountPath string) corev1.Cont
 	}
 }
 
-func AddVolumeForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) {
-	if _, index := findSecretInVolume(spec, EncryptVolumeName); index >= 0 {
-		return
+func AddVolumesForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) {
+	addSecretVolume := func(secretName, volumeName, mountPath string, spec *corev1.PodSpec) {
+		if _, index := findSecretInVolume(spec, volumeName); index >= 0 {
+			return
+		}
+
+		v := &spec.Volumes
+		*v = append(*v, corev1.Volume{Name: volumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: secretName,
+				},
+			},
+		})
+
+		vm := &spec.Containers[0].VolumeMounts
+		*vm = append(*vm, corev1.VolumeMount{
+			Name:      volumeName,
+			MountPath: mountPath,
+		})
 	}
 
-	v := &spec.Volumes
-	*v = append(*v, corev1.Volume{Name: EncryptVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{
-				SecretName: i.GetEncryptionSecretName(),
-			},
-		},
-	})
+	addSecretVolume(i.GetKeystoreSecretName(), EncryptKeystoreVolumeName, consts.ServerEncryptKeystoreRoot, spec)
 
-	vm := &spec.Containers[0].VolumeMounts
-	*vm = append(*vm, corev1.VolumeMount{
-		Name:      EncryptVolumeName,
-		MountPath: EncryptMountPath,
-	})
+	if i.IsClientCertEnabled() {
+		addSecretVolume(i.GetTruststoreSecretName(), EncryptTruststoreVolumeName, consts.ServerEncryptKeystoreRoot, spec)
+	}
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster
@@ -1311,8 +1328,12 @@ func (r *ReconcileInfinispan) reconcileContainerConf(ispn *infinispanv1.Infinisp
 	}
 
 	if ispn.IsEncryptionEnabled() {
-		AddVolumeForEncryption(ispn, spec)
-		updateNeeded = updateStatefulSetEnv(statefulSet, "ENCRYPTION_HASH", HashMap(tlsSecret.Data)) || updateNeeded
+		AddVolumesForEncryption(ispn, spec)
+		updateNeeded = updateStatefulSetEnv(statefulSet, "KEYSTORE_HASH", HashMap(tlsSecret.Data)) || updateNeeded
+
+		if ispn.IsClientCertEnabled() {
+			updateNeeded = updateStatefulSetEnv(statefulSet, "TRUSTSTORE_HASH", HashMap(tlsSecret.Data)) || updateNeeded
+		}
 	}
 
 	// Validate extra Java options changes

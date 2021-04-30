@@ -250,7 +250,7 @@ func setupServiceForEncryption(ispn *ispnv1.Infinispan, service *corev1.Service)
 	if ispn.IsEncryptionCertFromService() {
 		if strings.Contains(ispn.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
 			// Using platform service. Only OpenShift is integrated atm
-			secretName := ispn.GetEncryptionSecretName()
+			secretName := ispn.GetKeystoreSecretName()
 			if service.Annotations == nil {
 				service.Annotations = map[string]string{}
 			}

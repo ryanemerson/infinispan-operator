@@ -40,8 +40,8 @@ func EndpointEncryptionClientCert(name string, clientCert v1.ClientCertType) *v1
 func EncryptionSecret(name, namespace string, privKey, cert []byte) *corev1.Secret {
 	s := encryptionSecret(name, namespace)
 	s.Data = map[string][]byte{
-		"tls.key": privKey,
-		"tls.crt": cert,
+		corev1.TLSCertKey:       cert,
+		corev1.TLSPrivateKeyKey: privKey,
 	}
 	return s
 }
