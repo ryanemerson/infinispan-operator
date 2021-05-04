@@ -1102,7 +1102,7 @@ func AddVolumesForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) {
 	addSecretVolume(i.GetKeystoreSecretName(), EncryptKeystoreVolumeName, consts.ServerEncryptKeystoreRoot, spec)
 
 	if i.IsClientCertEnabled() {
-		addSecretVolume(i.GetTruststoreSecretName(), EncryptTruststoreVolumeName, consts.ServerEncryptKeystoreRoot, spec)
+		addSecretVolume(i.GetTruststoreSecretName(), EncryptTruststoreVolumeName, consts.ServerEncryptTruststoreRoot, spec)
 	}
 }
 

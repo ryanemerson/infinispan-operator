@@ -95,7 +95,8 @@ const (
 	ServerHTTPLoggersPath      = ServerHTTPBasePath + "/logging/loggers"
 	ServerHTTPModifyLoggerPath = ServerHTTPLoggersPath + "/%s?level=%s"
 
-	EncryptTruststoreName = "truststore.p12"
+	EncryptTruststoreKey        = "truststore.p12"
+	EncryptTruststorePasswordKey = "truststore-password"
 
 	DefaultCacheTemplate = `<infinispan>
 		<cache-container>

@@ -398,42 +398,46 @@ func checkRestConnection(hostAddr string, client tutils.HTTPClient) {
 }
 
 func TestClientCertValidate(t *testing.T) {
-	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+	testClientCert(t, func(name string) (authType v1.ClientCertType, keystoreSecret, truststoreSecret *corev1.Secret, tlsConfig *tls.Config) {
 		authType = ispnv1.ClientCertValidate
 		keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(false)
-		secret = tutils.EncryptionSecretClientTrustore(name, tutils.Namespace, keystore, truststore)
+		keystoreSecret = tutils.EncryptionSecretKeystore(name, tutils.Namespace, keystore)
+		truststoreSecret = tutils.EncryptionSecretClientTrustore(name, tutils.Namespace, truststore)
 		return
 	})
 }
 
 func TestClientCertAuthenticate(t *testing.T) {
-	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+	testClientCert(t, func(name string) (authType v1.ClientCertType, keystoreSecret, truststoreSecret *corev1.Secret, tlsConfig *tls.Config) {
 		authType = ispnv1.ClientCertAuthenticate
 		keystore, truststore, tlsConfig := tutils.CreateKeyAndTruststore(true)
-		secret = tutils.EncryptionSecretClientTrustore(name, tutils.Namespace, keystore, truststore)
+		keystoreSecret = tutils.EncryptionSecretKeystore(name, tutils.Namespace, keystore)
+		truststoreSecret = tutils.EncryptionSecretClientTrustore(name, tutils.Namespace, truststore)
 		return
 	})
 }
 
 func TestClientCertGeneratedTruststoreAuthenticate(t *testing.T) {
-	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+	testClientCert(t, func(name string) (authType v1.ClientCertType, keystoreSecret, truststoreSecret *corev1.Secret, tlsConfig *tls.Config) {
 		authType = ispnv1.ClientCertAuthenticate
 		keystore, caCert, clientCert, tlsConfig := tutils.CreateKeystoreAndClientCerts()
-		secret = tutils.EncryptionSecretClientCert(name, tutils.Namespace, keystore, caCert, clientCert)
+		keystoreSecret = tutils.EncryptionSecretKeystore(name, tutils.Namespace, keystore)
+		truststoreSecret = tutils.EncryptionSecretClientCert(name, tutils.Namespace, caCert, clientCert)
 		return
 	})
 }
 
 func TestClientCertGeneratedTruststoreValidate(t *testing.T) {
-	testClientCert(t, func(name string) (authType v1.ClientCertType, secret *corev1.Secret, tlsConfig *tls.Config) {
+	testClientCert(t, func(name string) (authType v1.ClientCertType, keystoreSecret, truststoreSecret *corev1.Secret, tlsConfig *tls.Config) {
 		authType = ispnv1.ClientCertValidate
 		keystore, caCert, _, tlsConfig := tutils.CreateKeystoreAndClientCerts()
-		secret = tutils.EncryptionSecretClientCert(name, tutils.Namespace, keystore, caCert, nil)
+		keystoreSecret = tutils.EncryptionSecretKeystore(name, tutils.Namespace, keystore)
+		truststoreSecret = tutils.EncryptionSecretClientCert(name, tutils.Namespace, caCert, nil)
 		return
 	})
 }
 
-func testClientCert(t *testing.T, initializer func(string) (v1.ClientCertType, *corev1.Secret, *tls.Config)) {
+func testClientCert(t *testing.T, initializer func(string) (v1.ClientCertType, *corev1.Secret, *corev1.Secret, *tls.Config)) {
 	t.Parallel()
 	spec := tutils.DefaultSpec(testKube)
 	name := strcase.ToKebab(t.Name())
@@ -441,13 +445,16 @@ func testClientCert(t *testing.T, initializer func(string) (v1.ClientCertType, *
 	spec.Spec.Replicas = 1
 
 	// Create the keystore & truststore for the server with a compatible client tls configuration
-	authType, secret, tlsConfig := initializer(name)
+	authType, keystoreSecret, truststoreSecret, tlsConfig := initializer(name)
 	spec.Spec.Security = ispnv1.InfinispanSecurity{
 		EndpointEncryption: tutils.EndpointEncryptionClientCert(spec.Name, authType),
 	}
 
-	testKube.CreateSecret(secret)
-	defer testKube.DeleteSecret(secret)
+	testKube.CreateSecret(keystoreSecret)
+	defer testKube.DeleteSecret(keystoreSecret)
+
+	testKube.CreateSecret(truststoreSecret)
+	defer testKube.DeleteSecret(truststoreSecret)
 
 	// Register it
 	testKube.CreateInfinispan(spec, tutils.Namespace)

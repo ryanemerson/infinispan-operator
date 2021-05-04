@@ -337,7 +337,7 @@ func (ispn *Infinispan) GetTruststoreSecretName() string {
 	if ispn.Spec.Security.EndpointEncryption == nil {
 		return ""
 	}
-	return ispn.Spec.Security.EndpointEncryption.CertSecretName
+	return ispn.Spec.Security.EndpointEncryption.ClientCertSecretName
 }
 
 func (spec *InfinispanContainerSpec) GetCpuResources() (*resource.Quantity, *resource.Quantity, error) {

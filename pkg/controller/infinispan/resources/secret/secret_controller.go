@@ -27,11 +27,10 @@ import (
 )
 
 const (
-	ControllerName               = "secret-controller"
-	EncryptClientCertPrefix      = "trust.cert."
-	EncryptClientCAName          = "trust.ca"
-	EncryptTruststorePassword    = "password"
-	EncryptTruststorePasswordKey = "truststore-password"
+	ControllerName            = "secret-controller"
+	EncryptClientCertPrefix   = "trust.cert."
+	EncryptClientCAName       = "trust.ca"
+	EncryptTruststorePassword = "password"
 )
 
 var ctx = context.Background()
@@ -157,13 +156,8 @@ func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
 
 	trustSecretName := s.infinispan.GetTruststoreSecretName()
 	generateTruststore := func(caPem []byte, data map[string][]byte) error {
-		_, passwordProvided := data[EncryptTruststorePasswordKey]
-		if _, ok := data[consts.EncryptTruststoreName]; ok {
-			if !passwordProvided {
-				return fmt.Errorf("The '%s' key must be provided when configuring an existing Truststore", EncryptTruststorePasswordKey)
-			}
-		} else {
-			data[EncryptTruststorePasswordKey] = []byte(EncryptTruststorePassword)
+		if _, passwordProvided := data[consts.EncryptTruststorePasswordKey]; !passwordProvided {
+			data[consts.EncryptTruststorePasswordKey] = []byte(EncryptTruststorePassword)
 		}
 
 		certs := [][]byte{caPem}
@@ -172,12 +166,12 @@ func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
 				certs = append(certs, data[certKey])
 			}
 		}
-		password := string(data[EncryptTruststorePasswordKey])
+		password := string(data[consts.EncryptTruststorePasswordKey])
 		truststore, err := security.GenerateTruststore(certs, password)
 		if err != nil {
 			return err
 		}
-		data[consts.EncryptTruststoreName] = truststore
+		data[consts.EncryptTruststoreKey] = truststore
 		return nil
 	}
 
@@ -226,9 +220,17 @@ func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
 		if trustSecret.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(corev1.Resource("secret"), i.GetKeystoreSecretName())
 		}
-		caPem := trustSecret.Data[EncryptClientCAName]
-		if err := generateTruststore(caPem, trustSecret.Data); err != nil {
-			return err
+
+		_, truststoreExists := trustSecret.Data[consts.EncryptTruststoreKey]
+		if truststoreExists {
+			if _, ok := trustSecret.Data[consts.EncryptTruststorePasswordKey]; !ok {
+				return fmt.Errorf("The '%s' key must be provided when configuring an existing Truststore", consts.EncryptTruststorePasswordKey)
+			}
+		} else {
+			caPem := trustSecret.Data[EncryptClientCAName]
+			if err := generateTruststore(caPem, trustSecret.Data); err != nil {
+				return err
+			}
 		}
 		return controllerutil.SetControllerReference(i, trustSecret, s.scheme)
 	})

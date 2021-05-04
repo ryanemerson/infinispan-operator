@@ -218,7 +218,7 @@ func createTruststore(ca, client *certHolder, authenticate bool) []byte {
 	} else {
 		trustCerts = []*x509.Certificate{ca.cert}
 	}
-	truststore, err := p12.EncodeTrustStore(rand.Reader, trustCerts, "secret")
+	truststore, err := p12.EncodeTrustStore(rand.Reader, trustCerts, TruststorePassword)
 	ExpectNoError(err)
 	return truststore
 }

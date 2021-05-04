@@ -20,25 +20,29 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
-const EncryptionSecretNamePostfix = "secret-certs"
+const (
+	keystoreSecretSuffix   = "keystore"
+	truststoreSecretSuffix = "truststore"
+)
 
 func EndpointEncryption(name string) *ispnv1.EndpointEncryption {
 	return &ispnv1.EndpointEncryption{
 		Type:           v1.CertificateSourceTypeSecret,
-		CertSecretName: fmt.Sprintf("%s-%s", name, EncryptionSecretNamePostfix),
+		CertSecretName: fmt.Sprintf("%s-%s", name, keystoreSecretSuffix),
 	}
 }
 
 func EndpointEncryptionClientCert(name string, clientCert v1.ClientCertType) *v1.EndpointEncryption {
 	return &v1.EndpointEncryption{
-		Type:           v1.CertificateSourceTypeSecret,
-		CertSecretName: fmt.Sprintf("%s-%s", name, EncryptionSecretNamePostfix),
-		ClientCert:     clientCert,
+		Type:                 v1.CertificateSourceTypeSecret,
+		CertSecretName:       fmt.Sprintf("%s-%s", name, keystoreSecretSuffix),
+		ClientCert:           clientCert,
+		ClientCertSecretName: fmt.Sprintf("%s-%s", name, truststoreSecretSuffix),
 	}
 }
 
 func EncryptionSecret(name, namespace string, privKey, cert []byte) *corev1.Secret {
-	s := encryptionSecret(name, namespace)
+	s := keystoreSecret(name, namespace)
 	s.Data = map[string][]byte{
 		corev1.TLSCertKey:       cert,
 		corev1.TLSPrivateKeyKey: privKey,
@@ -47,19 +51,15 @@ func EncryptionSecret(name, namespace string, privKey, cert []byte) *corev1.Secr
 }
 
 func EncryptionSecretKeystore(name, namespace string, keystore []byte) *corev1.Secret {
-	s := encryptionSecret(name, namespace)
-	s.StringData = map[string]string{
-		"alias":    "server",
-		"password": KeystorePassword,
-	}
-	s.Data = map[string][]byte{
-		"keystore.p12": keystore,
-	}
+	s := keystoreSecret(name, namespace)
+	s.StringData["alias"] = "server"
+	s.StringData["password"] = KeystorePassword
+	s.Data["keystore.p12"] = keystore
 	return s
 }
 
-func EncryptionSecretClientCert(name, namespace string, keystore, caCert, clientCert []byte) *corev1.Secret {
-	s := EncryptionSecretKeystore(name, namespace, keystore)
+func EncryptionSecretClientCert(name, namespace string, caCert, clientCert []byte) *corev1.Secret {
+	s := truststoreSecret(name, namespace)
 	s.Data["trust.ca"] = caCert
 	if clientCert != nil {
 		s.Data["trust.cert.client"] = clientCert
@@ -67,11 +67,21 @@ func EncryptionSecretClientCert(name, namespace string, keystore, caCert, client
 	return s
 }
 
-func EncryptionSecretClientTrustore(name, namespace string, keystore, truststore []byte) *corev1.Secret {
-	s := EncryptionSecretKeystore(name, namespace, keystore)
+func EncryptionSecretClientTrustore(name, namespace string, truststore []byte) *corev1.Secret {
+	s := truststoreSecret(name, namespace)
 	s.StringData["truststore-password"] = TruststorePassword
 	s.Data["truststore.p12"] = truststore
 	return s
+}
+
+func keystoreSecret(name, namespace string) *corev1.Secret {
+	secretName := fmt.Sprintf("%s-%s", name, keystoreSecretSuffix)
+	return encryptionSecret(secretName, namespace)
+}
+
+func truststoreSecret(name, namespace string) *corev1.Secret {
+	secretName := fmt.Sprintf("%s-%s", name, truststoreSecretSuffix)
+	return encryptionSecret(secretName, namespace)
 }
 
 func encryptionSecret(name, namespace string) *corev1.Secret {
@@ -81,10 +91,12 @@ func encryptionSecret(name, namespace string) *corev1.Secret {
 			Kind:       "Secret",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s", name, EncryptionSecretNamePostfix),
+			Name:      name,
 			Namespace: namespace,
 		},
-		Type: corev1.SecretTypeOpaque,
+		Type:       corev1.SecretTypeOpaque,
+		Data:       map[string][]byte{},
+		StringData: map[string]string{},
 	}
 }
 

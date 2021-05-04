@@ -67,9 +67,8 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 		}
 
 		c.Endpoints.ClientCert = string(i.Spec.Security.EndpointEncryption.ClientCert)
-		// TODO add "truststore.p12" to constants
-		c.Truststore.Path = fmt.Sprintf("%s/%s", consts.ServerEncryptTruststoreRoot, consts.EncryptTruststoreName)
-		c.Truststore.Password = string(trustSecret.Data[consts.EncryptTruststoreName])
+		c.Truststore.Path = fmt.Sprintf("%s/%s", consts.ServerEncryptTruststoreRoot, consts.EncryptTruststoreKey)
+		c.Truststore.Password = string(trustSecret.Data[consts.EncryptTruststorePasswordKey])
 	}
 	return nil
 }
