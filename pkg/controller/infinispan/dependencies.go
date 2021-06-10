@@ -1,9 +1,12 @@
 package infinispan
 
 import (
+	"bytes"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
+	"text/template"
 
 	infinispanv1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -11,21 +14,12 @@ import (
 )
 
 const (
-	CustomLibrariesMountPath                = "/opt/infinispan/server/lib/custom-libraries"
-	CustomLibrariesVolumeName               = "custom-libraries"
-	ExternalArtifactsMountPath              = "/opt/infinispan/server/lib/external-artifacts"
-	ExternalArtifactsVolumeName             = "external-artifacts"
-	ExternalArtifactsDownloadInitContainer  = "external-artifacts-download"
-	ExternalArtifactsZipExtension           = ".zip"
-	ExternalArtifactsTarGzExtension         = ".tar.gz"
-	ExternalArtifactsArchiveDownloadCommand = "curl --insecure -L %s -o %s"
-	ExternalArtifactsFileDownloadCommand    = "curl --insecure -LO %s"
-	ExternalArtifactsDownloadRetryCommand   = "for i in 1 2 3 4 5; do %s && break || sleep 1; done"
-	ExternalArtifactsZipExtractCommand      = "%s %s && unzip -oq %[3]s && rm %[3]s && "
-	ExternalArtifactsTarGzExtractCommand    = "%s %s && tar xf %[3]s && rm %[3]s && "
-	ExternalArtifactsFileExtractCommand     = "%s mkdir -p ./tmp && rm -rf ./tmp/* && cd ./tmp && %s && FILENAME=$(ls -1 . | head -n1) && cd .. %s && mv ./tmp/$FILENAME . && "
-	ExternalArtifactsHashValidationCommand  = "&& echo %s %s | %ssum -c"
-	ExternalArtifactsTemporaryFileName      = "./tmp/$FILENAME"
+	CustomLibrariesMountPath               = "/opt/infinispan/server/lib/custom-libraries"
+	CustomLibrariesVolumeName              = "custom-libraries"
+	ExternalArtifactsMountPath             = "/opt/infinispan/server/lib/external-artifacts"
+	ExternalArtifactsVolumeName            = "external-artifacts"
+	ExternalArtifactsDownloadInitContainer = "external-artifacts-download"
+	ExternalArtifactsTemporaryFileName     = "./tmp/$FILENAME"
 )
 
 func applyExternalDependenciesVolume(ispn *infinispanv1.Infinispan, spec *corev1.PodSpec) (updated bool) {
@@ -45,13 +39,17 @@ func applyExternalDependenciesVolume(ispn *infinispanv1.Infinispan, spec *corev1
 	return
 }
 
-func applyExternalArtifactsDownload(ispn *infinispanv1.Infinispan, spec *corev1.PodSpec) (updated bool) {
+func applyExternalArtifactsDownload(ispn *infinispanv1.Infinispan, spec *corev1.PodSpec) (updated bool, retErr error) {
 	c := &spec.InitContainers
 	volumes := &spec.Volumes
 	volumeMounts := &spec.Containers[0].VolumeMounts
 	containerPosition := kube.ContainerIndex(*c, ExternalArtifactsDownloadInitContainer)
 	if ispn.HasExternalArtifacts() {
-		extractCommands := externalArtifactsExtractCommand(ispn)
+		extractCommands, err := externalArtifactsExtractCommand(ispn)
+		if err != nil {
+			retErr = err
+			return
+		}
 		if containerPosition >= 0 {
 			if spec.InitContainers[containerPosition].Args[0] != extractCommands {
 				spec.InitContainers[containerPosition].Args = []string{extractCommands}
@@ -83,36 +81,106 @@ func applyExternalArtifactsDownload(ispn *infinispanv1.Infinispan, spec *corev1.
 	return
 }
 
-func externalArtifactsExtractCommand(ispn *infinispanv1.Infinispan) string {
-	var extractCommands = fmt.Sprintf("cd %s && ", ExternalArtifactsMountPath)
-	for i, artifact := range ispn.Spec.Dependencies.Artifacts {
-		fileName := strings.ToLower(path.Base(artifact.Url))
-		if artifact.Type == infinispanv1.ExternalArtifactTypeZip || (artifact.Type == "" && strings.HasSuffix(fileName, ExternalArtifactsZipExtension)) {
-			extractCommands = extractCommands + extractArchiveArtifactCommand(i, ExternalArtifactsZipExtension, artifact.Url, ExternalArtifactsZipExtractCommand, artifact.Hash)
-			continue
-		}
-		if artifact.Type == infinispanv1.ExternalArtifactTypeTarGz || (artifact.Type == "" && strings.HasSuffix(fileName, ExternalArtifactsTarGzExtension)) {
-			extractCommands = extractCommands + extractArchiveArtifactCommand(i, ExternalArtifactsTarGzExtension, artifact.Url, ExternalArtifactsTarGzExtractCommand, artifact.Hash)
-			continue
-		}
-		downloadFileCommand := fmt.Sprintf(ExternalArtifactsDownloadRetryCommand, fmt.Sprintf(ExternalArtifactsFileDownloadCommand, artifact.Url))
-		extractCommands = fmt.Sprintf(ExternalArtifactsFileExtractCommand, extractCommands, downloadFileCommand, hashValidationCommand(artifact.Hash, ExternalArtifactsTemporaryFileName))
-	}
-	return extractCommands + fmt.Sprintf("rm -rf %s/tmp", ExternalArtifactsMountPath)
-}
+func externalArtifactsExtractCommand(ispn *infinispanv1.Infinispan) (string, error) {
+	templateStr := `set -e
 
-func extractArchiveArtifactCommand(fileIndex int, fileExtension, downloadUrl, extractCommand, hash string) string {
-	downloadFileName := fmt.Sprintf("file%d%s", fileIndex, fileExtension)
-	downloadFileCommand := fmt.Sprintf(ExternalArtifactsDownloadRetryCommand, fmt.Sprintf(ExternalArtifactsArchiveDownloadCommand, downloadUrl, downloadFileName))
-	return fmt.Sprintf(extractCommand, downloadFileCommand, hashValidationCommand(hash, downloadFileName), downloadFileName)
-}
-
-func hashValidationCommand(hash, fileName string) string {
-	if hash == "" || !strings.Contains(hash, ":") {
-		return ""
+	function retry {
+		local n=1
+		local max=5
+		local delay=1
+		while true; do
+		  $@ && break || {
+			if [[ $n -lt $max ]]; then
+			  ((n++))
+			  echo "Download failed. Attempt $n/$max:"
+			  sleep $delay
+			else
+			  echo "Artifact download has failed after $n attempts."
+			  exit 1
+			fi
+		  }
+		done
 	}
-	hashParts := strings.Split(hash, ":")
-	return fmt.Sprintf(ExternalArtifactsHashValidationCommand, hashParts[1], fileName, hashParts[0])
+
+	cd {{ .MountPath }}
+{{- range $i, $artifact := .Artifacts }}
+
+	{{- if isType $artifact "zip" }}
+	{{- $file := (printf "file%d.zip" $i) }}
+
+	retry "curl --insecure -L {{ $artifact.Url }} -o {{ $file }}"
+	{{ hashCmd $artifact $file }}
+	unzip -oq {{ $file }}
+	rm {{ $file }}
+
+	{{- else if isType $artifact "tar.gz" }}
+	{{- $file := (printf "file%d.zip" $i) }}
+
+	retry "curl --insecure -L {{ $artifact.Url }} -o {{ $file }}"
+	{{ hashCmd $artifact $file }}
+	tar xf {{ $file }}
+	rm {{ $file }}
+
+	{{- else }}
+
+	curl --insecure -LO {{ $artifact.Url }}
+	{{ hashCmd $artifact (filename $artifact) }}
+	{{- end }}
+
+{{- end }}
+	`
+
+	getFilename := func(artifact infinispanv1.InfinispanExternalArtifacts) (string, error) {
+		url, err := url.Parse(artifact.Url)
+		if err != nil {
+			return "", fmt.Errorf("Artifact url is not valid '%s'", artifact.Url)
+		}
+		return path.Base(url.Path), nil
+	}
+
+	tmpl, err := template.New("init-container").Funcs(template.FuncMap{
+		"filename": getFilename,
+		"isType": func(artifact infinispanv1.InfinispanExternalArtifacts, ext string) (bool, error) {
+			if artifact.Type != "" {
+				return string(artifact.Type) == ext, nil
+			}
+			fileName, err := getFilename(artifact)
+			if err != nil {
+				return false, err
+			}
+			return strings.HasSuffix(fileName, ext), nil
+		},
+		"hashCmd": func(artifact infinispanv1.InfinispanExternalArtifacts, localFile string) (string, error) {
+			if artifact.Hash == "" {
+				return "", nil
+			}
+
+			if !strings.Contains(artifact.Hash, ":") {
+				return "", fmt.Errorf("Expected hash to be in the format `<hash-type>:<hash>`")
+			}
+
+			hashParts := strings.Split(artifact.Hash, ":")
+			return fmt.Sprintf("echo %s %s | %ssum -c", hashParts[1], localFile, hashParts[0]), nil
+		},
+	}).Parse(templateStr)
+
+	if err != nil {
+		return "", err
+	}
+
+	var tpl bytes.Buffer
+	err = tmpl.Execute(&tpl, struct {
+		MountPath string
+		Artifacts []infinispanv1.InfinispanExternalArtifacts
+	}{
+		MountPath: ExternalArtifactsMountPath,
+		Artifacts: ispn.Spec.Dependencies.Artifacts,
+	})
+
+	if err != nil {
+		return "", err
+	}
+	return tpl.String(), nil
 }
 
 func findVolume(volumes []corev1.Volume, volumeName string) int {
