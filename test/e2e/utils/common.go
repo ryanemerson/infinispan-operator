@@ -15,6 +15,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
@@ -125,6 +126,80 @@ func DefaultSpec(testKube *TestKubernetes) *ispnv1.Infinispan {
 			},
 			Replicas: 1,
 			Expose:   ExposeServiceSpec(testKube),
+		},
+	}
+}
+
+func WebServerPod(name, namespace, configName, mountPath, imageName string) *corev1.Pod {
+	return &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Pod",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": name},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{
+				Name:  "web-server",
+				Image: imageName,
+				Ports: []corev1.ContainerPort{{
+					ContainerPort: int32(WebServerPortNumber),
+					Name:          "web-port",
+					Protocol:      corev1.ProtocolTCP,
+				}},
+				VolumeMounts: []corev1.VolumeMount{{
+					MountPath: mountPath,
+					Name:      "data",
+				}},
+				ReadinessProbe: &corev1.Probe{
+					Handler: corev1.Handler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Scheme: corev1.URISchemeHTTP,
+							Path:   "/index.html",
+							Port:   intstr.FromInt(WebServerPortNumber),
+						},
+					},
+					InitialDelaySeconds: 5,
+					TimeoutSeconds:      60,
+					PeriodSeconds:       1,
+					SuccessThreshold:    1,
+					FailureThreshold:    5,
+				},
+			}},
+			Volumes: []corev1.Volume{{
+				Name: "data",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: configName,
+						},
+					},
+				},
+			}},
+		},
+	}
+}
+
+func WebServerService(name, namespace string) *corev1.Service {
+	return &corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Service",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": name},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": name},
+			Ports: []corev1.ServicePort{{
+				Protocol: corev1.ProtocolTCP,
+				Port:     int32(WebServerPortNumber),
+			}},
 		},
 	}
 }
