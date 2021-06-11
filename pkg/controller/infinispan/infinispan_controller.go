@@ -959,7 +959,10 @@ func (r *ReconcileInfinispan) statefulSetForInfinispan(m *infinispanv1.Infinispa
 		reqLogger.Info(errMsg)
 	}
 
-	applyExternalArtifactsDownload(m, &dep.Spec.Template.Spec)
+	if _, err := applyExternalArtifactsDownload(m, &dep.Spec.Template.Spec); err != nil {
+		return nil, fmt.Errorf("Unable to configure external artifacts init-container: %w", err)
+	}
+
 	applyExternalDependenciesVolume(m, &dep.Spec.Template.Spec)
 	if m.IsEncryptionEnabled() {
 		AddVolumesForEncryption(m, &dep.Spec.Template.Spec)
@@ -1362,7 +1365,11 @@ func (r *ReconcileInfinispan) reconcileContainerConf(ispn *infinispanv1.Infinisp
 	updateNeeded = updateStatefulSetEnv(statefulSet, "CONFIG_HASH", hashString(configMap.Data[consts.ServerConfigFilename])) || updateNeeded
 	updateNeeded = updateStatefulSetEnv(statefulSet, "ADMIN_IDENTITIES_HASH", HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])) || updateNeeded
 
-	updateNeeded = applyExternalArtifactsDownload(ispn, &statefulSet.Spec.Template.Spec) || updateNeeded
+	updateExtArtifacts, err := applyExternalArtifactsDownload(ispn, &statefulSet.Spec.Template.Spec)
+	if err != nil {
+		return &reconcile.Result{}, fmt.Errorf("Unable to reconcile external artifacts init-container: %w", err)
+	}
+	updateNeeded = updateExtArtifacts || updateNeeded
 	updateNeeded = applyExternalDependenciesVolume(ispn, &statefulSet.Spec.Template.Spec) || updateNeeded
 
 	// Validate identities Secret name changes
