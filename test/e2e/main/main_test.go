@@ -109,6 +109,7 @@ func TestUpdateOperatorPassword(t *testing.T) {
 }
 
 func TestUpdateEncryptionSecrets(t *testing.T) {
+	tutils.SkipForExposeType(t, ispnv1.ExposeTypeRoute)
 	t.Parallel()
 	// Create a resource without passing any config
 	spec := tutils.DefaultSpec(testKube)
@@ -483,6 +484,7 @@ func TestClientCertGeneratedTruststoreValidate(t *testing.T) {
 }
 
 func testClientCert(t *testing.T, initializer func(*v1.Infinispan) (v1.ClientCertType, *corev1.Secret, *corev1.Secret, *tls.Config)) {
+	tutils.SkipForExposeType(t, ispnv1.ExposeTypeRoute)
 	t.Parallel()
 	spec := tutils.DefaultSpec(testKube)
 	name := strcase.ToKebab(t.Name())

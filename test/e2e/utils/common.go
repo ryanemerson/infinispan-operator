@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 
 	ispnv1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
 	v1 "github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v1"
@@ -22,6 +23,15 @@ const (
 	keystoreSecretSuffix   = "keystore"
 	truststoreSecretSuffix = "truststore"
 )
+
+func SkipForExposeType(test *testing.T, types ...ispnv1.ExposeType) {
+	for _, t := range types {
+		if t == ExposeServiceType {
+			test.Skipf("Skipping %s as EXPOSE_SERVICE_TYPE=%s", test.Name(), ExposeServiceType)
+			return
+		}
+	}
+}
 
 func EndpointEncryption(name string) *ispnv1.EndpointEncryption {
 	return &ispnv1.EndpointEncryption{
