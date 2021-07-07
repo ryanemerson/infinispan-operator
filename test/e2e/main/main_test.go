@@ -24,6 +24,7 @@ import (
 	users "github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
+	sse "github.com/r3labs/sse/v2"
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -46,6 +47,17 @@ var log = logf.Log.WithName("main_test")
 
 func TestMain(m *testing.M) {
 	tutils.RunOperator(m, testKube)
+}
+
+func TestSSE(t *testing.T) {
+	client := sse.NewClient("http://127.0.0.1:11222/rest/v2/server/config?action=listen")
+
+	err := client.Subscribe("messages", func(msg *sse.Event) {
+		// Got some data!
+		fmt.Println(msg.Data)
+		fmt.Printf("Event Name=%s\n%s", msg.ID, string(msg.Data))
+	})
+	tutils.ExpectNoError(err)
 }
 
 func TestUpdateOperatorPassword(t *testing.T) {

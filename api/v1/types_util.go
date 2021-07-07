@@ -162,6 +162,10 @@ func (ispn *Infinispan) ApplyDefaults() {
 	} else if ispn.IsGeneratedSecret() {
 		ispn.Spec.Security.EndpointSecretName = ""
 	}
+
+	if ispn.Spec.ConfigListener.Enabled == nil {
+		ispn.Spec.ConfigListener.Enabled = pointer.BoolPtr(true)
+	}
 }
 
 func (ispn *Infinispan) ApplyMonitoringAnnotation() {
@@ -714,4 +718,12 @@ func (ispn *Infinispan) GetSiteTrustStoreFileName() string {
 		return consts.DefaultSiteTrustStoreFileName
 	}
 	return consts.GetWithDefault(tls.TrustStore.Filename, consts.DefaultSiteTrustStoreFileName)
+}
+
+func (ispn *Infinispan) IsConfigListenerEnabled() bool {
+	return ispn.Spec.ConfigListener.Enabled != nil && *ispn.Spec.ConfigListener.Enabled
+}
+
+func (ispn *Infinispan) GetConfigListenerName() string {
+	return fmt.Sprintf("%s-config-listener", ispn.Name)
 }

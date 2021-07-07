@@ -584,6 +584,13 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		return ctrl.Result{}, err
 	}
 
+	// Create the ConfigListener Deployment if enabled
+	if infinispan.IsConfigListenerEnabled() {
+		if err := r.ReconcileConfigListener(); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Create default cache if it doesn't exists.
 	if infinispan.IsCache() {
 		if existsCache, err := cluster.ExistsCache(consts.DefaultCacheName, podList.Items[0].Name); err != nil {
@@ -750,6 +757,12 @@ func (r *infinispanRequest) destroyResources() error {
 	err := r.upgradeInfinispan()
 	if err != nil {
 		return err
+	}
+
+	if r.infinispan.IsConfigListenerEnabled() {
+		if err = r.DeleteConfigListener(); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
 	}
 
 	err = r.Client.Delete(r.ctx,

@@ -17,7 +17,7 @@ import (
 	ispnv2 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	launcher "github.com/infinispan/infinispan-operator/launcher"
+	"github.com/infinispan/infinispan-operator/launcher/operator"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	routev1 "github.com/openshift/api/route/v1"
 	"gopkg.in/yaml.v2"
@@ -748,7 +748,7 @@ func runOperatorLocally(ctx context.Context, namespace string) {
 	_ = os.Setenv("KUBECONFIG", kube.FindKubeConfig())
 	_ = os.Setenv("OSDK_FORCE_RUN_MODE", "local")
 	_ = os.Setenv("OPERATOR_NAME", OperatorName)
-	launcher.Launch(launcher.Parameters{Ctx: ctx})
+	operator.NewWithContext(ctx, operator.Parameters{})
 }
 func (k TestKubernetes) DeleteCache(cache *ispnv2.Cache) {
 	err := k.Kubernetes.Client.Delete(context.TODO(), cache)

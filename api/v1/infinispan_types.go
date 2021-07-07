@@ -331,6 +331,13 @@ type InfinispanCloudEvents struct {
 	CacheEntriesTopic string `json:"cacheEntriesTopic,omitempty"`
 }
 
+type ConfigListenerSpec struct {
+	// If true, a dedicated pod is used to ensure that all config resources created on the Infinispan server have a matching CR resource
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Toggle Authentication",xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch"
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
 // InfinispanSpec defines the desired state of Infinispan
 type InfinispanSpec struct {
 	// The number of nodes in the Infinispan cluster.
@@ -359,6 +366,8 @@ type InfinispanSpec struct {
 	Dependencies *InfinispanExternalDependencies `json:"dependencies,omitempty"`
 	// +optional
 	ConfigMapName string `json:"configMapName,omitempty"`
+	// +optional
+	ConfigListener ConfigListenerSpec `json:"configListener,omitempty"`
 }
 
 type ConditionType string
