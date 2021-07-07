@@ -20,6 +20,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/apis/infinispan/v2alpha1"
 	cconsts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
 	ispnctrl "github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
+	"github.com/infinispan/infinispan-operator/pkg/http/sseclient"
 	users "github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
@@ -38,13 +39,28 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var testKube = tutils.NewTestKubernetes(os.Getenv("TESTING_CONTEXT"))
-var serviceAccountKube = tutils.NewTestKubernetes("")
+var testKube = &tutils.TestKubernetes{}
+var serviceAccountKube = &tutils.TestKubernetes{}
 
 var log = logf.Log.WithName("main_test")
 
-func TestMain(m *testing.M) {
-	tutils.RunOperator(m, testKube)
+// func TestMain(m *testing.M) {
+// 	tutils.RunOperator(m, testKube)
+// }
+
+func TestSSE(t *testing.T) {
+	events, err := sseclient.Stream("http://127.0.0.1:11222/rest/v2/container/config?action=listen")
+	if err != nil {
+		fmt.Println("Error:", err)
+		os.Exit(1)
+	}
+
+	for event := range events {
+		// var result map[string]interface{}
+		// err := yaml.Unmarshal(event.Data, &result)
+		// tutils.ExpectNoError(err)
+		fmt.Printf("Event Name=%s\n%s", event.Name, string(event.Data))
+	}
 }
 
 // Test operator and cluster version upgrade flow
