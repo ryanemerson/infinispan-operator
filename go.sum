@@ -386,8 +386,6 @@ github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPx
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0 h1:UBcNElsrwanuuMsnGSlYmtmgbb23qDR5dG+6X6Oo89I=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
-github.com/sirupsen/logrus v1.7.0 h1:ShrD1U9pZB12TX0cVy0DtePoCH97K8EtX+mg7ZARUtM=
-github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/soheilhy/cmux v0.1.4/go.mod h1:IM3LyeVVIOuxMH7sFAkER9+bJ4dT7Ms6E4xg4kGIyLM=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
 github.com/spf13/afero v1.1.2/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
@@ -716,7 +714,6 @@ k8s.io/api v0.19.2/go.mod h1:IQpK0zFQ1xc5iNIQPqzgoOwuFugaYHK4iCknlAQP9nI=
 k8s.io/api v0.19.4 h1:I+1I4cgJYuCDgiLNjKx7SLmIbwgj9w7N7Zr5vSIdwpo=
 k8s.io/api v0.19.4/go.mod h1:SbtJ2aHCItirzdJ36YslycFNzWADYH3tgOhvBEFtZAk=
 k8s.io/apiextensions-apiserver v0.18.3/go.mod h1:TMsNGs7DYpMXd+8MOCX8KzPOCx8fnZMoIGB24m03+JE=
-k8s.io/apiextensions-apiserver v0.19.2 h1:oG84UwiDsVDu7dlsGQs5GySmQHCzMhknfhFExJMz9tA=
 k8s.io/apiextensions-apiserver v0.19.2/go.mod h1:EYNjpqIAvNZe+svXVx9j4uBaVhTB4C94HkY3w058qcg=
 k8s.io/apiextensions-apiserver v0.19.4 h1:D9ak9T012tb3vcGFWYmbQuj9SCC8YM4zhA4XZqsAQC4=
 k8s.io/apiextensions-apiserver v0.19.4/go.mod h1:B9rpH/nu4JBCtuUp3zTTk8DEjZUupZTBEec7/2zNRYw=
