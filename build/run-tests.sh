@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-KUBECONFIG=${1-${HOME}/.kube/config}
-TEST_BUNDLE=${2-main}
+TEST_BUNDLE=${1-main}
 
 echo "Using KUBECONFIG '${KUBECONFIG}'"
 echo "Using test bundle '${TEST_BUNDLE}'"
 
+KUBECONFIG=${KUBECONFIG-${HOME}/.kube/config}
 PARALLEL_COUNT=${PARALLEL_COUNT:-1}
 VERSION=$(git describe --tags --always --dirty)
 GO_LDFLAGS="-X github.com/infinispan/infinispan-operator/version.Version=${VERSION}"
