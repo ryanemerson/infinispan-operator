@@ -15,9 +15,9 @@ import (
 	"github.com/go-logr/logr"
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
-	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan/resources"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
+	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
+	"github.com/infinispan/infinispan-operator/controllers/infinispan/resources"
 	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -116,15 +116,7 @@ type InfinispanReconciler struct {
 // +kubebuilder:rbac:groups=infinispan.org,resources=infinispans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infinispan.org,resources=infinispans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infinispan.org,resources=infinispans/finalizers,verbs=update
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Infinispan object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
+
 func (r *InfinispanReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info(fmt.Sprintf("+++++ Reconciling Infinispan. Operator Version: %s", version.Version))

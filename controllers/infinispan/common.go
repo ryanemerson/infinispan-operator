@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	appsv1 "k8s.io/api/apps/v1"

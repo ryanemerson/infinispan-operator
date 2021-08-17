@@ -8,8 +8,8 @@ import (
 	"time"
 
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
-	"github.com/infinispan/infinispan-operator/pkg/controller/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
+	"github.com/infinispan/infinispan-operator/controllers/constants"
+	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	ispnutil "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	"github.com/prometheus/common/log"
 	corev1 "k8s.io/api/core/v1"

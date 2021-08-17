@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
-	ispnctrl "github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
-	zero "github.com/infinispan/infinispan-operator/pkg/controller/zerocapacity"
+	ispnctrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
+	zero "github.com/infinispan/infinispan-operator/controllers/zerocapacity"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	corev1 "k8s.io/api/core/v1"

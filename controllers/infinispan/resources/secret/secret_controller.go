@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
-	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
-	"github.com/infinispan/infinispan-operator/pkg/controller/infinispan/resources"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
+	"github.com/infinispan/infinispan-operator/controllers/infinispan"
+	"github.com/infinispan/infinispan-operator/controllers/infinispan/resources"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"

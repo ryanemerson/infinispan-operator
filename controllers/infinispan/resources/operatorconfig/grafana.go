@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	rice "github.com/GeertJohan/go.rice"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	grafanav1alpha1 "github.com/infinispan/infinispan-operator/pkg/apis/integreatly/v1alpha1"
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
 	"github.com/infinispan/infinispan-operator/pkg/k8sutil"
 	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"

@@ -13,7 +13,7 @@ import (
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	v2 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	batchCtrl "github.com/infinispan/infinispan-operator/controllers"
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	users "github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
 	batchv1 "k8s.io/api/batch/v1"

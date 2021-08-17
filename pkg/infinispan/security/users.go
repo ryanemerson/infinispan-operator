@@ -5,7 +5,7 @@ import (
 	"errors"
 	"math/big"
 
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"gopkg.in/yaml.v2"
 )

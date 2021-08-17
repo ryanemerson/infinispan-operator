@@ -20,8 +20,8 @@ import (
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	infinispanv2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
-	consts "github.com/infinispan/infinispan-operator/pkg/controller/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/pkg/controller/infinispan"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
+	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -59,15 +59,7 @@ type batchResource struct {
 // +kubebuilder:rbac:groups=infinispan.org,resources=batches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infinispan.org,resources=batches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infinispan.org,resources=batches/finalizers,verbs=update
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Batch object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
+
 func (r *ReconcileBatch) Reconcile(batchCtx context.Context, request ctrl.Request) (ctrl.Result, error) {
 
 	reqLogger := r.Log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
