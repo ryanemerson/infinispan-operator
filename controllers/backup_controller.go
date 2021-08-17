@@ -11,7 +11,6 @@ import (
 	zero "github.com/infinispan/infinispan-operator/pkg/controller/zerocapacity"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
-	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -19,23 +18,22 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-var (
-	backupKubernetes *kube.Kubernetes
-	backupEventRec   record.EventRecorder
-	backupCtx        = context.Background()
-)
+// +kubebuilder:rbac:groups=infinispan.org,resources=backups,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infinispan.org,resources=backups/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=infinispan.org,resources=backups/finalizers,verbs=update
 
 const (
 	BackupControllerName = "backup-controller"
 	BackupDataMountPath  = "/opt/infinispan/backups"
 )
+
+var ctx = context.Background()
 
 // BackupReconciler reconciles a Backup object
 type BackupReconciler struct {
@@ -50,35 +48,15 @@ type backupResource struct {
 	scheme   *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=infinispan.org,resources=backups,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infinispan.org,resources=backups/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=infinispan.org,resources=backups/finalizers,verbs=update
-
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Backup object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
-func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-
-	// your logic here
-
-	return ctrl.Result{}, nil
-}
-
 // SetupWithManager sets up the controller with the Manager.
 func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	backupEventRec = mgr.GetEventRecorderFor(BackupControllerName)
+	backupEventRec := mgr.GetEventRecorderFor(BackupControllerName)
 	return zero.CreateController(BackupControllerName, &BackupReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }
 
 func (r *BackupReconciler) ResourceInstance(key types.NamespacedName, ctrl *zero.Controller) (zero.Resource, error) {
 	instance := &v2alpha1.Backup{}
-	if err := ctrl.Get(backupCtx, key, instance); err != nil {
+	if err := ctrl.Get(ctx, key, instance); err != nil {
 		return nil, err
 	}
 
@@ -141,7 +119,7 @@ func (r *backupResource) Transform() (bool, error) {
 
 func (r *backupResource) update(mutate func()) (bool, error) {
 	backup := r.instance
-	res, err := k8sctrlutil.CreateOrPatch(backupCtx, r.client, backup, func() error {
+	res, err := k8sctrlutil.CreateOrPatch(ctx, r.client, backup, func() error {
 		if backup.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("backup.infinispan.org"), backup.Name)
 		}
@@ -176,7 +154,7 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 
 func (r *backupResource) getOrCreatePvc() error {
 	pvc := &corev1.PersistentVolumeClaim{}
-	err := r.client.Get(backupCtx, types.NamespacedName{
+	err := r.client.Get(ctx, types.NamespacedName{
 		Name:      r.instance.Name,
 		Namespace: r.instance.Namespace,
 	}, pvc)
@@ -224,7 +202,7 @@ func (r *backupResource) getOrCreatePvc() error {
 	if err = controllerutil.SetControllerReference(r.instance, pvc, r.scheme); err != nil {
 		return err
 	}
-	if err = r.client.Create(backupCtx, pvc); err != nil {
+	if err = r.client.Create(ctx, pvc); err != nil {
 		return fmt.Errorf("Unable to create pvc: %w", err)
 	}
 	return nil

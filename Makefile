@@ -28,6 +28,9 @@ endif
 
 all: manager
 
+lint:
+	./build/run-lint.sh
+
 # Run tests
 test: generate fmt vet manifests
 	build/run-tests.sh main

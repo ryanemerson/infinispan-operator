@@ -10,24 +10,23 @@ import (
 	zero "github.com/infinispan/infinispan-operator/pkg/controller/zerocapacity"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
-	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// +kubebuilder:rbac:groups=infinispan.org,resources=restores,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infinispan.org,resources=restores/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=infinispan.org,resources=restores/finalizers,verbs=update
+
 var (
-	restoreKubernetes *kube.Kubernetes
-	restoreEventRec   record.EventRecorder
-	restoreCtx        = context.Background()
+	restoreCtx = context.Background()
 )
 
 // RestoreReconciler reconciles a Restore object
@@ -41,6 +40,12 @@ type restore struct {
 	instance *v2alpha1.Restore
 	client   client.Client
 	scheme   *runtime.Scheme
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	backupEventRec := mgr.GetEventRecorderFor(BackupControllerName)
+	return zero.CreateController(BackupControllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }
 
 func (r *RestoreReconciler) ResourceInstance(name types.NamespacedName, ctrl *zero.Controller) (zero.Resource, error) {
@@ -60,33 +65,6 @@ func (r *RestoreReconciler) ResourceInstance(name types.NamespacedName, ctrl *ze
 func (r *RestoreReconciler) Type() client.Object {
 	return &v2alpha1.Restore{}
 }
-
-// +kubebuilder:rbac:groups=infinispan.org,resources=restores,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infinispan.org,resources=restores/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=infinispan.org,resources=restores/finalizers,verbs=update
-
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Restore object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
-func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-
-	// your logic here
-
-	return ctrl.Result{}, nil
-}
-
-// // SetupWithManager sets up the controller with the Manager.
-// func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
-// 	return ctrl.NewControllerManagedBy(mgr).
-// 		For(&infinispanv2alpha1.Restore{}).
-// 		Complete(r)
-// }
 
 func (r *restore) AsMeta() metav1.Object {
 	return r.instance
@@ -136,7 +114,7 @@ func (r *restore) Transform() (bool, error) {
 
 func (r *restore) update(mutate func()) (bool, error) {
 	restore := r.instance
-	res, err := k8sctrlutil.CreateOrPatch(restoreCtx, r.client, restore, func() error {
+	res, err := controllerutil.CreateOrPatch(restoreCtx, r.client, restore, func() error {
 		if restore.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("restore.infinispan.org"), restore.Name)
 		}
@@ -209,10 +187,4 @@ func RestorePodLabels(backup, cluster string) map[string]string {
 	m := ispnctrl.ServiceLabels(cluster)
 	m["restore_cr"] = backup
 	return m
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	backupEventRec = mgr.GetEventRecorderFor(BackupControllerName)
-	return zero.CreateController(BackupControllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }

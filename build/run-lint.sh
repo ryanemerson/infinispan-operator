@@ -2,7 +2,7 @@
 
 . $(dirname "$0")/common.sh
 
-GOLANG_CI_LINT_VERSION=${1}
+GOLANG_CI_LINT_VERSION=${GOLANG_CI_LINT_VERSION-1.39.0}
 
 installGolangCILint() {
   printf "Installing golangci-lint ..."

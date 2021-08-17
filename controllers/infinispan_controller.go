@@ -66,24 +66,10 @@ const (
 	EventLoadBalancerUnsupported     = "LoadBalancerUnsupported"
 )
 
-// var log = logf.Log.WithName(ControllerName)
-var infinispanEventRec record.EventRecorder
-
-// Kubernetes object
-var kubernetes *kube.Kubernetes
-
-// // Add creates a new Infinispan Controller and adds it to the Manager. The Manager will set fields on the Controller
-// // and Start it when the Manager is Started.
-// func Add(mgr manager.Manager) error {
-// 	return add(mgr, newReconciler(mgr))
-// }
-
-// // newReconciler returns a new reconcile.Reconciler
-// func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-// 	kubernetes = kube.NewKubernetesFromController(mgr)
-// 	eventRec = mgr.GetEventRecorderFor(ControllerName)
-// 	return &ReconcileInfinispan{client: mgr.GetClient(), scheme: mgr.GetScheme()}
-// }
+var (
+	infinispanEventRec record.EventRecorder
+	kubernetes         *kube.Kubernetes
+)
 
 var InfinispanPredicate predicate.Funcs = predicate.Funcs{
 	CreateFunc: func(e event.CreateEvent) bool {
@@ -130,7 +116,6 @@ type InfinispanReconciler struct {
 // +kubebuilder:rbac:groups=infinispan.org,resources=infinispans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infinispan.org,resources=infinispans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infinispan.org,resources=infinispans/finalizers,verbs=update
-
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
