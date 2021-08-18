@@ -211,7 +211,7 @@ func waitForK8sResourceCleanup(name string) {
 
 	// If no Job pods available, then the pods have been garbage collected
 	err = wait.Poll(tutils.DefaultPollPeriod, tutils.TestTimeout, func() (bool, error) {
-		_, e := batchCtrl.GetJobPodName(name, tutils.Namespace, testKube.Kubernetes.Client)
+		_, e := batchCtrl.GetJobPodName(name, tutils.Namespace, testKube.Kubernetes.Client, ctx)
 		return e != nil, nil
 	})
 	tutils.ExpectNoError(err)
