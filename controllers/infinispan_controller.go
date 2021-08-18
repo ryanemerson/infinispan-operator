@@ -378,7 +378,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		return *result, err
 	}
 
-	cluster, err := ispnCtrl.NewCluster(infinispan, r.kubernetes)
+	cluster, err := NewCluster(infinispan, r.kubernetes)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

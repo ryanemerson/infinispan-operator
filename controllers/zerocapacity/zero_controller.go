@@ -12,7 +12,10 @@ import (
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
+	httpClient "github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
+	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http/curl"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
+	users "github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -169,7 +172,7 @@ func (z *Controller) Reconcile(ctx context.Context, request reconcile.Request) (
 		return reconcile.Result{}, fmt.Errorf("Unable to fetch CR '%s': %w", clusterName, err)
 	}
 
-	httpClient, err := ispnCtrl.NewHttpClient(infinispan, z.Kube)
+	httpClient, err := newHttpClient(infinispan, z.Kube)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -452,4 +455,20 @@ func (z *Controller) configureServer(name, namespace string, infinispan *v1.Infi
 		return nil, fmt.Errorf("Unable to create ConfigMap '%s': %w", clusterConfigName, err)
 	}
 	return configMap, nil
+}
+
+func newHttpClient(i *v1.Infinispan, kubernetes *kube.Kubernetes) (httpClient.HttpClient, error) {
+	pass, err := users.AdminPassword(i.GetAdminSecretName(), i.Namespace, kubernetes)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to retrieve opeator admin identities when creating HttpClient instance: %w", err)
+	}
+	httpConfig := httpClient.HttpConfig{
+		Credentials: &httpClient.Credentials{
+			Username: consts.DefaultOperatorUser,
+			Password: pass,
+		},
+		Namespace: i.Namespace,
+		Protocol:  "http",
+	}
+	return curl.New(httpConfig, kubernetes), nil
 }

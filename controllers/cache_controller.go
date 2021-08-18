@@ -5,33 +5,44 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
+	infinispanv2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
-	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
+	caches "github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
-	"honnef.co/go/tools/version"
+	"github.com/infinispan/infinispan-operator/version"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
-	infinispanv2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
-	ispnctrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 )
-
-var cacheKubernetes *kube.Kubernetes
 
 // CacheReconciler reconciles a Cache object
 type CacheReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	log        logr.Logger
+	scheme     *runtime.Scheme
+	kubernetes *kube.Kubernetes
+	eventRec   record.EventRecorder
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *CacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Client = mgr.GetClient()
+	r.log = ctrl.Log.WithName("controllers").WithName("Cache")
+	r.scheme = mgr.GetScheme()
+	r.kubernetes = kube.NewKubernetesFromController(mgr)
+	r.eventRec = mgr.GetEventRecorderFor(BatchControllerName)
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&infinispanv2alpha1.Cache{}).
+		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=infinispan.org,resources=caches,verbs=get;list;watch;create;update;patch;delete
@@ -40,13 +51,13 @@ type CacheReconciler struct {
 
 func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 
-	reqLogger := r.Log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	reqLogger := r.log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info(fmt.Sprintf("+++++ Reconciling Cache. Operator Version: %s", version.Version))
 	defer reqLogger.Info("----- End Reconciling Cache.")
 
 	// Fetch the Cache instance
 	instance := &infinispanv2alpha1.Cache{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.Client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -61,7 +72,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 
 	if instance.Spec.AdminAuth != nil {
 		reqLogger.Info("Ignoring and removing 'spec.AdminAuth' field. The operator's admin credentials are now used to perform cache operations")
-		_, err := controllerutil.CreateOrUpdate(context.TODO(), r.Client, instance, func() error {
+		_, err := controllerutil.CreateOrUpdate(ctx, r.Client, instance, func() error {
 			instance.Spec.AdminAuth = nil
 			return nil
 		})
@@ -73,7 +84,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 	// Fetch the Infinispan cluster info
 	ispnInstance := &infinispanv1.Infinispan{}
 	nsName := types.NamespacedName{Namespace: instance.Namespace, Name: instance.Spec.ClusterName}
-	err = r.Client.Get(context.TODO(), nsName, ispnInstance)
+	err = r.Client.Get(ctx, nsName, ispnInstance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			reqLogger.Error(err, fmt.Sprintf("Infinispan cluster %s not found", ispnInstance.Name))
@@ -90,9 +101,9 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 	}
 	// List the pods for this infinispan's deployment
 	podList := &corev1.PodList{}
-	labelSelector := labels.SelectorFromSet(ispnctrl.LabelsResource(ispnInstance.Name, ""))
+	labelSelector := labels.SelectorFromSet(LabelsResource(ispnInstance.Name, ""))
 	listOps := &client.ListOptions{Namespace: ispnInstance.GetClusterName(), LabelSelector: labelSelector}
-	err = r.Client.List(context.TODO(), podList, listOps)
+	err = r.Client.List(ctx, podList, listOps)
 	if err != nil || (len(podList.Items) == 0) {
 		reqLogger.Error(err, "failed to list pods")
 		return reconcile.Result{}, err
@@ -101,7 +112,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		return reconcile.Result{}, nil
 	}
 
-	cluster, err := ispnctrl.NewCluster(ispnInstance, cacheKubernetes)
+	cluster, err := NewCluster(ispnInstance, r.kubernetes)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -115,7 +126,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 			podName := podList.Items[0].Name
 			templateName := instance.Spec.TemplateName
 			if ispnInstance.Spec.Service.Type == infinispanv1.ServiceTypeCache && (templateName != "" || instance.Spec.Template != "") {
-				errTemplate := fmt.Errorf("Cannot create a cache with a template in a CacheService cluster")
+				errTemplate := fmt.Errorf("cannot create a cache with a template in a CacheService cluster")
 				reqLogger.Error(errTemplate, "Error creating cache")
 				return reconcile.Result{}, err
 			}
@@ -149,9 +160,9 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 
 	// Search the service associated to the cluster
 	serviceList := &corev1.ServiceList{}
-	labelSelector = labels.SelectorFromSet(ispnctrl.LabelsResource(ispnInstance.Name, "infinispan-service"))
+	labelSelector = labels.SelectorFromSet(LabelsResource(ispnInstance.Name, "infinispan-service"))
 	listOps = &client.ListOptions{Namespace: ispnInstance.Namespace, LabelSelector: labelSelector}
-	err = r.Client.List(context.TODO(), serviceList, listOps)
+	err = r.Client.List(ctx, serviceList, listOps)
 	if err != nil {
 		reqLogger.Error(err, "failed to select cluster service")
 		return reconcile.Result{}, err
@@ -165,19 +176,11 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 	statusUpdate = instance.SetCondition("Ready", metav1.ConditionTrue, "") || statusUpdate
 	if statusUpdate {
 		reqLogger.Info("Update CR status with connection info")
-		err = r.Client.Status().Update(context.TODO(), instance)
+		err = r.Client.Status().Update(ctx, instance)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Unable to update Cache %s status", instance.Name))
 			return reconcile.Result{}, err
 		}
 	}
 	return ctrl.Result{}, nil
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *CacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	cacheKubernetes = kube.NewKubernetesFromController(mgr)
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&infinispanv2alpha1.Cache{}).
-		Complete(r)
 }

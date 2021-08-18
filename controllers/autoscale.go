@@ -9,7 +9,6 @@ import (
 
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	ispnutil "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/prometheus/common/log"
@@ -82,7 +81,7 @@ func (r *infinispanRequest) autoscalerLoop() {
 			continue
 		}
 
-		cluster, err := ispnCtrl.NewCluster(&ispn, r.kubernetes)
+		cluster, err := NewCluster(&ispn, r.kubernetes)
 		if err != nil {
 			continue
 		}
