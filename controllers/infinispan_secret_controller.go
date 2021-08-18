@@ -1,4 +1,4 @@
-package secret
+package controllers
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/controllers/infinispan"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan/resources"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
@@ -19,93 +18,113 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
-	ControllerName            = "secret-controller"
 	EncryptClientCertPrefix   = "trust.cert."
 	EncryptClientCAName       = "trust.ca"
 	EncryptTruststorePassword = "password"
 )
 
-var ctx = context.Background()
-
 // ReconcileSecret reconciles a Secret object
-type ReconcileSecret struct {
-	// This client, initialized using mgr.Client() above, is a split client
-	// that reads objects from the cache and writes to the apiserver
+type SecretReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
-}
-
-type secretResource struct {
-	infinispan *ispnv1.Infinispan
-	client     client.Client
-	scheme     *runtime.Scheme
-	kube       *kube.Kubernetes
 	log        logr.Logger
+	scheme     *runtime.Scheme
+	kubernetes *kube.Kubernetes
 	eventRec   record.EventRecorder
 }
 
-func (r ReconcileSecret) ResourceInstance(infinispan *ispnv1.Infinispan, ctrl *resources.Controller, kube *kube.Kubernetes) resources.Resource {
-	return &secretResource{
-		infinispan: infinispan,
-		client:     r.Client,
-		scheme:     r.Scheme,
-		kube:       kube,
-		log:        r.Log,
-		eventRec:   ctrl.EventRec,
+// Struct for wrapping reconcile request data
+type secretRequest struct {
+	*SecretReconciler
+	infinispan *ispnv1.Infinispan
+	reqLogger  logr.Logger
+}
+
+func (r *SecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Client = mgr.GetClient()
+	r.log = ctrl.Log.WithName("controllers").WithName("Secret")
+	r.scheme = mgr.GetScheme()
+	r.kubernetes = kube.NewKubernetesFromController(mgr)
+	r.eventRec = mgr.GetEventRecorderFor("secret-controller")
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&ispnv1.Infinispan{}).
+		Owns(&corev1.Secret{}).
+		WithEventFilter(predicate.Funcs{
+			CreateFunc: func(e event.CreateEvent) bool {
+				switch e.Object.(type) {
+				case *corev1.Secret:
+					return false
+				}
+				return true
+			},
+			DeleteFunc: func(e event.DeleteEvent) bool {
+				switch e.Object.(type) {
+				case *ispnv1.Infinispan:
+					return false
+				}
+				return true
+			},
+		}).
+		Complete(r)
+}
+
+func (reconciler *SecretReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	reqLogger := reconciler.log.WithValues("Reconciling", "Secret", "Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	infinispan := &ispnv1.Infinispan{}
+	if err := reconciler.Get(ctx, request.NamespacedName, infinispan); err != nil {
+		if errors.IsNotFound(err) {
+			reqLogger.Info("Infinispan CR not found")
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		return reconcile.Result{}, fmt.Errorf("unable to fetch Infinispan CR %w", err)
 	}
-}
 
-func (r ReconcileSecret) Types() map[string]*resources.ReconcileType {
-	return map[string]*resources.ReconcileType{"Secret": {ObjectType: &corev1.Secret{}, GroupVersion: corev1.SchemeGroupVersion, GroupVersionSupported: true}}
-}
-
-func (r ReconcileSecret) EventsPredicate() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			return false
-		},
+	// Validate that Infinispan CR passed all preliminary checks
+	if !infinispan.IsConditionTrue(ispnv1.ConditionPrelimChecksPassed) {
+		reqLogger.Info("Infinispan CR not ready")
+		return reconcile.Result{}, nil
 	}
-}
 
-func (r *ReconcileSecret) SetupWithManager(mgr manager.Manager) error {
-	return resources.CreateController(ControllerName, r, mgr)
-}
+	r := &secretRequest{
+		SecretReconciler: reconciler,
+		infinispan:       infinispan,
+		reqLogger:        reqLogger,
+	}
 
-func (s *secretResource) Process() (reconcile.Result, error) {
 	// Reconcile Encryption Secrets
-	if result, err := s.reconcileTruststoreSecret(); result != nil {
+	if result, err := r.reconcileTruststoreSecret(); result != nil {
 		return *result, err
 	}
 
 	// Reconcile Credential Secrets
-	if err := s.reconcileAdminSecret(); err != nil {
+	if err := r.reconcileAdminSecret(); err != nil {
 		return reconcile.Result{}, err
 	}
 
 	// If the user has provided their own secret or authentication is disabled, do nothing
-	if !s.infinispan.IsAuthenticationEnabled() || !s.infinispan.IsGeneratedSecret() {
+	if !r.infinispan.IsAuthenticationEnabled() || !r.infinispan.IsGeneratedSecret() {
 		return reconcile.Result{}, nil
 	}
 
 	// Create the user identities secret if it doesn't already exist
-	secret, err := s.getSecret(s.infinispan.GetSecretName())
+	secret, err := r.getSecret(r.infinispan.GetSecretName())
 	if secret != nil || err != nil {
 		return reconcile.Result{}, err
 	}
-	return reconcile.Result{}, s.createUserIdentitiesSecret()
+	return reconcile.Result{}, r.createUserIdentitiesSecret()
 }
 
-func (s secretResource) createUserIdentitiesSecret() error {
+func (s *secretRequest) createUserIdentitiesSecret() error {
 	identities, err := security.GetUserCredentials()
 	if err != nil {
 		return err
@@ -113,7 +132,7 @@ func (s secretResource) createUserIdentitiesSecret() error {
 	return s.createSecret(s.infinispan.GetSecretName(), "infinispan-secret-identities", identities)
 }
 
-func (s secretResource) createSecret(name, label string, identities []byte) error {
+func (s *secretRequest) createSecret(name, label string, identities []byte) error {
 	secret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -128,18 +147,18 @@ func (s secretResource) createSecret(name, label string, identities []byte) erro
 		Data: map[string][]byte{consts.ServerIdentitiesFilename: identities},
 	}
 
-	s.log.Info(fmt.Sprintf("Creating Identities Secret %s", secret.Name))
-	_, err := k8sctrlutil.CreateOrUpdate(ctx, s.client, secret, func() error {
+	s.reqLogger.Info(fmt.Sprintf("Creating Identities Secret %s", secret.Name))
+	_, err := k8sctrlutil.CreateOrUpdate(ctx, s.Client, secret, func() error {
 		return k8sctrlutil.SetControllerReference(s.infinispan, secret, s.scheme)
 	})
 
 	if err != nil {
-		return fmt.Errorf("Unable to create identities secret: %w", err)
+		return fmt.Errorf("unable to create identities secret: %w", err)
 	}
 	return nil
 }
 
-func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
+func (s *secretRequest) reconcileTruststoreSecret() (*reconcile.Result, error) {
 	i := s.infinispan
 	if !i.IsClientCertEnabled() {
 		return nil, nil
@@ -156,15 +175,15 @@ func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
 		// It's not possible for client cert to be configured if no truststore secret is provided by the user
 		// as no certificates are available to be added to the server's truststore, resulting in no client's
 		// being able to authenticate with the server.
-		return &reconcile.Result{}, fmt.Errorf("Field 'clientCertSecretName' must be provided for '%s' or '%s' to be configured",
+		return &reconcile.Result{}, fmt.Errorf("field 'clientCertSecretName' must be provided for '%s' or '%s' to be configured",
 			ispnv1.ClientCertAuthenticate, ispnv1.ClientCertValidate)
 	}
 
-	if result, err := kube.LookupResource(trustSecret.Name, i.Namespace, trustSecret, s.client, s.log, s.eventRec); result != nil {
+	if result, err := kube.LookupResource(trustSecret.Name, i.Namespace, trustSecret, s.Client, s.reqLogger, s.eventRec); result != nil {
 		return result, err
 	}
 
-	_, err := k8sctrlutil.CreateOrPatch(ctx, s.client, trustSecret, func() error {
+	_, err := k8sctrlutil.CreateOrPatch(ctx, s.Client, trustSecret, func() error {
 		if trustSecret.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(corev1.Resource("secret"), i.GetTruststoreSecretName())
 		}
@@ -172,7 +191,7 @@ func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
 		_, truststoreExists := trustSecret.Data[consts.EncryptTruststoreKey]
 		if truststoreExists {
 			if _, ok := trustSecret.Data[consts.EncryptTruststorePasswordKey]; !ok {
-				return fmt.Errorf("The '%s' key must be provided when configuring an existing Truststore", consts.EncryptTruststorePasswordKey)
+				return fmt.Errorf("the '%s' key must be provided when configuring an existing Truststore", consts.EncryptTruststorePasswordKey)
 			}
 		} else {
 			caPem := trustSecret.Data[EncryptClientCAName]
@@ -208,7 +227,7 @@ func (s secretResource) reconcileTruststoreSecret() (*reconcile.Result, error) {
 	return nil, err
 }
 
-func (s secretResource) reconcileAdminSecret() error {
+func (s *secretRequest) reconcileAdminSecret() error {
 	adminSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      s.infinispan.GetAdminSecretName(),
@@ -216,7 +235,7 @@ func (s secretResource) reconcileAdminSecret() error {
 		},
 	}
 
-	_, err := k8sctrlutil.CreateOrPatch(ctx, s.client, adminSecret, func() error {
+	_, err := k8sctrlutil.CreateOrPatch(ctx, s.Client, adminSecret, func() error {
 		if adminSecret.CreationTimestamp.IsZero() {
 			identities, err := security.GetAdminCredentials()
 			if err != nil {
@@ -251,21 +270,21 @@ func (s secretResource) reconcileAdminSecret() error {
 	return err
 }
 
-func (s secretResource) addCliProperties(secret *corev1.Secret, password string) {
+func (s *secretRequest) addCliProperties(secret *corev1.Secret, password string) {
 	service := s.infinispan.GetServiceName()
 	url := fmt.Sprintf("http://%s:%s@%s:%d", consts.DefaultOperatorUser, url.QueryEscape(password), service, consts.InfinispanAdminPort)
 	properties := fmt.Sprintf("autoconnect-url=%s", url)
 	secret.Data[consts.CliPropertiesFilename] = []byte(properties)
 }
 
-func (s secretResource) addServiceMonitorProperties(secret *corev1.Secret, password string) {
+func (s *secretRequest) addServiceMonitorProperties(secret *corev1.Secret, password string) {
 	secret.Data[consts.AdminPasswordKey] = []byte(password)
 	secret.Data[consts.AdminUsernameKey] = []byte(consts.DefaultOperatorUser)
 }
 
-func (s secretResource) getSecret(name string) (*corev1.Secret, error) {
+func (s *secretRequest) getSecret(name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
-	err := s.client.Get(ctx, types.NamespacedName{Namespace: s.infinispan.Namespace, Name: name}, secret)
+	err := s.Client.Get(ctx, types.NamespacedName{Namespace: s.infinispan.Namespace, Name: name}, secret)
 	if err == nil {
 		return secret, nil
 	}
