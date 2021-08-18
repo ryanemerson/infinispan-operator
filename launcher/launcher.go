@@ -80,11 +80,7 @@ func Launch(p Parameters) {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.InfinispanReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Infinispan"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.InfinispanReconciler{}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Infinispan")
 		os.Exit(1)
 	}

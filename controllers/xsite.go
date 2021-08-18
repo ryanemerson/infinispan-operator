@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (r *InfinispanReconciler) applyLabelsToCoordinatorsPod(podList *corev1.PodList, siteLocations []string, cluster ispn.ClusterInterface) (*ispnv1.InfinispanCondition, error) {
+func (r *infinispanRequest) applyLabelsToCoordinatorsPod(podList *corev1.PodList, siteLocations []string, cluster ispn.ClusterInterface) (*ispnv1.InfinispanCondition, error) {
 	for _, item := range podList.Items {
 		cacheManagerInfo, err := cluster.GetCacheManagerInfo(consts.DefaultCacheManagerName, item.Name)
 		if err == nil {
@@ -21,7 +20,7 @@ func (r *InfinispanReconciler) applyLabelsToCoordinatorsPod(podList *corev1.PodL
 			if cacheManagerInfo.Coordinator {
 				if !ok || lab != strconv.FormatBool(cacheManagerInfo.Coordinator) {
 					item.Labels[consts.CoordinatorPodLabel] = strconv.FormatBool(cacheManagerInfo.Coordinator)
-					if err = r.Client.Update(context.TODO(), &item); err != nil {
+					if err = r.Client.Update(r.ctx, &item); err != nil {
 						return nil, err
 					}
 				}
@@ -49,7 +48,7 @@ func (r *InfinispanReconciler) applyLabelsToCoordinatorsPod(podList *corev1.PodL
 					// If present leave the label but false the value
 					if ok {
 						item.Labels[consts.CoordinatorPodLabel] = strconv.FormatBool(cacheManagerInfo.Coordinator)
-						if err = r.Client.Update(context.TODO(), &item); err != nil {
+						if err = r.Client.Update(r.ctx, &item); err != nil {
 							return nil, err
 						}
 					}

@@ -78,7 +78,7 @@ func (r *ReconcileConfig) SetupWithManager(mgr manager.Manager) error {
 
 func (c *configResource) Process() (reconcile.Result, error) {
 	// Don't update the ConfigMap if an update is about to be scheduled
-	if req, err := ispnctrl.IsUpgradeRequired(c.infinispan); req || err != nil {
+	if req, err := ispnctrl.IsUpgradeRequired(c.infinispan, c.kube); req || err != nil {
 		return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCreateResource}, nil
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/infinispan/infinispan-operator/controllers/constants"
 	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	ispnutil "github.com/infinispan/infinispan-operator/pkg/infinispan"
+	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/prometheus/common/log"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -23,7 +24,8 @@ var autoscaleThreadPool = struct {
 }{m: make(map[types.NamespacedName]int)}
 
 // Starting a go routine that does polling autoscaling on an Infinispan cluster
-func addAutoscalingEquipment(clusterNsn types.NamespacedName, r *InfinispanReconciler) {
+func (r *infinispanRequest) addAutoscalingEquipment() {
+	clusterNsn := r.req.NamespacedName
 	autoscaleThreadPool.Lock()
 	_, ok := autoscaleThreadPool.m[clusterNsn]
 	autoscaleThreadPool.Unlock()
@@ -31,11 +33,12 @@ func addAutoscalingEquipment(clusterNsn types.NamespacedName, r *InfinispanRecon
 		autoscaleThreadPool.Lock()
 		autoscaleThreadPool.m[clusterNsn] = 1
 		autoscaleThreadPool.Unlock()
-		go autoscalerLoop(clusterNsn, r)
+		go r.autoscalerLoop()
 	}
 }
 
-func autoscalerLoop(clusterNsn types.NamespacedName, r *InfinispanReconciler) {
+func (r *infinispanRequest) autoscalerLoop() {
+	clusterNsn := r.req.NamespacedName
 	log.Info(fmt.Sprintf("Starting loop for autoscaling on cluster %v", clusterNsn))
 	for {
 		time.Sleep(constants.DefaultMinimumAutoscalePollPeriod)
@@ -74,12 +77,12 @@ func autoscalerLoop(clusterNsn types.NamespacedName, r *InfinispanReconciler) {
 		// Data memory percent usage array, one value per pod
 		metricDataMemoryPercentUsed := map[string]int{}
 		podList := &corev1.PodList{}
-		err = kubernetes.ResourcesList(ispn.Namespace, LabelsResource(ispn.Name, ""), podList)
+		err = r.kubernetes.ResourcesList(ispn.Namespace, LabelsResource(ispn.Name, ""), podList)
 		if err != nil {
 			continue
 		}
 
-		cluster, err := ispnCtrl.NewCluster(&ispn, kubernetes)
+		cluster, err := ispnCtrl.NewCluster(&ispn, r.kubernetes)
 		if err != nil {
 			continue
 		}
@@ -98,7 +101,7 @@ func autoscalerLoop(clusterNsn types.NamespacedName, r *InfinispanReconciler) {
 				log.Error(err, "Unable to get DataMemoryUsed for pod", "podName", podName)
 			}
 		}
-		autoscaleOnPercentUsage(&metricDataMemoryPercentUsed, metricMinPodNum, &ispn)
+		autoscaleOnPercentUsage(&metricDataMemoryPercentUsed, metricMinPodNum, &ispn, r.kubernetes)
 	}
 }
 
@@ -116,7 +119,7 @@ func getMetricMinPodNum(podName string, cluster *ispnutil.Cluster) (int32, error
 	}
 	// We expect 1 value
 	if len(minNumOfNodes) != 1 {
-		return 0, fmt.Errorf("More than 1 value returned for minNumOfNodes")
+		return 0, fmt.Errorf("more than 1 value returned for minNumOfNodes")
 	}
 	ret := int32(0)
 	for _, v := range minNumOfNodes {
@@ -163,7 +166,7 @@ func getMetricDataMemoryPercentUsage(m *map[string]int, podName string, cluster 
 	return nil
 }
 
-func autoscaleOnPercentUsage(usage *map[string]int, minPodNum int32, ispn *infinispanv1.Infinispan) {
+func autoscaleOnPercentUsage(usage *map[string]int, minPodNum int32, ispn *infinispanv1.Infinispan, kubernetes *kube.Kubernetes) {
 	hiTh := ispn.Spec.Autoscale.MaxMemUsagePercent
 	loTh := ispn.Spec.Autoscale.MinMemUsagePercent
 	maxReplicas := ispn.Spec.Autoscale.MaxReplicas
