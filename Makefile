@@ -82,8 +82,12 @@ vet:
 	go vet ./...
 
 # Generate code
-generate: controller-gen
+generate: controller-gen rice
 	$(CONTROLLER_GEN) object paths="./..."
+# Generate rice-box files and fix timestamp value
+	$(RICE) embed-go -i controllers/dependencies.go
+	find . -type f -name 'rice-box.go' -exec sed -i "s|time.Unix(.*, 0)|time.Unix(1620137619, 0)|" {} \;
+
 
 # Build the docker image
 docker-build: test
@@ -92,6 +96,11 @@ docker-build: test
 # Push the docker image
 docker-push:
 	docker push ${IMG}
+
+# Download Rice locally if necessary
+RICE = $(shell pwd)/bin/rice
+rice:
+	$(call go-get-tool,$(RICE),github.com/GeertJohan/go.rice/rice@v1.0.2)
 
 # Download controller-gen locally if necessary
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen

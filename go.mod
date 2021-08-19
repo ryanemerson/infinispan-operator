@@ -31,3 +31,5 @@ replace k8s.io/client-go => k8s.io/client-go v0.19.4
 replace sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.7.0
 
 replace k8s.io/client-go/plugin => k8s.io/client-go/plugin v0.19.4
+
+replace github.com/go-playground/validator/v10 => github.com/go-playground/validator/v10 v10.8.0
