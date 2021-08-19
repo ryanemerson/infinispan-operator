@@ -11,7 +11,6 @@ import (
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/controllers/infinispan"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan/resources"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -43,7 +42,7 @@ type ServiceReconciler struct {
 	scheme         *runtime.Scheme
 	kube           *kube.Kubernetes
 	eventRec       record.EventRecorder
-	supportedTypes map[string]*resources.ReconcileType
+	supportedTypes map[string]*reconcileType
 }
 
 type serviceRequest struct {
@@ -59,7 +58,7 @@ func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.scheme = mgr.GetScheme()
 	r.kube = kube.NewKubernetesFromController(mgr)
 	r.eventRec = mgr.GetEventRecorderFor("service-controller")
-	r.supportedTypes = map[string]*resources.ReconcileType{
+	r.supportedTypes = map[string]*reconcileType{
 		consts.ExternalTypeService: {ObjectType: &corev1.Service{}, GroupVersion: corev1.SchemeGroupVersion, GroupVersionSupported: true},
 		consts.ExternalTypeRoute:   {ObjectType: &routev1.Route{}, GroupVersion: routev1.SchemeGroupVersion, GroupVersionSupported: false},
 		consts.ExternalTypeIngress: {ObjectType: &ingressv1.Ingress{}, GroupVersion: schema.GroupVersion{Group: "networking.k8s.io", Version: "v1"}, GroupVersionSupported: false},
@@ -160,12 +159,12 @@ func (reconciler *ServiceReconciler) Reconcile(ctx context.Context, request reco
 			}
 			externalExposeType = consts.ExternalTypeService
 		case ispnv1.ExposeTypeRoute:
-			if isTypeSupported(consts.ExternalTypeRoute) {
+			if reconciler.isTypeSupported(consts.ExternalTypeRoute) {
 				if err := s.reconcileResource(computeRoute(s.infinispan)); err != nil {
 					return reconcile.Result{}, err
 				}
 				externalExposeType = consts.ExternalTypeRoute
-			} else if isTypeSupported(consts.ExternalTypeIngress) {
+			} else if reconciler.isTypeSupported(consts.ExternalTypeIngress) {
 				if err := s.reconcileResource(computeIngress(s.infinispan)); err != nil {
 					return reconcile.Result{}, err
 				}
@@ -277,7 +276,7 @@ func (s serviceRequest) cleanupExternalExpose(excludeKind string) error {
 }
 
 func (s serviceRequest) reconcileServiceMonitor(service *corev1.Service) (reconcile.Result, error) {
-	if !isTypeSupported(consts.ServiceMonitorType) {
+	if !s.isTypeSupported(consts.ServiceMonitorType) {
 		return reconcile.Result{}, nil
 	}
 
@@ -625,4 +624,8 @@ func computeServiceMonitor(ispn *ispnv1.Infinispan) *monitoringv1.ServiceMonitor
 
 func ExternalServiceLabels(name string) map[string]string {
 	return infinispan.LabelsResource(name, "infinispan-service-external")
+}
+
+func (reconciler *ServiceReconciler) isTypeSupported(kind string) bool {
+	return reconciler.supportedTypes[kind].GroupVersionSupported
 }

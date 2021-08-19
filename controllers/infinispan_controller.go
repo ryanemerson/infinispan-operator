@@ -16,7 +16,6 @@ import (
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan/resources"
 	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -64,23 +63,14 @@ const (
 	EventLoadBalancerUnsupported     = "LoadBalancerUnsupported"
 )
 
-var supportedTypes = map[string]*resources.ReconcileType{
-	consts.ExternalTypeRoute:   {ObjectType: &routev1.Route{}, GroupVersion: routev1.SchemeGroupVersion, GroupVersionSupported: false},
-	consts.ExternalTypeIngress: {ObjectType: &ingressv1.Ingress{}, GroupVersion: ingressv1.SchemeGroupVersion, GroupVersionSupported: false},
-	consts.ServiceMonitorType:  {ObjectType: &monitoringv1.ServiceMonitor{}, GroupVersion: monitoringv1.SchemeGroupVersion, GroupVersionSupported: false},
-}
-
-func isTypeSupported(kind string) bool {
-	return supportedTypes[kind].GroupVersionSupported
-}
-
 // InfinispanReconciler reconciles a Infinispan object
 type InfinispanReconciler struct {
 	client.Client
-	log        logr.Logger
-	scheme     *runtime.Scheme
-	kubernetes *kube.Kubernetes
-	eventRec   record.EventRecorder
+	log            logr.Logger
+	scheme         *runtime.Scheme
+	kubernetes     *kube.Kubernetes
+	eventRec       record.EventRecorder
+	supportedTypes map[string]*reconcileType
 }
 
 // Struct for wrapping reconcile request data
@@ -99,6 +89,11 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
 	r.eventRec = mgr.GetEventRecorderFor(ControllerName)
+	r.supportedTypes = map[string]*reconcileType{
+		consts.ExternalTypeRoute:   {ObjectType: &routev1.Route{}, GroupVersion: routev1.SchemeGroupVersion, GroupVersionSupported: false},
+		consts.ExternalTypeIngress: {ObjectType: &ingressv1.Ingress{}, GroupVersion: ingressv1.SchemeGroupVersion, GroupVersionSupported: false},
+		consts.ServiceMonitorType:  {ObjectType: &monitoringv1.ServiceMonitor{}, GroupVersion: monitoringv1.SchemeGroupVersion, GroupVersionSupported: false},
+	}
 
 	ctx := context.TODO()
 	var err error
@@ -122,14 +117,14 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&infinispanv1.Infinispan{})
 
-	for index, obj := range supportedTypes {
+	for _, obj := range r.supportedTypes {
 		// Validate that GroupVersion is supported on runtime platform
 		ok, err := r.kubernetes.IsGroupVersionSupported(obj.GroupVersion.String(), obj.Kind())
 		if err != nil {
 			log.Error(err, fmt.Sprintf("Failed to check if GVK '%s' is supported", obj.GroupVersionKind()))
 			continue
 		}
-		supportedTypes[index].GroupVersionSupported = ok
+		obj.GroupVersionSupported = ok
 	}
 
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
@@ -210,7 +205,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	err := r.update(func() {
 		// Apply defaults and endpoint encryption settings if not already set
 		infinispan.ApplyDefaults()
-		if isTypeSupported(consts.ServiceMonitorType) {
+		if r.isTypeSupported(consts.ServiceMonitorType) {
 			infinispan.ApplyMonitoringAnnotation()
 		}
 		infinispan.Spec.Affinity = podAffinity(infinispan, PodLabels(infinispan.Name))
@@ -485,13 +480,13 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 				}
 			}
 		case infinispanv1.ExposeTypeRoute:
-			if isTypeSupported(consts.ExternalTypeRoute) {
+			if r.isTypeSupported(consts.ExternalTypeRoute) {
 				externalRoute := &routev1.Route{}
 				if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalRoute, r.Client, reqLogger, reconciler.eventRec); result != nil {
 					return *result, err
 				}
 				exposeAddress = externalRoute.Spec.Host
-			} else if isTypeSupported(consts.ExternalTypeIngress) {
+			} else if r.isTypeSupported(consts.ExternalTypeIngress) {
 				externalIngress := &ingressv1.Ingress{}
 				if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalIngress, r.Client, reqLogger, reconciler.eventRec); result != nil {
 					return *result, err
@@ -639,7 +634,7 @@ func (r *infinispanRequest) destroyResources() error {
 		return err
 	}
 
-	if isTypeSupported(consts.ExternalTypeRoute) {
+	if r.isTypeSupported(consts.ExternalTypeRoute) {
 		err = r.Client.Delete(r.ctx,
 			&routev1.Route{
 				ObjectMeta: metav1.ObjectMeta{
@@ -650,7 +645,7 @@ func (r *infinispanRequest) destroyResources() error {
 		if err != nil && !errors.IsNotFound(err) {
 			return err
 		}
-	} else if isTypeSupported(consts.ExternalTypeIngress) {
+	} else if r.isTypeSupported(consts.ExternalTypeIngress) {
 		err = r.Client.Delete(r.ctx,
 			&ingressv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1637,4 +1632,8 @@ func HashMap(m map[string][]byte) string {
 		hash.Write(v)
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func (reconciler *InfinispanReconciler) isTypeSupported(kind string) bool {
+	return reconciler.supportedTypes[kind].GroupVersionSupported
 }
