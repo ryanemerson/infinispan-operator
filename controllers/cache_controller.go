@@ -39,7 +39,7 @@ func (r *CacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.log = ctrl.Log.WithName("controllers").WithName("Cache")
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
-	r.eventRec = mgr.GetEventRecorderFor(BatchControllerName)
+	r.eventRec = mgr.GetEventRecorderFor("cache-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infinispanv2alpha1.Cache{}).
 		Complete(r)

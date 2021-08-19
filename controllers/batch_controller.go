@@ -27,10 +27,9 @@ import (
 )
 
 const (
-	BatchControllerName = "batch-controller"
-	BatchFilename       = "batch"
-	BatchVolumeName     = "batch-volume"
-	BatchVolumeRoot     = "/etc/batch"
+	BatchFilename   = "batch"
+	BatchVolumeName = "batch-volume"
+	BatchVolumeRoot = "/etc/batch"
 )
 
 // BatchReconciler reconciles a Batch object
@@ -57,7 +56,7 @@ func (r *BatchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.log = ctrl.Log.WithName("controllers").WithName("Batch")
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
-	r.eventRec = mgr.GetEventRecorderFor(BatchControllerName)
+	r.eventRec = mgr.GetEventRecorderFor("batch-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v2.Batch{}).Owns(&batchv1.Job{}).
 		Complete(r)
