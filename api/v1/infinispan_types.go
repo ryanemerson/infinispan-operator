@@ -210,6 +210,15 @@ const (
 	CrossSiteExposeTypeClusterIP = CrossSiteExposeType(corev1.ServiceTypeClusterIP)
 )
 
+// CrossSiteSchemeType specifies the supported url scheme's allowed in InfinispanSiteLocationSpec.URL
+type CrossSiteSchemeType string
+
+const (
+	CrossSiteSchemeTypeKubernetes = "kubernetes"
+	CrossSiteSchemeTypeMinikube   = "minikube"
+	CrossSiteSchemeTypeOpenShift  = "openshift"
+)
+
 // ExposeSpec describe how Infinispan will be exposed externally
 type ExposeSpec struct {
 	// Type specifies different exposition methods for data grid

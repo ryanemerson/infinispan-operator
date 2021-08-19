@@ -18,6 +18,7 @@ import (
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
+	"github.com/infinispan/infinispan-operator/controllers"
 	cconsts "github.com/infinispan/infinispan-operator/controllers/constants"
 	ispnctrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	users "github.com/infinispan/infinispan-operator/pkg/infinispan/security"
@@ -158,7 +159,7 @@ func TestUpdateEncryptionSecrets(t *testing.T) {
 	}
 
 	keystoreSecret = testKube.GetSecret(keystoreSecret.Name, keystoreSecret.Namespace)
-	keystoreSecret.Data[ispnctrl.EncryptKeystoreName] = newKeystore
+	keystoreSecret.Data[controllers.EncryptKeystoreName] = newKeystore
 	testKube.UpdateSecret(keystoreSecret)
 
 	truststoreSecret = testKube.GetSecret(truststoreSecret.Name, truststoreSecret.Namespace)

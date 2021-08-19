@@ -430,9 +430,10 @@ func (z *Controller) configureServer(name, namespace string, infinispan *v1.Infi
 		"org.infinispan.server.core.backup": "debug",
 	}
 
-	if result, err := ispnCtrl.ConfigureServerEncryption(infinispan, config, z.Client, z.Log, z.EventRec); result != nil {
-		return nil, fmt.Errorf("Unable to configure zero-capacity encryption: %w", err)
-	}
+	// TODO reinstate once zero_controller migrated to controllers. Avoids cyclic dependency
+	// if result, err := controllers.ConfigureServerEncryption(infinispan, config, z.Client, z.Log, z.EventRec); result != nil {
+	// 	return nil, fmt.Errorf("Unable to configure zero-capacity encryption: %w", err)
+	// }
 
 	yaml, err = config.Yaml()
 	if err != nil {

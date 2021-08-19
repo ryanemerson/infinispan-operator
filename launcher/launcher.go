@@ -18,7 +18,6 @@ import (
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	infinispanv2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers"
-	configController "github.com/infinispan/infinispan-operator/controllers/infinispan/resources/config"
 	operatorConfigController "github.com/infinispan/infinispan-operator/controllers/infinispan/resources/operatorconfig"
 	grafanav1alpha1 "github.com/infinispan/infinispan-operator/pkg/apis/integreatly/v1alpha1"
 	routev1 "github.com/openshift/api/route/v1"
@@ -117,11 +116,7 @@ func Launch(p Parameters) {
 		os.Exit(1)
 	}
 
-	if err = (&configController.ReconcileConfig{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Config"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.ConfigReconciler{}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Config")
 		os.Exit(1)
 	}

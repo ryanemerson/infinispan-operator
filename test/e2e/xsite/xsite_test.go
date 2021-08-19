@@ -7,7 +7,6 @@ import (
 
 	"github.com/iancoleman/strcase"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan/resources/config"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
 	"github.com/stretchr/testify/assert"
@@ -106,26 +105,26 @@ func TestCrossSiteViewInternal(t *testing.T) {
 func TestCrossSiteViewKubernetesNodePort(t *testing.T) {
 	// Cross-Site between clusters will need to setup two instances of the Kind for Travis CI
 	// Not be able to test on the separate OCP/OKD instance (probably with AWS/Azure LoadBalancer support only)
-	testCrossSiteView(t, true, config.SchemeTypeKubernetes, ispnv1.CrossSiteExposeTypeNodePort, 0)
+	testCrossSiteView(t, true, ispnv1.CrossSiteSchemeTypeKubernetes, ispnv1.CrossSiteExposeTypeNodePort, 0)
 }
 
 func TestCrossSiteViewOpenshiftNodePort(t *testing.T) {
-	testCrossSiteView(t, true, config.SchemeTypeOpenShift, ispnv1.CrossSiteExposeTypeNodePort, 0)
+	testCrossSiteView(t, true, ispnv1.CrossSiteSchemeTypeOpenShift, ispnv1.CrossSiteExposeTypeNodePort, 0)
 }
 
 func TestCrossSiteViewKubernetesLoadBalancer(t *testing.T) {
-	testCrossSiteView(t, true, config.SchemeTypeKubernetes, ispnv1.CrossSiteExposeTypeLoadBalancer, 0)
+	testCrossSiteView(t, true, ispnv1.CrossSiteSchemeTypeKubernetes, ispnv1.CrossSiteExposeTypeLoadBalancer, 0)
 }
 
 func TestCrossSiteViewOpenshiftLoadBalancer(t *testing.T) {
-	testCrossSiteView(t, true, config.SchemeTypeOpenShift, ispnv1.CrossSiteExposeTypeLoadBalancer, 0)
+	testCrossSiteView(t, true, ispnv1.CrossSiteSchemeTypeOpenShift, ispnv1.CrossSiteExposeTypeLoadBalancer, 0)
 }
 
 func TestCrossSiteViewLoadBalancerWithPort(t *testing.T) {
-	testCrossSiteView(t, true, config.SchemeTypeOpenShift, ispnv1.CrossSiteExposeTypeLoadBalancer, 1443)
+	testCrossSiteView(t, true, ispnv1.CrossSiteSchemeTypeOpenShift, ispnv1.CrossSiteExposeTypeLoadBalancer, 1443)
 }
 
-func testCrossSiteView(t *testing.T, isMultiCluster bool, schemeType string, exposeType ispnv1.CrossSiteExposeType, exposePort int32) {
+func testCrossSiteView(t *testing.T, isMultiCluster bool, schemeType ispnv1.CrossSiteSchemeType, exposeType ispnv1.CrossSiteExposeType, exposePort int32) {
 	tesKubes := map[string]*crossSiteKubernetes{"xsite1": {}, "xsite2": {}}
 	clientConfig := clientcmd.GetConfigFromFileOrDie(kube.FindKubeConfig())
 
@@ -138,13 +137,13 @@ func testCrossSiteView(t *testing.T, isMultiCluster bool, schemeType string, exp
 			tutils.ExpectNoError(err)
 			testKube.apiServer = apiServerUrl.Host
 		}
-		if schemeType == config.SchemeTypeKubernetes {
+		if schemeType == ispnv1.CrossSiteSchemeTypeKubernetes {
 			tesKubes["xsite1"].kube.CreateSecret(crossSiteCertificateSecret("xsite2", tesKubes["xsite1"].namespace, clientConfig, tesKubes["xsite2"].context))
 			tesKubes["xsite2"].kube.CreateSecret(crossSiteCertificateSecret("xsite1", tesKubes["xsite2"].namespace, clientConfig, tesKubes["xsite1"].context))
 
 			defer tesKubes["xsite1"].kube.DeleteSecret(crossSiteCertificateSecret("xsite2", tesKubes["xsite1"].namespace, clientConfig, tesKubes["xsite2"].context))
 			defer tesKubes["xsite2"].kube.DeleteSecret(crossSiteCertificateSecret("xsite1", tesKubes["xsite2"].namespace, clientConfig, tesKubes["xsite1"].context))
-		} else if schemeType == config.SchemeTypeOpenShift {
+		} else if schemeType == ispnv1.CrossSiteSchemeTypeOpenShift {
 			tokenSecretXsite1, err := kube.LookupServiceAccountTokenSecret("xsite1", tesKubes["xsite1"].namespace, tesKubes["xsite1"].kube.Kubernetes.Client)
 			tutils.ExpectNoError(err)
 			tokenSecretXsite2, err := kube.LookupServiceAccountTokenSecret("xsite2", tesKubes["xsite2"].namespace, tesKubes["xsite2"].kube.Kubernetes.Client)
