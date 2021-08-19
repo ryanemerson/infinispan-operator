@@ -54,7 +54,6 @@ const (
 	EncryptTruststoreVolumeName = "encrypt-trust-volume"
 	IdentitiesVolumeName        = "identities-volume"
 	AdminIdentitiesVolumeName   = "admin-identities-volume"
-	ControllerName              = "controller_infinispan"
 
 	EventReasonPrelimChecksFailed    = "PrelimChecksFailed"
 	EventReasonLowPersistenceStorage = "LowPersistenceStorage"
@@ -88,7 +87,7 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.log = ctrl.Log.WithName("controllers").WithName("Infinispan")
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
-	r.eventRec = mgr.GetEventRecorderFor(ControllerName)
+	r.eventRec = mgr.GetEventRecorderFor("controller-infinispan")
 	r.supportedTypes = map[string]*reconcileType{
 		consts.ExternalTypeRoute:   {ObjectType: &routev1.Route{}, GroupVersion: routev1.SchemeGroupVersion, GroupVersionSupported: false},
 		consts.ExternalTypeIngress: {ObjectType: &ingressv1.Ingress{}, GroupVersion: ingressv1.SchemeGroupVersion, GroupVersionSupported: false},

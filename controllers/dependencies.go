@@ -81,7 +81,7 @@ func applyExternalArtifactsDownload(ispn *infinispanv1.Infinispan, spec *corev1.
 }
 
 func externalArtifactsExtractCommand(ispn *infinispanv1.Infinispan) (string, error) {
-	box, err := rice.FindBox("templates")
+	box, err := rice.FindBox("resources")
 	if err != nil {
 		return "", err
 	}

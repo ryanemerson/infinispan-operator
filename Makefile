@@ -85,7 +85,7 @@ vet:
 generate: controller-gen rice
 	$(CONTROLLER_GEN) object paths="./..."
 # Generate rice-box files and fix timestamp value
-	$(RICE) embed-go -i controllers/dependencies.go
+	$(RICE) embed-go -i controllers/dependencies.go -i controllers/grafana.go
 	find . -type f -name 'rice-box.go' -exec sed -i "s|time.Unix(.*, 0)|time.Unix(1620137619, 0)|" {} \;
 
 

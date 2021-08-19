@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/controllers/infinispan"
@@ -42,7 +41,7 @@ type ConfigReconciler struct {
 // Struct for wrapping reconcile request data
 type configRequest struct {
 	*ConfigReconciler
-	infinispan *ispnv1.Infinispan
+	infinispan *v1.Infinispan
 	reqLogger  logr.Logger
 }
 
@@ -54,12 +53,12 @@ func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.eventRec = mgr.GetEventRecorderFor("config-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ispnv1.Infinispan{}).
+		For(&v1.Infinispan{}).
 		Owns(&corev1.ConfigMap{}).
 		WithEventFilter(predicate.Funcs{
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				switch e.Object.(type) {
-				case *ispnv1.Infinispan:
+				case *v1.Infinispan:
 					return false
 				}
 				return true
@@ -70,7 +69,7 @@ func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := reconciler.log.WithValues("Reconciling", "Secret", "Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	infinispan := &ispnv1.Infinispan{}
+	infinispan := &v1.Infinispan{}
 	if err := reconciler.Get(ctx, request.NamespacedName, infinispan); err != nil {
 		if errors.IsNotFound(err) {
 			reqLogger.Info("Infinispan CR not found")
@@ -81,7 +80,7 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 	}
 
 	// Validate that Infinispan CR passed all preliminary checks
-	if !infinispan.IsConditionTrue(ispnv1.ConditionPrelimChecksPassed) {
+	if !infinispan.IsConditionTrue(v1.ConditionPrelimChecksPassed) {
 		reqLogger.Info("Infinispan CR not ready")
 		return reconcile.Result{}, nil
 	}
@@ -98,7 +97,7 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 	}
 
 	// Don't update the configMap if an update is in progress
-	if infinispan.IsConditionTrue(ispnv1.ConditionUpgrade) {
+	if infinispan.IsConditionTrue(v1.ConditionUpgrade) {
 		return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCreateResource}, nil
 	}
 
@@ -141,7 +140,7 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 	lsConfigMap := infinispan.LabelsResource(name, "infinispan-configmap-configuration")
 
 	var roleMapper string
-	if r.infinispan.IsClientCertEnabled() && r.infinispan.Spec.Security.EndpointEncryption.ClientCert == ispnv1.ClientCertAuthenticate {
+	if r.infinispan.IsClientCertEnabled() && r.infinispan.Spec.Security.EndpointEncryption.ClientCert == v1.ClientCertAuthenticate {
 		roleMapper = "commonName"
 	} else {
 		roleMapper = "cluster"
