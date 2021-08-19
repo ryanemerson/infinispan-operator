@@ -20,7 +20,6 @@ import (
 	"github.com/infinispan/infinispan-operator/controllers"
 	configController "github.com/infinispan/infinispan-operator/controllers/infinispan/resources/config"
 	operatorConfigController "github.com/infinispan/infinispan-operator/controllers/infinispan/resources/operatorconfig"
-	serviceController "github.com/infinispan/infinispan-operator/controllers/infinispan/resources/service"
 	grafanav1alpha1 "github.com/infinispan/infinispan-operator/pkg/apis/integreatly/v1alpha1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -113,11 +112,7 @@ func Launch(p Parameters) {
 		os.Exit(1)
 	}
 
-	if err = (&serviceController.ReconcileService{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Service"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.ServiceReconciler{}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Service")
 		os.Exit(1)
 	}
