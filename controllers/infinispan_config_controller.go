@@ -8,7 +8,6 @@ import (
 	"github.com/go-logr/logr"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan"
 	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
@@ -137,7 +136,7 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 	name := r.infinispan.Name
 	namespace := r.infinispan.Namespace
 
-	lsConfigMap := infinispan.LabelsResource(name, "infinispan-configmap-configuration")
+	lsConfigMap := LabelsResource(name, "infinispan-configmap-configuration")
 
 	var roleMapper string
 	if r.infinispan.IsClientCertEnabled() && r.infinispan.Spec.Security.EndpointEncryption.ClientCert == v1.ClientCertAuthenticate {

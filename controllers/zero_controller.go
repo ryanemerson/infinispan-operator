@@ -10,7 +10,6 @@ import (
 	"github.com/go-logr/logr"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http/curl"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
@@ -212,7 +211,7 @@ func (z *zeroCapacityController) initializeResources(request reconcile.Request, 
 	}
 
 	podList := &corev1.PodList{}
-	podLabels := ispnCtrl.PodLabels(infinispan.Name)
+	podLabels := PodLabels(infinispan.Name)
 	if err := z.Kube.ResourcesList(infinispan.Namespace, podLabels, podList); err != nil {
 		z.Log.Error(err, "Failed to list pods")
 		return reconcile.Result{}, err
@@ -312,7 +311,7 @@ func (z *zeroCapacityController) isZeroPodReady(request reconcile.Request) bool 
 }
 
 func (z *zeroCapacityController) zeroPodSpec(name, namespace, configMap string, podSecurityCtx *corev1.PodSecurityContext, ispn *v1.Infinispan, zeroSpec *zeroCapacitySpec) (*corev1.Pod, error) {
-	podResources, err := ispnCtrl.PodResources(zeroSpec.Container)
+	podResources, err := PodResources(zeroSpec.Container)
 	if err != nil {
 		return nil, err
 	}
@@ -330,24 +329,24 @@ func (z *zeroCapacityController) zeroPodSpec(name, namespace, configMap string, 
 			Containers: []corev1.Container{{
 				Image:          ispn.ImageName(),
 				Name:           name,
-				Env:            ispnCtrl.PodEnv(ispn, nil),
-				LivenessProbe:  ispnCtrl.PodLivenessProbe(),
-				Ports:          ispnCtrl.PodPorts(),
-				ReadinessProbe: ispnCtrl.PodReadinessProbe(),
+				Env:            PodEnv(ispn, nil),
+				LivenessProbe:  PodLivenessProbe(),
+				Ports:          PodPorts(),
+				ReadinessProbe: PodReadinessProbe(),
 				Resources:      *podResources,
 				VolumeMounts: []corev1.VolumeMount{
 					{
-						Name:      ispnCtrl.ConfigVolumeName,
+						Name:      ConfigVolumeName,
 						MountPath: consts.ServerConfigRoot,
 					},
 					{
-						Name:      ispnCtrl.AdminIdentitiesVolumeName,
+						Name:      AdminIdentitiesVolumeName,
 						MountPath: consts.ServerAdminIdentitiesRoot,
 					},
 					// Utilise Ephemeral vol as we're only interested in data related to CR
 					{
 						Name:      dataVolName,
-						MountPath: ispnCtrl.DataMountPath,
+						MountPath: DataMountPath,
 					},
 					// Mount configured volume at /zero path so that any created content is stored independent of server data
 					{
@@ -360,7 +359,7 @@ func (z *zeroCapacityController) zeroPodSpec(name, namespace, configMap string, 
 			Volumes: []corev1.Volume{
 				// Volume for mounting zero-capacity yaml configmap
 				{
-					Name: ispnCtrl.ConfigVolumeName,
+					Name: ConfigVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{Name: configMap},
@@ -368,7 +367,7 @@ func (z *zeroCapacityController) zeroPodSpec(name, namespace, configMap string, 
 					}},
 				// Volume for admin credentials
 				{
-					Name: ispnCtrl.AdminIdentitiesVolumeName,
+					Name: AdminIdentitiesVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: ispn.GetAdminSecretName(),
@@ -392,13 +391,13 @@ func (z *zeroCapacityController) zeroPodSpec(name, namespace, configMap string, 
 	}
 
 	if zeroSpec.Volume.UpdatePermissions {
-		ispnCtrl.AddVolumeChmodInitContainer("backup-chmod-pv", name, zeroSpec.Volume.MountPath, &pod.Spec)
+		AddVolumeChmodInitContainer("backup-chmod-pv", name, zeroSpec.Volume.MountPath, &pod.Spec)
 	}
 
-	ispnCtrl.AddVolumeForUserAuthentication(ispn, &pod.Spec)
+	AddVolumeForUserAuthentication(ispn, &pod.Spec)
 
 	if ispn.IsEncryptionEnabled() {
-		ispnCtrl.AddVolumesForEncryption(ispn, &pod.Spec)
+		AddVolumesForEncryption(ispn, &pod.Spec)
 	}
 	return pod, nil
 }

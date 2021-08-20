@@ -8,7 +8,6 @@ import (
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	v2 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/prometheus/common/log"
 	batchv1 "k8s.io/api/batch/v1"
@@ -215,7 +214,7 @@ func (r *batchRequest) execute() (reconcile.Result, error) {
 								MountPath: BatchVolumeRoot,
 							},
 							{
-								Name:      ispnCtrl.AdminIdentitiesVolumeName,
+								Name:      AdminIdentitiesVolumeName,
 								MountPath: consts.ServerAdminIdentitiesRoot,
 							},
 						},
@@ -233,7 +232,7 @@ func (r *batchRequest) execute() (reconcile.Result, error) {
 						},
 						// Volume for cli.properties
 						{
-							Name: ispnCtrl.AdminIdentitiesVolumeName,
+							Name: AdminIdentitiesVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
 									SecretName: infinispan.GetAdminSecretName(),

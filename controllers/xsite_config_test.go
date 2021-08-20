@@ -6,7 +6,6 @@ import (
 
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"

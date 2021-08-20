@@ -10,7 +10,7 @@ import (
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan"
+	hash "github.com/infinispan/infinispan-operator/pkg/hash"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -296,7 +296,7 @@ func (s serviceRequest) reconcileServiceMonitor(service *corev1.Service) (reconc
 				serviceMonitor.Annotations = map[string]string{}
 			}
 			// Annotation to force ServiceMonitor update when operator admin password has been changed
-			serviceMonitor.Annotations[SecretHashAnnotation] = HashByte(secret.Data[consts.AdminPasswordKey])
+			serviceMonitor.Annotations[SecretHashAnnotation] = hash.HashByte(secret.Data[consts.AdminPasswordKey])
 			return nil
 		}); err != nil {
 			return reconcile.Result{}, err
@@ -337,11 +337,11 @@ func computeService(ispn *ispnv1.Infinispan) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ispn.GetServiceName(),
 			Namespace: ispn.Namespace,
-			Labels:    infinispan.LabelsResource(ispn.Name, "infinispan-service"),
+			Labels:    LabelsResource(ispn.Name, "infinispan-service"),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
-			Selector: infinispan.ServiceLabels(ispn.Name),
+			Selector: ServiceLabels(ispn.Name),
 			Ports: []corev1.ServicePort{
 				{
 					Name: consts.InfinispanUserPortName,
@@ -369,12 +369,12 @@ func computePingService(ispn *ispnv1.Infinispan) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ispn.GetPingServiceName(),
 			Namespace: ispn.Namespace,
-			Labels:    infinispan.LabelsResource(ispn.Name, "infinispan-service-ping"),
+			Labels:    LabelsResource(ispn.Name, "infinispan-service-ping"),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:      corev1.ServiceTypeClusterIP,
 			ClusterIP: corev1.ClusterIPNone,
-			Selector:  infinispan.ServiceLabels(ispn.Name),
+			Selector:  ServiceLabels(ispn.Name),
 			Ports: []corev1.ServicePort{
 				{
 					Name: consts.InfinispanPingPortName,
@@ -405,7 +405,7 @@ func computeServiceExternal(ispn *ispnv1.Infinispan) *corev1.Service {
 
 	exposeSpec := corev1.ServiceSpec{
 		Type:     externalServiceType,
-		Selector: infinispan.ServiceLabels(ispn.Name),
+		Selector: ServiceLabels(ispn.Name),
 		Ports: []corev1.ServicePort{
 			{
 				Port:       int32(consts.InfinispanUserPort),
@@ -436,7 +436,7 @@ func computeServiceExternal(ispn *ispnv1.Infinispan) *corev1.Service {
 
 // computeSiteService compute the XSite service
 func computeSiteService(ispn *ispnv1.Infinispan) *corev1.Service {
-	lsPodSelector := infinispan.PodLabels(ispn.Name)
+	lsPodSelector := PodLabels(ispn.Name)
 	lsPodSelector[consts.CoordinatorPodLabel] = strconv.FormatBool(true)
 
 	exposeSpec := corev1.ServiceSpec{}
@@ -480,7 +480,7 @@ func computeSiteService(ispn *ispnv1.Infinispan) *corev1.Service {
 		Annotations: map[string]string{
 			"service.beta.kubernetes.io/aws-load-balancer-backend-protocol": "tcp",
 		},
-		Labels: infinispan.LabelsResource(ispn.Name, "infinispan-service-xsite"),
+		Labels: LabelsResource(ispn.Name, "infinispan-service-xsite"),
 	}
 	if exposeConf.Annotations != nil && len(exposeConf.Annotations) > 0 {
 		objectMeta.Annotations = exposeConf.Annotations
@@ -613,17 +613,13 @@ func computeServiceMonitor(ispn *ispnv1.Infinispan) *monitoringv1.ServiceMonitor
 				},
 			},
 			Selector: metav1.LabelSelector{
-				MatchLabels: infinispan.LabelsResource(ispn.Name, "infinispan-service"),
+				MatchLabels: LabelsResource(ispn.Name, "infinispan-service"),
 			},
 			NamespaceSelector: monitoringv1.NamespaceSelector{
 				MatchNames: []string{ispn.Namespace},
 			},
 		},
 	}
-}
-
-func ExternalServiceLabels(name string) map[string]string {
-	return infinispan.LabelsResource(name, "infinispan-service-external")
 }
 
 func (reconciler *ServiceReconciler) isTypeSupported(kind string) bool {

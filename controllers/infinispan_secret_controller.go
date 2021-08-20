@@ -9,7 +9,6 @@ import (
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	"github.com/infinispan/infinispan-operator/controllers/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
@@ -141,7 +140,7 @@ func (s *secretRequest) createSecret(name, label string, identities []byte) erro
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: s.infinispan.Namespace,
-			Labels:    infinispan.LabelsResource(s.infinispan.Name, label),
+			Labels:    LabelsResource(s.infinispan.Name, label),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{consts.ServerIdentitiesFilename: identities},
@@ -244,7 +243,7 @@ func (s *secretRequest) reconcileAdminSecret() error {
 			if adminSecret.Data == nil {
 				adminSecret.Data = map[string][]byte{}
 			}
-			adminSecret.Labels = infinispan.LabelsResource(s.infinispan.Name, "infinispan-secret-admin-identities")
+			adminSecret.Labels = LabelsResource(s.infinispan.Name, "infinispan-secret-admin-identities")
 			adminSecret.Data[consts.ServerIdentitiesFilename] = identities
 			if err = k8sctrlutil.SetControllerReference(s.infinispan, adminSecret, s.scheme); err != nil {
 				return err

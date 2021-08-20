@@ -2,11 +2,7 @@ package controllers
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -15,7 +11,7 @@ import (
 	"github.com/go-logr/logr"
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
+	hash "github.com/infinispan/infinispan-operator/pkg/hash"
 	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -982,13 +978,13 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 						Image: ispn.ImageName(),
 						Name:  "infinispan",
 						Env: PodEnv(ispn, &[]corev1.EnvVar{
-							{Name: "CONFIG_HASH", Value: hashString(configMap.Data[consts.ServerConfigFilename])},
-							{Name: "ADMIN_IDENTITIES_HASH", Value: HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])},
+							{Name: "CONFIG_HASH", Value: hash.HashString(configMap.Data[consts.ServerConfigFilename])},
+							{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])},
 						}),
-						LivenessProbe:  ispnCtrl.PodLivenessProbe(),
-						Ports:          ispnCtrl.PodPortsWithXsite(ispn),
-						ReadinessProbe: ispnCtrl.PodReadinessProbe(),
-						StartupProbe:   ispnCtrl.PodStartupProbe(),
+						LivenessProbe:  PodLivenessProbe(),
+						Ports:          PodPortsWithXsite(ispn),
+						ReadinessProbe: PodReadinessProbe(),
+						StartupProbe:   PodStartupProbe(),
 						Resources:      *podResources,
 						VolumeMounts:   volumeMounts,
 					}},
@@ -1004,7 +1000,7 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 		spec.Containers[0].Env = append(spec.Containers[0].Env,
 			corev1.EnvVar{
 				Name:  "IDENTITIES_HASH",
-				Value: HashByte(userSecret.Data[consts.ServerIdentitiesFilename]),
+				Value: hash.HashByte(userSecret.Data[consts.ServerIdentitiesFilename]),
 			})
 	}
 
@@ -1083,14 +1079,14 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 		spec.Containers[0].Env = append(spec.Containers[0].Env,
 			corev1.EnvVar{
 				Name:  "KEYSTORE_HASH",
-				Value: HashMap(keystoreSecret.Data),
+				Value: hash.HashMap(keystoreSecret.Data),
 			})
 
 		if ispn.IsClientCertEnabled() {
 			spec.Containers[0].Env = append(spec.Containers[0].Env,
 				corev1.EnvVar{
 					Name:  "TRUSTSTORE_HASH",
-					Value: HashMap(trustSecret.Data),
+					Value: hash.HashMap(trustSecret.Data),
 				})
 		}
 	}
@@ -1100,159 +1096,6 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 		return nil, err
 	}
 	return dep, nil
-}
-
-// AddVolumeForUserAuthentication returns true if the volume has been added
-func AddVolumeForUserAuthentication(i *infinispanv1.Infinispan, spec *corev1.PodSpec) bool {
-	if _, index := findSecretInVolume(spec, IdentitiesVolumeName); !i.IsAuthenticationEnabled() || index >= 0 {
-		return false
-	}
-
-	v := &spec.Volumes
-	*v = append(*v, corev1.Volume{
-		Name: IdentitiesVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{
-				SecretName: i.GetSecretName(),
-			},
-		},
-	})
-
-	vm := &spec.Containers[0].VolumeMounts
-	*vm = append(*vm, corev1.VolumeMount{
-		Name:      IdentitiesVolumeName,
-		MountPath: consts.ServerUserIdentitiesRoot,
-	})
-	return true
-}
-
-// func PodPorts() []corev1.ContainerPort {
-// 	ports := []corev1.ContainerPort{
-// 		{ContainerPort: consts.InfinispanAdminPort, Name: consts.InfinispanAdminPortName, Protocol: corev1.ProtocolTCP},
-// 		{ContainerPort: consts.InfinispanPingPort, Name: consts.InfinispanPingPortName, Protocol: corev1.ProtocolTCP},
-// 		{ContainerPort: consts.InfinispanUserPort, Name: consts.InfinispanUserPortName, Protocol: corev1.ProtocolTCP},
-// 	}
-// 	return ports
-// }
-
-func PodResources(spec infinispanv1.InfinispanContainerSpec) (*corev1.ResourceRequirements, error) {
-	memory, err := resource.ParseQuantity(spec.Memory)
-	if err != nil {
-		return nil, err
-	}
-	cpuRequests, cpuLimits, err := spec.GetCpuResources()
-	if err != nil {
-		return nil, err
-	}
-	return &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    *cpuRequests,
-			corev1.ResourceMemory: memory,
-		},
-		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    *cpuLimits,
-			corev1.ResourceMemory: memory,
-		},
-	}, nil
-}
-
-func PodEnv(i *infinispanv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.EnvVar {
-	envVars := []corev1.EnvVar{
-		{Name: "CONFIG_PATH", Value: consts.ServerConfigPath},
-		// Prevent the image from generating a user if authentication disabled
-		{Name: "MANAGED_ENV", Value: "TRUE"},
-		{Name: "JAVA_OPTIONS", Value: i.GetJavaOptions()},
-		{Name: "EXTRA_JAVA_OPTIONS", Value: i.Spec.Container.ExtraJvmOpts},
-		{Name: "DEFAULT_IMAGE", Value: consts.DefaultImageName},
-		{Name: "ADMIN_IDENTITIES_PATH", Value: consts.ServerAdminIdentitiesPath},
-	}
-
-	// Adding additional variables listed in ADDITIONAL_VARS env var
-	envVar, defined := os.LookupEnv("ADDITIONAL_VARS")
-	if defined {
-		var addVars []string
-		err := json.Unmarshal([]byte(envVar), &addVars)
-		if err == nil {
-			for _, name := range addVars {
-				value, defined := os.LookupEnv(name)
-				if defined {
-					envVars = append(envVars, corev1.EnvVar{Name: name, Value: value})
-				}
-			}
-		}
-	}
-
-	if i.IsAuthenticationEnabled() {
-		envVars = append(envVars, corev1.EnvVar{Name: "IDENTITIES_PATH", Value: consts.ServerUserIdentitiesPath})
-	}
-
-	if systemEnv != nil {
-		envVars = append(envVars, *systemEnv...)
-	}
-
-	return envVars
-}
-
-// AddVolumeChmodInitContainer adds an init container that run chmod if needed
-func AddVolumeChmodInitContainer(containerName, volumeName, mountPath string, spec *corev1.PodSpec) {
-	if chmod, ok := os.LookupEnv("MAKE_DATADIR_WRITABLE"); ok && chmod == "true" {
-		c := &spec.InitContainers
-		*c = append(*c, chmodInitContainer(containerName, volumeName, mountPath))
-	}
-}
-
-func chmodInitContainer(containerName, volumeName, mountPath string) corev1.Container {
-	return corev1.Container{
-		Image:   consts.InitContainerImageName,
-		Name:    containerName,
-		Command: []string{"sh", "-c", fmt.Sprintf("chmod -R g+w %s", mountPath)},
-		VolumeMounts: []corev1.VolumeMount{{
-			Name:      volumeName,
-			MountPath: mountPath,
-		}},
-	}
-}
-
-func AddVolumesForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) {
-	addSecretVolume := func(secretName, volumeName, mountPath string, spec *corev1.PodSpec) {
-		v := &spec.Volumes
-
-		if _, index := findSecretInVolume(spec, volumeName); index < 0 {
-			*v = append(*v, corev1.Volume{Name: volumeName,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: secretName,
-					},
-				},
-			})
-		}
-
-		volumeMount := corev1.VolumeMount{
-			Name:      volumeName,
-			MountPath: mountPath,
-		}
-
-		index := -1
-		volumeMounts := &spec.Containers[0].VolumeMounts
-		for i, vm := range *volumeMounts {
-			if vm.Name == volumeName {
-				index = i
-				break
-			}
-		}
-
-		if index < 0 {
-			*volumeMounts = append(*volumeMounts, volumeMount)
-		} else {
-			(*volumeMounts)[index] = volumeMount
-		}
-	}
-
-	addSecretVolume(i.GetKeystoreSecretName(), EncryptKeystoreVolumeName, consts.ServerEncryptKeystoreRoot, spec)
-
-	if i.IsClientCertEnabled() {
-		addSecretVolume(i.GetTruststoreSecretName(), EncryptTruststoreVolumeName, consts.ServerEncryptTruststoreRoot, spec)
-	}
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster
@@ -1465,8 +1308,8 @@ func (r *infinispanRequest) reconcileContainerConf(statefulSet *appsv1.StatefulS
 	}
 
 	// Validate ConfigMap changes (by the hash of the infinispan.yaml key value)
-	updateNeeded = updateStatefulSetEnv(statefulSet, "CONFIG_HASH", hashString(configMap.Data[consts.ServerConfigFilename])) || updateNeeded
-	updateNeeded = updateStatefulSetEnv(statefulSet, "ADMIN_IDENTITIES_HASH", HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])) || updateNeeded
+	updateNeeded = updateStatefulSetEnv(statefulSet, "CONFIG_HASH", hash.HashString(configMap.Data[consts.ServerConfigFilename])) || updateNeeded
+	updateNeeded = updateStatefulSetEnv(statefulSet, "ADMIN_IDENTITIES_HASH", hash.HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])) || updateNeeded
 
 	externalArtifactsUpd, err := applyExternalArtifactsDownload(ispn, &statefulSet.Spec.Template.Spec)
 	if err != nil {
@@ -1486,22 +1329,22 @@ func (r *infinispanRequest) reconcileContainerConf(statefulSet *appsv1.StatefulS
 	if ispn.IsAuthenticationEnabled() {
 		if AddVolumeForUserAuthentication(ispn, spec) {
 			spec.Containers[0].Env = append(spec.Containers[0].Env,
-				corev1.EnvVar{Name: "IDENTITIES_HASH", Value: HashByte(userSecret.Data[consts.ServerIdentitiesFilename])},
+				corev1.EnvVar{Name: "IDENTITIES_HASH", Value: hash.HashByte(userSecret.Data[consts.ServerIdentitiesFilename])},
 				corev1.EnvVar{Name: "IDENTITIES_PATH", Value: consts.ServerUserIdentitiesPath},
 			)
 			updateNeeded = true
 		} else {
 			// Validate Secret changes (by the hash of the identities.yaml key value)
-			updateNeeded = updateStatefulSetEnv(statefulSet, "IDENTITIES_HASH", HashByte(userSecret.Data[consts.ServerIdentitiesFilename])) || updateNeeded
+			updateNeeded = updateStatefulSetEnv(statefulSet, "IDENTITIES_HASH", hash.HashByte(userSecret.Data[consts.ServerIdentitiesFilename])) || updateNeeded
 		}
 	}
 
 	if ispn.IsEncryptionEnabled() {
 		AddVolumesForEncryption(ispn, spec)
-		updateNeeded = updateStatefulSetEnv(statefulSet, "KEYSTORE_HASH", HashMap(keystoreSecret.Data)) || updateNeeded
+		updateNeeded = updateStatefulSetEnv(statefulSet, "KEYSTORE_HASH", hash.HashMap(keystoreSecret.Data)) || updateNeeded
 
 		if ispn.IsClientCertEnabled() {
-			updateNeeded = updateStatefulSetEnv(statefulSet, "TRUSTSTORE_HASH", HashMap(trustSecret.Data)) || updateNeeded
+			updateNeeded = updateStatefulSetEnv(statefulSet, "TRUSTSTORE_HASH", hash.HashMap(trustSecret.Data)) || updateNeeded
 		}
 	}
 
@@ -1581,56 +1424,6 @@ func (r *infinispanRequest) update(update UpdateFn, ignoreNotFound ...bool) erro
 		return nil
 	}
 	return err
-}
-
-// LabelsResource returns the labels that must me applied to the resource
-func LabelsResource(name, resourceType string) map[string]string {
-	m := map[string]string{"infinispan_cr": name, "clusterName": name}
-	if resourceType != "" {
-		m["app"] = resourceType
-	}
-	return m
-}
-
-func PodLabels(name string) map[string]string {
-	return LabelsResource(name, "infinispan-pod")
-}
-
-// TODO why is this commented?
-// func ServiceLabels(name string) map[string]string {
-// 	return map[string]string{
-// 		"clusterName": name,
-// 		"app":         "infinispan-pod",
-// 	}
-// }
-
-func hashString(data string) string {
-	hash := sha1.New()
-	hash.Write([]byte(data))
-	return hex.EncodeToString(hash.Sum(nil))
-}
-
-func HashByte(data []byte) string {
-	hash := sha1.New()
-	hash.Write(data)
-	return hex.EncodeToString(hash.Sum(nil))
-}
-
-func HashMap(m map[string][]byte) string {
-	hash := sha1.New()
-	// Sort the map keys to ensure that the iteration order is the same on each call
-	// Without this the computed sha will be different if the iteration order of the keys changes
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		v := m[k]
-		hash.Write([]byte(k))
-		hash.Write(v)
-	}
-	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func (reconciler *InfinispanReconciler) isTypeSupported(kind string) bool {

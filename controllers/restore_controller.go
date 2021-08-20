@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
-	ispnctrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	corev1 "k8s.io/api/core/v1"
@@ -180,10 +179,4 @@ func (r *restore) ExecStatus(client http.HttpClient) (zeroCapacityPhase, error) 
 		return ZeroUnknown, err
 	}
 	return zeroCapacityPhase(status), nil
-}
-
-func RestorePodLabels(backup, cluster string) map[string]string {
-	m := ispnctrl.ServiceLabels(cluster)
-	m["restore_cr"] = backup
-	return m
 }
