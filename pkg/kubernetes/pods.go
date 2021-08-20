@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 
-	k8sutil "github.com/infinispan/infinispan-operator/pkg/k8sutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -122,7 +121,7 @@ func findFinalOwnerRef(ns string, ownerRef *metav1.OwnerReference, client crclie
 
 func GetOperatorPodOwnerRef(ns string, client crclient.Client) (*metav1.OwnerReference, error) {
 	// Get current Pod the operator is running in
-	pod, err := k8sutil.GetPod(context.TODO(), client, ns)
+	pod, err := GetPod(context.TODO(), client, ns)
 	if err != nil {
 		return nil, err
 	}

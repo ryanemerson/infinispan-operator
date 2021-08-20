@@ -1,4 +1,4 @@
-package k8sutil
+package kubernetes
 
 import (
 	"context"
@@ -26,6 +26,16 @@ type RunModeType string
 const (
 	LocalRunMode   RunModeType = "local"
 	ClusterRunMode RunModeType = "cluster"
+)
+
+const (
+	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
+	// which is the namespace where the watch activity happens.
+	// this value is empty if the operator is running with clusterScope.
+	WatchNamespaceEnvVar = "WATCH_NAMESPACE"
+	// PodNameEnvVar is the constant for env variable POD_NAME
+	// which is the name of the current pod.
+	PodNameEnvVar = "POD_NAME"
 )
 
 var log = logf.Log.WithName("k8sutil")
@@ -75,18 +85,6 @@ func GetOperatorNamespace() (string, error) {
 		}
 	}
 	return operatorNs, err
-}
-
-// GetOperatorName return the operator name
-func GetOperatorName() (string, error) {
-	operatorName, found := os.LookupEnv(OperatorNameEnvVar)
-	if !found {
-		return "", fmt.Errorf("%s must be set", OperatorNameEnvVar)
-	}
-	if len(operatorName) == 0 {
-		return "", fmt.Errorf("%s must not be empty", OperatorNameEnvVar)
-	}
-	return operatorName, nil
 }
 
 // ResourceExists returns true if the given resource kind exists
@@ -139,27 +137,6 @@ func GetPod(ctx context.Context, client crclient.Client, ns string) (*corev1.Pod
 	log.V(1).Info("Found Pod", "Pod.Namespace", ns, "Pod.Name", pod.Name)
 
 	return pod, nil
-}
-
-func isKubeMetaKind(kind string) bool {
-	if strings.HasSuffix(kind, "List") ||
-		kind == "PatchOptions" ||
-		kind == "GetOptions" ||
-		kind == "DeleteOptions" ||
-		kind == "ExportOptions" ||
-		kind == "APIVersions" ||
-		kind == "APIGroupList" ||
-		kind == "APIResourceList" ||
-		kind == "UpdateOptions" ||
-		kind == "CreateOptions" ||
-		kind == "Status" ||
-		kind == "WatchEvent" ||
-		kind == "ListOptions" ||
-		kind == "APIGroup" {
-		return true
-	}
-
-	return false
 }
 
 func isRunModeLocal() bool {

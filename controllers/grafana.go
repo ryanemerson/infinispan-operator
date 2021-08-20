@@ -8,7 +8,6 @@ import (
 	rice "github.com/GeertJohan/go.rice"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	grafanav1alpha1 "github.com/infinispan/infinispan-operator/pkg/apis/integreatly/v1alpha1"
-	"github.com/infinispan/infinispan-operator/pkg/k8sutil"
 	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +48,7 @@ func (r *ReconcileOperatorConfig) reconcileGrafana(ctx context.Context, config, 
 		if infinispanDashboard.CreationTimestamp.IsZero() {
 			if grafanaNs == operatorNs {
 				if ownRef, err := kubernetes.GetOperatorPodOwnerRef(operatorNs, r.Client); err != nil {
-					if errors.Is(err, k8sutil.ErrRunLocal) {
+					if errors.Is(err, kubernetes.ErrRunLocal) {
 						r.log.Info(fmt.Sprintf("Not setting controller reference for Grafana Dashboard, cause %s.", err.Error()))
 					} else {
 						return err

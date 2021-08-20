@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
-	"github.com/infinispan/infinispan-operator/pkg/k8sutil"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,7 +35,7 @@ func (r *ReconcileOperatorConfig) SetupWithManager(mgr ctrl.Manager) error {
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
 
 	// Create a new controller
-	operatorNS, err := k8sutil.GetOperatorNamespace()
+	operatorNS, err := kube.GetOperatorNamespace()
 	if err != nil {
 		return err
 	}
@@ -61,7 +60,7 @@ func (r *ReconcileOperatorConfig) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *ReconcileOperatorConfig) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	operatorNs, err := k8sutil.GetOperatorNamespace()
+	operatorNs, err := kube.GetOperatorNamespace()
 	if err != nil {
 		r.log.Error(err, "Error getting operator runtime namespace")
 		return reconcile.Result{Requeue: true}, nil
