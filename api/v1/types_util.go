@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
-	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 type ImageType string
@@ -201,32 +200,6 @@ func (ispn *Infinispan) ApplyEndpointEncryptionSettings(servingCertsMode string,
 			encryption.ClientCertSecretName = ispn.Name + "-client-cert-secret"
 		}
 	}
-}
-
-// PreliminaryChecks performs all the possible initial checks
-func (ispn *Infinispan) PreliminaryChecks() (*ctrl.Result, error) {
-	// If a CacheService is requested, checks that the pods have enough memory
-	if ispn.Spec.Service.Type == ServiceTypeCache {
-		memoryQ, err := resource.ParseQuantity(ispn.Spec.Container.Memory)
-		if err != nil {
-			return &ctrl.Result{
-				Requeue:      false,
-				RequeueAfter: consts.DefaultRequeueOnWrongSpec,
-			}, err
-		}
-		memory := memoryQ.Value()
-		nativeMemoryOverhead := (memory * consts.CacheServiceJvmNativePercentageOverhead) / 100
-		occupiedMemory := (consts.CacheServiceJvmNativeMb * 1024 * 1024) +
-			(consts.CacheServiceFixedMemoryXmxMb * 1024 * 1024) +
-			nativeMemoryOverhead
-		if memory < occupiedMemory {
-			return &ctrl.Result{
-				Requeue:      false,
-				RequeueAfter: consts.DefaultRequeueOnWrongSpec,
-			}, fmt.Errorf("Not enough memory. Increase infinispan.spec.container.memory. Now is %s, needed at least %d.", memoryQ.String(), occupiedMemory)
-		}
-	}
-	return nil, nil
 }
 
 func (ispn *Infinispan) ImageName() string {

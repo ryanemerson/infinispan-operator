@@ -211,7 +211,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		infinispan.ApplyEndpointEncryptionSettings(r.kubernetes.GetServingCertsMode(), reqLogger)
 
 		// Perform all the possible preliminary checks before go on
-		preliminaryChecksResult, preliminaryChecksError = infinispan.PreliminaryChecks()
+		preliminaryChecksResult, preliminaryChecksError = r.preliminaryChecks()
 		if preliminaryChecksError != nil {
 			r.eventRec.Event(infinispan, corev1.EventTypeWarning, EventReasonPrelimChecksFailed, preliminaryChecksError.Error())
 			infinispan.SetCondition(infinispanv1.ConditionPrelimChecksPassed, metav1.ConditionFalse, preliminaryChecksError.Error())
@@ -536,6 +536,33 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// PreliminaryChecks performs all the possible initial checks
+func (r *infinispanRequest) preliminaryChecks() (*ctrl.Result, error) {
+	// If a CacheService is requested, checks that the pods have enough memory
+	spec := r.infinispan.Spec
+	if spec.Service.Type == infinispanv1.ServiceTypeCache {
+		memoryQ, err := resource.ParseQuantity(spec.Container.Memory)
+		if err != nil {
+			return &ctrl.Result{
+				Requeue:      false,
+				RequeueAfter: consts.DefaultRequeueOnWrongSpec,
+			}, err
+		}
+		memory := memoryQ.Value()
+		nativeMemoryOverhead := (memory * consts.CacheServiceJvmNativePercentageOverhead) / 100
+		occupiedMemory := (consts.CacheServiceJvmNativeMb * 1024 * 1024) +
+			(consts.CacheServiceFixedMemoryXmxMb * 1024 * 1024) +
+			nativeMemoryOverhead
+		if memory < occupiedMemory {
+			return &ctrl.Result{
+				Requeue:      false,
+				RequeueAfter: consts.DefaultRequeueOnWrongSpec,
+			}, fmt.Errorf("not enough memory. Increase infinispan.spec.container.memory. Now is %s, needed at least %d", memoryQ.String(), occupiedMemory)
+		}
+	}
+	return nil, nil
 }
 
 func configureLoggers(pods *corev1.PodList, cluster ispn.ClusterInterface, infinispan *infinispanv1.Infinispan) error {
