@@ -53,7 +53,7 @@ type zeroCapacityReconciler interface {
 	// The k8 struct being handled by this controller
 	Type() client.Object
 	// Create a new instance of the zero Resource wrapping the actual k8 type
-	ResourceInstance(name types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error)
+	ResourceInstance(ctx context.Context, name types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error)
 }
 
 type zeroCapacitySpec struct {
@@ -128,7 +128,7 @@ func (z *zeroCapacityController) Reconcile(ctx context.Context, request reconcil
 	reqLogger.Info("Reconciling " + resource)
 	defer reqLogger.Info("----- End Reconciling " + resource)
 
-	instance, err := reconciler.ResourceInstance(request.NamespacedName, z)
+	instance, err := reconciler.ResourceInstance(ctx, request.NamespacedName, z)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.

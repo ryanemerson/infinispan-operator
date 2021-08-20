@@ -260,13 +260,13 @@ func (s serviceRequest) cleanupExternalExpose(excludeKind string) error {
 					return nil
 				}
 				for _, service := range serviceList.Items {
-					if err := s.Client.Delete(ctx, &service); err != nil {
+					if err := s.Client.Delete(s.ctx, &service); err != nil {
 						return nil
 					}
 				}
 			case consts.ExternalTypeIngress, consts.ExternalTypeRoute:
 				deleteOptions := []client.DeleteAllOfOption{client.MatchingLabels(ExternalServiceLabels(s.infinispan.Name)), client.InNamespace(s.infinispan.Namespace)}
-				if err := s.Client.DeleteAllOf(ctx, obj.ObjectType, deleteOptions...); err != nil && !errors.IsNotFound(err) {
+				if err := s.Client.DeleteAllOf(s.ctx, obj.ObjectType, deleteOptions...); err != nil && !errors.IsNotFound(err) {
 					return err
 				}
 			}
@@ -287,7 +287,7 @@ func (s serviceRequest) reconcileServiceMonitor(service *corev1.Service) (reconc
 		}
 
 		serviceMonitor := computeServiceMonitor(s.infinispan)
-		if _, err := controllerutil.CreateOrUpdate(ctx, s.Client, serviceMonitor, func() error {
+		if _, err := controllerutil.CreateOrUpdate(s.ctx, s.Client, serviceMonitor, func() error {
 			creationTimestamp := serviceMonitor.GetCreationTimestamp()
 			if creationTimestamp.IsZero() {
 				return controllerutil.SetControllerReference(service, serviceMonitor, s.scheme)

@@ -26,11 +26,8 @@ import (
 // +kubebuilder:rbac:groups=infinispan.org,resources=backups/finalizers,verbs=update
 
 const (
-	BackupControllerName = "backup-controller"
-	BackupDataMountPath  = "/opt/infinispan/backups"
+	BackupDataMountPath = "/opt/infinispan/backups"
 )
-
-var ctx = context.Background()
 
 // BackupReconciler reconciles a Backup object
 type BackupReconciler struct {
@@ -43,15 +40,17 @@ type backupResource struct {
 	instance *v2alpha1.Backup
 	client   client.Client
 	scheme   *runtime.Scheme
+	ctx      context.Context
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	backupEventRec := mgr.GetEventRecorderFor(BackupControllerName)
-	return newZeroCapacityController(BackupControllerName, &BackupReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
+	controllerName := "backup-controller"
+	backupEventRec := mgr.GetEventRecorderFor(controllerName)
+	return newZeroCapacityController(controllerName, &BackupReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }
 
-func (r *BackupReconciler) ResourceInstance(key types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {
+func (r *BackupReconciler) ResourceInstance(ctx context.Context, key types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {
 	instance := &v2alpha1.Backup{}
 	if err := ctrl.Get(ctx, key, instance); err != nil {
 		return nil, err
@@ -61,6 +60,7 @@ func (r *BackupReconciler) ResourceInstance(key types.NamespacedName, ctrl *zero
 		instance: instance,
 		client:   r.Client,
 		scheme:   ctrl.Scheme,
+		ctx:      ctx,
 	}, nil
 }
 
@@ -116,7 +116,7 @@ func (r *backupResource) Transform() (bool, error) {
 
 func (r *backupResource) update(mutate func()) (bool, error) {
 	backup := r.instance
-	res, err := controllerutil.CreateOrPatch(ctx, r.client, backup, func() error {
+	res, err := controllerutil.CreateOrPatch(r.ctx, r.client, backup, func() error {
 		if backup.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("backup.infinispan.org"), backup.Name)
 		}
@@ -151,7 +151,7 @@ func (r *backupResource) Init() (*zeroCapacitySpec, error) {
 
 func (r *backupResource) getOrCreatePvc() error {
 	pvc := &corev1.PersistentVolumeClaim{}
-	err := r.client.Get(ctx, types.NamespacedName{
+	err := r.client.Get(r.ctx, types.NamespacedName{
 		Name:      r.instance.Name,
 		Namespace: r.instance.Namespace,
 	}, pvc)
@@ -199,7 +199,7 @@ func (r *backupResource) getOrCreatePvc() error {
 	if err = controllerutil.SetControllerReference(r.instance, pvc, r.scheme); err != nil {
 		return err
 	}
-	if err = r.client.Create(ctx, pvc); err != nil {
+	if err = r.client.Create(r.ctx, pvc); err != nil {
 		return fmt.Errorf("unable to create pvc: %w", err)
 	}
 	return nil

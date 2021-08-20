@@ -23,10 +23,6 @@ import (
 // +kubebuilder:rbac:groups=infinispan.org,resources=restores/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infinispan.org,resources=restores/finalizers,verbs=update
 
-var (
-	restoreCtx = context.Background()
-)
-
 // RestoreReconciler reconciles a Restore object
 type RestoreReconciler struct {
 	client.Client
@@ -38,17 +34,19 @@ type restore struct {
 	instance *v2alpha1.Restore
 	client   client.Client
 	scheme   *runtime.Scheme
+	ctx      context.Context
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	backupEventRec := mgr.GetEventRecorderFor(BackupControllerName)
-	return newZeroCapacityController(BackupControllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
+	controllerName := "restore-controller"
+	backupEventRec := mgr.GetEventRecorderFor(controllerName)
+	return newZeroCapacityController(controllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }
 
-func (r *RestoreReconciler) ResourceInstance(name types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {
+func (r *RestoreReconciler) ResourceInstance(ctx context.Context, name types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {
 	instance := &v2alpha1.Restore{}
-	if err := ctrl.Get(restoreCtx, name, instance); err != nil {
+	if err := ctrl.Get(ctx, name, instance); err != nil {
 		return nil, err
 	}
 
@@ -56,6 +54,7 @@ func (r *RestoreReconciler) ResourceInstance(name types.NamespacedName, ctrl *ze
 		instance: instance,
 		client:   r.Client,
 		scheme:   ctrl.Scheme,
+		ctx:      ctx,
 	}
 	return restore, nil
 }
@@ -112,7 +111,7 @@ func (r *restore) Transform() (bool, error) {
 
 func (r *restore) update(mutate func()) (bool, error) {
 	restore := r.instance
-	res, err := controllerutil.CreateOrPatch(restoreCtx, r.client, restore, func() error {
+	res, err := controllerutil.CreateOrPatch(r.ctx, r.client, restore, func() error {
 		if restore.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("restore.infinispan.org"), restore.Name)
 		}
@@ -129,7 +128,7 @@ func (r *restore) Init() (*zeroCapacitySpec, error) {
 		Name:      r.instance.Spec.Backup,
 	}
 
-	if err := r.client.Get(restoreCtx, backupKey, backup); err != nil {
+	if err := r.client.Get(r.ctx, backupKey, backup); err != nil {
 		return nil, fmt.Errorf("unable to load Infinispan Backup '%s': %w", backupKey.Name, err)
 	}
 

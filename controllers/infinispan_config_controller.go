@@ -42,6 +42,7 @@ type configRequest struct {
 	*ConfigReconciler
 	infinispan *v1.Infinispan
 	reqLogger  logr.Logger
+	ctx        context.Context
 }
 
 func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -88,6 +89,7 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 		ConfigReconciler: reconciler,
 		infinispan:       infinispan,
 		reqLogger:        reqLogger,
+		ctx:              ctx,
 	}
 
 	// Don't update the ConfigMap if an update is about to be scheduled
@@ -196,7 +198,7 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 		},
 	}
 
-	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, configMapObject, func() error {
+	result, err := controllerutil.CreateOrUpdate(r.ctx, r.Client, configMapObject, func() error {
 		configYaml, err := serverConf.Yaml()
 		if err != nil {
 			return err

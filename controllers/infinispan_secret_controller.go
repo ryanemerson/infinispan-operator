@@ -45,6 +45,7 @@ type secretRequest struct {
 	*SecretReconciler
 	infinispan *ispnv1.Infinispan
 	reqLogger  logr.Logger
+	ctx        context.Context
 }
 
 func (r *SecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -98,6 +99,7 @@ func (reconciler *SecretReconciler) Reconcile(ctx context.Context, request recon
 		SecretReconciler: reconciler,
 		infinispan:       infinispan,
 		reqLogger:        reqLogger,
+		ctx:              ctx,
 	}
 
 	// Reconcile Encryption Secrets
@@ -147,7 +149,7 @@ func (s *secretRequest) createSecret(name, label string, identities []byte) erro
 	}
 
 	s.reqLogger.Info(fmt.Sprintf("Creating Identities Secret %s", secret.Name))
-	_, err := k8sctrlutil.CreateOrUpdate(ctx, s.Client, secret, func() error {
+	_, err := k8sctrlutil.CreateOrUpdate(s.ctx, s.Client, secret, func() error {
 		return k8sctrlutil.SetControllerReference(s.infinispan, secret, s.scheme)
 	})
 
@@ -182,7 +184,7 @@ func (s *secretRequest) reconcileTruststoreSecret() (*reconcile.Result, error) {
 		return result, err
 	}
 
-	_, err := k8sctrlutil.CreateOrPatch(ctx, s.Client, trustSecret, func() error {
+	_, err := k8sctrlutil.CreateOrPatch(s.ctx, s.Client, trustSecret, func() error {
 		if trustSecret.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(corev1.Resource("secret"), i.GetTruststoreSecretName())
 		}
@@ -234,7 +236,7 @@ func (s *secretRequest) reconcileAdminSecret() error {
 		},
 	}
 
-	_, err := k8sctrlutil.CreateOrPatch(ctx, s.Client, adminSecret, func() error {
+	_, err := k8sctrlutil.CreateOrPatch(s.ctx, s.Client, adminSecret, func() error {
 		if adminSecret.CreationTimestamp.IsZero() {
 			identities, err := security.GetAdminCredentials()
 			if err != nil {
@@ -283,7 +285,7 @@ func (s *secretRequest) addServiceMonitorProperties(secret *corev1.Secret, passw
 
 func (s *secretRequest) getSecret(name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
-	err := s.Client.Get(ctx, types.NamespacedName{Namespace: s.infinispan.Namespace, Name: name}, secret)
+	err := s.Client.Get(s.ctx, types.NamespacedName{Namespace: s.infinispan.Namespace, Name: name}, secret)
 	if err == nil {
 		return secret, nil
 	}

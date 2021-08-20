@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -22,11 +23,11 @@ const (
 )
 
 // reconcileGrafana reconciles grafana object status with the operator configuration settings
-func (r *ReconcileOperatorConfig) reconcileGrafana(config, currentConfig map[string]string, operatorNs string) (*reconcile.Result, error) {
+func (r *ReconcileOperatorConfig) reconcileGrafana(ctx context.Context, config, currentConfig map[string]string, operatorNs string) (*reconcile.Result, error) {
 	grafanaNs := config[grafanaDashboardNamespaceKey]
 
 	// Delete current grafana dashboard if namespace is changes
-	if err := r.deleteDashboardOnKeyChanged(config, currentConfig); err != nil {
+	if err := r.deleteDashboardOnKeyChanged(ctx, config, currentConfig); err != nil {
 		return &reconcile.Result{}, err
 	}
 
@@ -107,7 +108,7 @@ func populateDashboard(dashboard *grafanav1alpha1.GrafanaDashboard, config map[s
 	return nil
 }
 
-func (r *ReconcileOperatorConfig) deleteDashboardOnKeyChanged(newCfg, curCfg map[string]string) error {
+func (r *ReconcileOperatorConfig) deleteDashboardOnKeyChanged(ctx context.Context, newCfg, curCfg map[string]string) error {
 	// If key is changed and old key is not nil, delete old grafana dashboard
 	if (newCfg[grafanaDashboardNameKey] != curCfg[grafanaDashboardNameKey] ||
 		newCfg[grafanaDashboardNamespaceKey] != curCfg[grafanaDashboardNamespaceKey]) &&

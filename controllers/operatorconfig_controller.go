@@ -82,6 +82,6 @@ func (r *ReconcileOperatorConfig) Reconcile(ctx context.Context, request reconci
 	for k, v := range configMap.Data {
 		config[k] = v
 	}
-	res, err := r.reconcileGrafana(config, currentConfig, operatorNs)
+	res, err := r.reconcileGrafana(ctx, config, currentConfig, operatorNs)
 	return *res, err
 }
