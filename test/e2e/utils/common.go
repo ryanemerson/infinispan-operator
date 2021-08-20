@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"os"
@@ -253,7 +254,7 @@ func clientForCluster(i *ispnv1.Infinispan, kube *TestKubernetes) HTTPClient {
 	}
 
 	user := constants.DefaultDeveloperUser
-	pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes)
+	pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes, context.TODO())
 	ExpectNoError(err)
 	return NewHTTPClient(user, pass, protocol)
 }
@@ -268,7 +269,7 @@ func HTTPSClientAndHost(i *v1.Infinispan, tlsConfig *tls.Config, kube *TestKuber
 
 	userAndPassword := func() (string, string) {
 		user := constants.DefaultDeveloperUser
-		pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes)
+		pass, err := users.UserPassword(user, i.GetSecretName(), i.Namespace, kube.Kubernetes, context.TODO())
 		ExpectNoError(err)
 		return user, pass
 	}

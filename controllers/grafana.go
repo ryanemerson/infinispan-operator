@@ -47,7 +47,7 @@ func (r *ReconcileOperatorConfig) reconcileGrafana(ctx context.Context, config, 
 	if _, err = controllerutil.CreateOrUpdate(ctx, r.Client, infinispanDashboard, func() error {
 		if infinispanDashboard.CreationTimestamp.IsZero() {
 			if grafanaNs == operatorNs {
-				if ownRef, err := kubernetes.GetOperatorPodOwnerRef(operatorNs, r.Client); err != nil {
+				if ownRef, err := kubernetes.GetOperatorPodOwnerRef(operatorNs, r.Client, ctx); err != nil {
 					if errors.Is(err, kubernetes.ErrRunLocal) {
 						r.log.Info(fmt.Sprintf("Not setting controller reference for Grafana Dashboard, cause %s.", err.Error()))
 					} else {

@@ -138,7 +138,7 @@ func batchString() string {
 
 func httpClient(infinispan *v1.Infinispan) tutils.HTTPClient {
 	user := consts.DefaultDeveloperUser
-	password, err := users.UserPassword(user, infinispan.GetSecretName(), tutils.Namespace, testKube.Kubernetes)
+	password, err := users.UserPassword(user, infinispan.GetSecretName(), tutils.Namespace, testKube.Kubernetes, context.TODO())
 	tutils.ExpectNoError(err)
 	protocol := testKube.GetSchemaForRest(infinispan)
 	return tutils.NewHTTPClient(user, password, protocol)

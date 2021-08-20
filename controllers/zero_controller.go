@@ -149,7 +149,7 @@ func (z *zeroCapacityController) Reconcile(ctx context.Context, request reconcil
 		}
 		return reconcile.Result{}, instance.UpdatePhase(ZeroInitializing, nil)
 	case ZeroInitializing:
-		return z.initializeResources(request, instance)
+		return z.initializeResources(request, instance, ctx)
 	}
 
 	infinispan := &v1.Infinispan{}
@@ -158,7 +158,7 @@ func (z *zeroCapacityController) Reconcile(ctx context.Context, request reconcil
 		Namespace: namespace,
 		Name:      clusterName,
 	}
-	if err := z.Get(context.Background(), clusterObjKey, infinispan); err != nil {
+	if err := z.Get(ctx, clusterObjKey, infinispan); err != nil {
 		if errors.IsNotFound(err) {
 			if phase == ZeroSucceeded || phase == ZeroFailed {
 				// If the cluster no longer exists and the operation has failed or succeeded already, no need todo anything
@@ -170,24 +170,23 @@ func (z *zeroCapacityController) Reconcile(ctx context.Context, request reconcil
 		return reconcile.Result{}, fmt.Errorf("unable to fetch CR '%s': %w", clusterName, err)
 	}
 
-	httpClient, err := newHttpClient(infinispan, z.Kube)
+	httpClient, err := newHttpClient(infinispan, z.Kube, ctx)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	switch phase {
 	case ZeroInitialized:
-		return z.execute(httpClient, request, instance)
+		return z.execute(httpClient, request, instance, ctx)
 	case ZeroSucceeded, ZeroFailed:
-		return z.cleanupResources(httpClient, request)
+		return z.cleanupResources(httpClient, request, ctx)
 	default:
 		// Phase must be ZeroRunning, so wait for execution to complete
 		return z.waitForExecutionToComplete(httpClient, request, instance)
 	}
 }
 
-func (z *zeroCapacityController) initializeResources(request reconcile.Request, instance zeroCapacityResource) (reconcile.Result, error) {
-	ctx := context.Background()
+func (z *zeroCapacityController) initializeResources(request reconcile.Request, instance zeroCapacityResource, ctx context.Context) (reconcile.Result, error) {
 	name := request.Name
 	namespace := request.Namespace
 	clusterName := instance.Cluster()
@@ -212,7 +211,7 @@ func (z *zeroCapacityController) initializeResources(request reconcile.Request, 
 
 	podList := &corev1.PodList{}
 	podLabels := PodLabels(infinispan.Name)
-	if err := z.Kube.ResourcesList(infinispan.Namespace, podLabels, podList); err != nil {
+	if err := z.Kube.ResourcesList(infinispan.Namespace, podLabels, podList, ctx); err != nil {
 		z.Log.Error(err, "Failed to list pods")
 		return reconcile.Result{}, err
 	}
@@ -223,7 +222,7 @@ func (z *zeroCapacityController) initializeResources(request reconcile.Request, 
 		return reconcile.Result{}, err
 	}
 
-	configMap, err := z.configureServer(name, namespace, infinispan, instance)
+	configMap, err := z.configureServer(name, namespace, infinispan, instance, ctx)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("unable to create zero-capacity configuration: %w", err)
 	}
@@ -247,8 +246,8 @@ func (z *zeroCapacityController) initializeResources(request reconcile.Request, 
 	return reconcile.Result{}, instance.UpdatePhase(ZeroInitialized, nil)
 }
 
-func (z *zeroCapacityController) execute(httpClient http.HttpClient, request reconcile.Request, instance zeroCapacityResource) (reconcile.Result, error) {
-	if !z.isZeroPodReady(request) {
+func (z *zeroCapacityController) execute(httpClient http.HttpClient, request reconcile.Request, instance zeroCapacityResource, ctx context.Context) (reconcile.Result, error) {
+	if !z.isZeroPodReady(request, ctx) {
 		// Don't requeue as reconcile request is received when the zero pod becomes ready
 		return reconcile.Result{}, nil
 	}
@@ -277,10 +276,10 @@ func (z *zeroCapacityController) waitForExecutionToComplete(httpClient http.Http
 	return reconcile.Result{RequeueAfter: 1 * time.Second}, nil
 }
 
-func (z *zeroCapacityController) cleanupResources(httpClient http.HttpClient, request reconcile.Request) (reconcile.Result, error) {
+func (z *zeroCapacityController) cleanupResources(httpClient http.HttpClient, request reconcile.Request, ctx context.Context) (reconcile.Result, error) {
 	// Stop the zero-capacity server so that it leaves the Infinispan cluster
 	var logErr error
-	if z.isZeroPodReady(request) {
+	if z.isZeroPodReady(request, ctx) {
 		rsp, err, reason := httpClient.Post(request.Name, consts.ServerHTTPServerStop, "", nil)
 
 		if err != nil {
@@ -302,9 +301,9 @@ func (z *zeroCapacityController) cleanupResources(httpClient http.HttpClient, re
 	return reconcile.Result{}, logErr
 }
 
-func (z *zeroCapacityController) isZeroPodReady(request reconcile.Request) bool {
+func (z *zeroCapacityController) isZeroPodReady(request reconcile.Request, ctx context.Context) bool {
 	pod := &corev1.Pod{}
-	if err := z.Get(context.Background(), request.NamespacedName, pod); err != nil {
+	if err := z.Get(ctx, request.NamespacedName, pod); err != nil {
 		return false
 	}
 	return kube.IsPodReady(*pod)
@@ -402,14 +401,13 @@ func (z *zeroCapacityController) zeroPodSpec(name, namespace, configMap string, 
 	return pod, nil
 }
 
-func (z *zeroCapacityController) configureServer(name, namespace string, infinispan *v1.Infinispan, instance zeroCapacityResource) (*corev1.ConfigMap, error) {
+func (z *zeroCapacityController) configureServer(name, namespace string, infinispan *v1.Infinispan, instance zeroCapacityResource, ctx context.Context) (*corev1.ConfigMap, error) {
 	clusterConfig := &corev1.ConfigMap{}
 	clusterConfigName := infinispan.GetConfigName()
 	clusterKey := types.NamespacedName{
 		Namespace: namespace,
 		Name:      clusterConfigName,
 	}
-	ctx := context.Background()
 	if err := z.Client.Get(ctx, clusterKey, clusterConfig); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, fmt.Errorf("unable to load ConfigMap: %s", clusterConfigName)
@@ -456,8 +454,8 @@ func (z *zeroCapacityController) configureServer(name, namespace string, infinis
 	return configMap, nil
 }
 
-func newHttpClient(i *v1.Infinispan, kubernetes *kube.Kubernetes) (http.HttpClient, error) {
-	pass, err := users.AdminPassword(i.GetAdminSecretName(), i.Namespace, kubernetes)
+func newHttpClient(i *v1.Infinispan, kubernetes *kube.Kubernetes, ctx context.Context) (http.HttpClient, error) {
+	pass, err := users.AdminPassword(i.GetAdminSecretName(), i.Namespace, kubernetes, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve opeator admin identities when creating HttpClient instance: %w", err)
 	}

@@ -43,7 +43,7 @@ func (r *infinispanRequest) autoscalerLoop() {
 		time.Sleep(constants.DefaultMinimumAutoscalePollPeriod)
 		ispn := infinispanv1.Infinispan{}
 		// Check all the cluster in the namespace for autoscaling
-		err := r.Client.Get(context.TODO(), clusterNsn, &ispn)
+		err := r.Client.Get(r.ctx, clusterNsn, &ispn)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				// Ispn cluster doesn't exists any more
@@ -76,12 +76,12 @@ func (r *infinispanRequest) autoscalerLoop() {
 		// Data memory percent usage array, one value per pod
 		metricDataMemoryPercentUsed := map[string]int{}
 		podList := &corev1.PodList{}
-		err = r.kubernetes.ResourcesList(ispn.Namespace, LabelsResource(ispn.Name, ""), podList)
+		err = r.kubernetes.ResourcesList(ispn.Namespace, LabelsResource(ispn.Name, ""), podList, r.ctx)
 		if err != nil {
 			continue
 		}
 
-		cluster, err := NewCluster(&ispn, r.kubernetes)
+		cluster, err := NewCluster(&ispn, r.kubernetes, r.ctx)
 		if err != nil {
 			continue
 		}
@@ -100,7 +100,7 @@ func (r *infinispanRequest) autoscalerLoop() {
 				log.Error(err, "Unable to get DataMemoryUsed for pod", "podName", podName)
 			}
 		}
-		autoscaleOnPercentUsage(&metricDataMemoryPercentUsed, metricMinPodNum, &ispn, r.kubernetes)
+		autoscaleOnPercentUsage(r.ctx, &metricDataMemoryPercentUsed, metricMinPodNum, &ispn, r.kubernetes)
 	}
 }
 
@@ -165,7 +165,7 @@ func getMetricDataMemoryPercentUsage(m *map[string]int, podName string, cluster 
 	return nil
 }
 
-func autoscaleOnPercentUsage(usage *map[string]int, minPodNum int32, ispn *infinispanv1.Infinispan, kubernetes *kube.Kubernetes) {
+func autoscaleOnPercentUsage(ctx context.Context, usage *map[string]int, minPodNum int32, ispn *infinispanv1.Infinispan, kubernetes *kube.Kubernetes) {
 	hiTh := ispn.Spec.Autoscale.MaxMemUsagePercent
 	loTh := ispn.Spec.Autoscale.MinMemUsagePercent
 	maxReplicas := ispn.Spec.Autoscale.MaxReplicas
@@ -189,7 +189,7 @@ func autoscaleOnPercentUsage(usage *map[string]int, minPodNum int32, ispn *infin
 		// Downscale or upscale acting directly on infinispan.spec.replicas field
 		if upscale && ispn.Spec.Replicas < ispn.Spec.Autoscale.MaxReplicas {
 			ispn.Spec.Replicas++
-			err := kubernetes.Client.Update(context.TODO(), ispn)
+			err := kubernetes.Client.Update(ctx, ispn)
 			if err != nil {
 				log.Error(err, "Unable to upscale")
 			}
@@ -198,7 +198,7 @@ func autoscaleOnPercentUsage(usage *map[string]int, minPodNum int32, ispn *infin
 		}
 		if downscale && ispn.Spec.Replicas > minPodNum && ispn.Spec.Replicas > ispn.Spec.Autoscale.MinReplicas {
 			ispn.Spec.Replicas--
-			err := kubernetes.Client.Update(context.TODO(), ispn)
+			err := kubernetes.Client.Update(ctx, ispn)
 			if err != nil {
 				log.Error(err, "Unable to downscale")
 			}

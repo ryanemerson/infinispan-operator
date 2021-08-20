@@ -68,7 +68,7 @@ func TestOperatorUpgrade(t *testing.T) {
 
 		// Validates that all pods are running with desired image
 		pods := &corev1.PodList{}
-		err := testKube.Kubernetes.ResourcesList(tutils.Namespace, controllers.PodLabels(spec.Name), pods)
+		err := testKube.Kubernetes.ResourcesList(tutils.Namespace, controllers.PodLabels(spec.Name), pods, context.TODO())
 		tutils.ExpectNoError(err)
 		for _, pod := range pods.Items {
 			if pod.Spec.Containers[0].Image != tutils.ExpectedImage {
@@ -94,7 +94,7 @@ func TestUpdateOperatorPassword(t *testing.T) {
 	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
 
 	newPassword := "supersecretoperatorpassword"
-	secret, err := testKube.Kubernetes.GetSecret(spec.GetAdminSecretName(), spec.Namespace)
+	secret, err := testKube.Kubernetes.GetSecret(spec.GetAdminSecretName(), spec.Namespace, context.TODO())
 	tutils.ExpectNoError(err)
 	_, err = controllerutil.CreateOrPatch(context.TODO(), testKube.Kubernetes.Client, secret, func() error {
 		secret.Data["password"] = []byte(newPassword)
@@ -103,7 +103,7 @@ func TestUpdateOperatorPassword(t *testing.T) {
 	tutils.ExpectNoError(err)
 
 	err = wait.Poll(tutils.DefaultPollPeriod, tutils.SinglePodTimeout, func() (bool, error) {
-		secret, err = testKube.Kubernetes.GetSecret(spec.GetAdminSecretName(), spec.Namespace)
+		secret, err = testKube.Kubernetes.GetSecret(spec.GetAdminSecretName(), spec.Namespace, context.TODO())
 		tutils.ExpectNoError(err)
 		identities := secret.Data[cconsts.ServerIdentitiesFilename]
 		pwd, err := users.FindPassword(cconsts.DefaultOperatorUser, identities)
@@ -238,7 +238,7 @@ func TestNodeStartup(t *testing.T) {
 	}
 
 	svcList := &corev1.ServiceList{}
-	tutils.ExpectNoError(testKube.Kubernetes.ResourcesList(ispn.Namespace, map[string]string{"infinispan_cr": "test-node-startup"}, svcList))
+	tutils.ExpectNoError(testKube.Kubernetes.ResourcesList(ispn.Namespace, map[string]string{"infinispan_cr": "test-node-startup"}, svcList, context.TODO()))
 	if len(svcList.Items) == 0 {
 		panic("No services found for cluster")
 	}
@@ -274,7 +274,7 @@ func TestNodeStartup(t *testing.T) {
 // and match them with the labels map provided by the caller
 func areOperatorLabelsPropagated(namespace, varName string, labels map[string]string) bool {
 	podList := &corev1.PodList{}
-	tutils.ExpectNoError(testKube.Kubernetes.ResourcesList(namespace, map[string]string{"name": tutils.OperatorName}, podList))
+	tutils.ExpectNoError(testKube.Kubernetes.ResourcesList(namespace, map[string]string{"name": tutils.OperatorName}, podList, context.TODO()))
 	if len(podList.Items) == 0 {
 		panic("Cannot get the Infinispan operator pod")
 	}
@@ -301,10 +301,10 @@ func areOperatorLabelsPropagated(namespace, varName string, labels map[string]st
 
 // Run some functions for testing rights not covered by integration tests
 func TestRolesSynthetic(t *testing.T) {
-	_, err := serviceAccountKube.Kubernetes.GetNodeHost(log)
+	_, err := serviceAccountKube.Kubernetes.GetNodeHost(log, context.TODO())
 	tutils.ExpectNoError(err)
 
-	_, err = kube.FindStorageClass("not-present-storage-class", serviceAccountKube.Kubernetes.Client)
+	_, err = kube.FindStorageClass("not-present-storage-class", serviceAccountKube.Kubernetes.Client, context.TODO())
 	if !errors.IsNotFound(err) {
 		tutils.ExpectNoError(err)
 	}
@@ -327,7 +327,7 @@ func TestNodeWithEphemeralStorage(t *testing.T) {
 
 	// Making sure no PVCs were created
 	pvcs := &corev1.PersistentVolumeClaimList{}
-	err := testKube.Kubernetes.ResourcesList(spec.Namespace, controllers.PodLabels(spec.Name), pvcs)
+	err := testKube.Kubernetes.ResourcesList(spec.Namespace, controllers.PodLabels(spec.Name), pvcs, context.TODO())
 	tutils.ExpectNoError(err)
 	if len(pvcs.Items) > 0 {
 		tutils.ExpectNoError(fmt.Errorf("persistent volume claims were found (count = %d) but not expected for ephemeral storage configuration", len(pvcs.Items)))
@@ -1206,7 +1206,7 @@ func TestExternalDependenciesHttp(t *testing.T) {
 
 	podList := &corev1.PodList{}
 	tutils.ExpectNoError(wait.Poll(tutils.DefaultPollPeriod, tutils.SinglePodTimeout, func() (done bool, err error) {
-		err = testKube.Kubernetes.ResourcesList(ispn.Namespace, controllers.PodLabels(ispn.Name), podList)
+		err = testKube.Kubernetes.ResourcesList(ispn.Namespace, controllers.PodLabels(ispn.Name), podList, context.TODO())
 		if err != nil {
 			return false, nil
 		}

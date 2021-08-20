@@ -112,7 +112,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		return reconcile.Result{}, nil
 	}
 
-	cluster, err := NewCluster(ispnInstance, r.kubernetes)
+	cluster, err := NewCluster(ispnInstance, r.kubernetes, ctx)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

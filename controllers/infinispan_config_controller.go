@@ -93,7 +93,7 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 	}
 
 	// Don't update the ConfigMap if an update is about to be scheduled
-	if req, err := IsUpgradeRequired(infinispan, r.kubernetes); req || err != nil {
+	if req, err := IsUpgradeRequired(infinispan, r.kubernetes, ctx); req || err != nil {
 		return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCreateResource}, nil
 	}
 
@@ -111,12 +111,12 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 		// For cross site, reconcile must come before compute, because
 		// we need xsite service details to compute xsite struct
 		siteService := &corev1.Service{}
-		if result, err := kube.LookupResource(infinispan.GetSiteServiceName(), infinispan.Namespace, siteService, r.Client, reqLogger, r.eventRec); result != nil {
+		if result, err := kube.LookupResource(infinispan.GetSiteServiceName(), infinispan.Namespace, siteService, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 			return *result, err
 		}
 
 		var err error
-		xsite, err = ComputeXSite(infinispan, r.kubernetes, siteService, reqLogger, r.eventRec)
+		xsite, err = ComputeXSite(infinispan, r.kubernetes, siteService, reqLogger, r.eventRec, r.ctx)
 		if err != nil {
 			reqLogger.Error(err, "Error in computeXSite configuration")
 			return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCreateResource}, nil
@@ -185,7 +185,7 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 		serverConf.XSite = xsite
 	}
 
-	if result, err := ConfigureServerEncryption(r.infinispan, &serverConf, r.Client, r.reqLogger, r.eventRec); result != nil {
+	if result, err := ConfigureServerEncryption(r.infinispan, &serverConf, r.Client, r.reqLogger, r.eventRec, r.ctx); result != nil {
 		return result, err
 	}
 
@@ -240,7 +240,8 @@ func (r configRequest) configureCloudEvent(c *config.InfinispanConfiguration) {
 	}
 }
 
-func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfiguration, client client.Client, log logr.Logger, eventRec record.EventRecorder) (*reconcile.Result, error) {
+func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfiguration, client client.Client, log logr.Logger,
+	eventRec record.EventRecorder, ctx context.Context) (*reconcile.Result, error) {
 	if !i.IsEncryptionEnabled() {
 		return nil, nil
 	}
@@ -263,7 +264,7 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 
 	// Configure Keystore
 	keystoreSecret := &corev1.Secret{}
-	if result, err := kube.LookupResource(i.GetKeystoreSecretName(), i.Namespace, keystoreSecret, client, log, eventRec); result != nil {
+	if result, err := kube.LookupResource(i.GetKeystoreSecretName(), i.Namespace, keystoreSecret, client, log, eventRec, ctx); result != nil {
 		return result, err
 	}
 
@@ -285,7 +286,7 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 	// Configure Truststore
 	if i.IsClientCertEnabled() {
 		trustSecret := &corev1.Secret{}
-		if result, err := kube.LookupResource(i.GetTruststoreSecretName(), i.Namespace, trustSecret, client, log, eventRec); result != nil {
+		if result, err := kube.LookupResource(i.GetTruststoreSecretName(), i.Namespace, trustSecret, client, log, eventRec, ctx); result != nil {
 			return result, err
 		}
 

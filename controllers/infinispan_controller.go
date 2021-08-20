@@ -156,7 +156,7 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				if !kube.IsControlledByGVK(a.GetOwnerReferences(), infinispanv1.SchemeBuilder.GroupVersion.WithKind(reflect.TypeOf(infinispanv1.Infinispan{}).Name())) {
 					for _, field := range []string{"spec.security.endpointSecretName", "spec.security.endpointEncryption.certSecretName", "spec.security.endpointEncryption.clientCertSecretName"} {
 						ispnList := &infinispanv1.InfinispanList{}
-						if err := r.kubernetes.ResourcesListByField(a.GetNamespace(), field, a.GetName(), ispnList); err != nil {
+						if err := r.kubernetes.ResourcesListByField(a.GetNamespace(), field, a.GetName(), ispnList, ctx); err != nil {
 							log.Error(err, "failed to list Infinispan CR")
 						}
 						for _, item := range ispnList.Items {
@@ -208,7 +208,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		if errLabel != nil {
 			reqLogger.Error(errLabel, "Error applying operator label")
 		}
-		infinispan.ApplyEndpointEncryptionSettings(r.kubernetes.GetServingCertsMode(), reqLogger)
+		infinispan.ApplyEndpointEncryptionSettings(r.kubernetes.GetServingCertsMode(ctx), reqLogger)
 
 		// Perform all the possible preliminary checks before go on
 		preliminaryChecksResult, preliminaryChecksError = r.preliminaryChecks()
@@ -238,7 +238,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 
 	// Wait for the ConfigMap to be created by config-controller
 	configMap := &corev1.ConfigMap{}
-	if result, err := kube.LookupResource(infinispan.GetConfigName(), infinispan.Namespace, configMap, r.Client, reqLogger, r.eventRec); result != nil {
+	if result, err := kube.LookupResource(infinispan.GetConfigName(), infinispan.Namespace, configMap, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 		return *result, err
 	}
 
@@ -246,13 +246,13 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	var userSecret *corev1.Secret
 	if infinispan.IsAuthenticationEnabled() {
 		userSecret = &corev1.Secret{}
-		if result, err := kube.LookupResource(infinispan.GetSecretName(), infinispan.Namespace, userSecret, r.Client, reqLogger, r.eventRec); result != nil {
+		if result, err := kube.LookupResource(infinispan.GetSecretName(), infinispan.Namespace, userSecret, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 			return *result, err
 		}
 	}
 
 	adminSecret := &corev1.Secret{}
-	if result, err := kube.LookupResource(infinispan.GetAdminSecretName(), infinispan.Namespace, adminSecret, r.Client, reqLogger, r.eventRec); result != nil {
+	if result, err := kube.LookupResource(infinispan.GetAdminSecretName(), infinispan.Namespace, adminSecret, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 		return *result, err
 	}
 
@@ -262,7 +262,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 			return ctrl.Result{}, fmt.Errorf("field 'certSecretName' must be provided for certificateSourceType=%s to be configured", infinispanv1.CertificateSourceTypeSecret)
 		}
 		keystoreSecret = &corev1.Secret{}
-		if result, err := kube.LookupResource(infinispan.GetKeystoreSecretName(), infinispan.Namespace, keystoreSecret, r.Client, reqLogger, r.eventRec); result != nil {
+		if result, err := kube.LookupResource(infinispan.GetKeystoreSecretName(), infinispan.Namespace, keystoreSecret, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 			return *result, err
 		}
 	}
@@ -270,7 +270,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	var trustSecret *corev1.Secret
 	if infinispan.IsClientCertEnabled() {
 		trustSecret = &corev1.Secret{}
-		if result, err := kube.LookupResource(infinispan.GetTruststoreSecretName(), infinispan.Namespace, trustSecret, r.Client, reqLogger, r.eventRec); result != nil {
+		if result, err := kube.LookupResource(infinispan.GetTruststoreSecretName(), infinispan.Namespace, trustSecret, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 			return *result, err
 		}
 	}
@@ -311,12 +311,12 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	}
 
 	// Wait for the cluster Service to be created by service-controller
-	if result, err := kube.LookupResource(infinispan.Name, infinispan.Namespace, &corev1.Service{}, r.Client, reqLogger, r.eventRec); result != nil {
+	if result, err := kube.LookupResource(infinispan.Name, infinispan.Namespace, &corev1.Service{}, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 		return *result, err
 	}
 
 	// Wait for the cluster ping Service to be created by service-controller
-	if result, err := kube.LookupResource(infinispan.GetPingServiceName(), infinispan.Namespace, &corev1.Service{}, r.Client, reqLogger, r.eventRec); result != nil {
+	if result, err := kube.LookupResource(infinispan.GetPingServiceName(), infinispan.Namespace, &corev1.Service{}, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 		return *result, err
 	}
 
@@ -342,7 +342,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	}
 
 	// List the pods for this infinispan's deployment
-	podList, err := PodList(infinispan, r.kubernetes)
+	podList, err := PodList(infinispan, r.kubernetes, ctx)
 	if err != nil {
 		reqLogger.Error(err, "failed to list pods")
 		return ctrl.Result{}, err
@@ -368,7 +368,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		return *result, err
 	}
 
-	cluster, err := NewCluster(infinispan, r.kubernetes)
+	cluster, err := NewCluster(infinispan, r.kubernetes, r.ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -452,11 +452,11 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		case infinispanv1.ExposeTypeLoadBalancer, infinispanv1.ExposeTypeNodePort:
 			// Wait for the cluster external Service to be created by service-controller
 			externalService := &corev1.Service{}
-			if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalService, r.Client, reqLogger, reconciler.eventRec); result != nil {
+			if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalService, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 				return *result, err
 			}
 			if len(externalService.Spec.Ports) > 0 && infinispan.GetExposeType() == infinispanv1.ExposeTypeNodePort {
-				if exposeHost, err := r.kubernetes.GetNodeHost(reqLogger); err != nil {
+				if exposeHost, err := r.kubernetes.GetNodeHost(reqLogger, ctx); err != nil {
 					return ctrl.Result{}, err
 				} else {
 					exposeAddress = fmt.Sprintf("%s:%d", exposeHost, externalService.Spec.Ports[0].NodePort)
@@ -477,13 +477,13 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		case infinispanv1.ExposeTypeRoute:
 			if r.isTypeSupported(consts.ExternalTypeRoute) {
 				externalRoute := &routev1.Route{}
-				if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalRoute, r.Client, reqLogger, reconciler.eventRec); result != nil {
+				if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalRoute, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 					return *result, err
 				}
 				exposeAddress = externalRoute.Spec.Host
 			} else if r.isTypeSupported(consts.ExternalTypeIngress) {
 				externalIngress := &ingressv1.Ingress{}
-				if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalIngress, r.Client, reqLogger, reconciler.eventRec); result != nil {
+				if result, err := kube.LookupResource(infinispan.GetServiceExternalName(), infinispan.Namespace, externalIngress, r.Client, reqLogger, r.eventRec, r.ctx); result != nil {
 					return *result, err
 				}
 				if len(externalIngress.Spec.Rules) > 0 {
@@ -517,7 +517,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		// ISPN-13116 If xsite view has been formed, then we must perform state-transfer to all sites if a SFS recovery has occurred
 		if crossSiteViewCondition.Status == metav1.ConditionTrue {
 			podName := podList.Items[0].Name
-			logs, err := r.kubernetes.Logs(podName, infinispan.Namespace)
+			logs, err := r.kubernetes.Logs(podName, infinispan.Namespace, ctx)
 			if err != nil {
 				log.Error(err, fmt.Sprintf("Unable to retrive logs for infinispan pod %s", podName))
 			}
@@ -706,7 +706,7 @@ func (r *infinispanRequest) upgradeInfinispan() error {
 	if controllerutil.ContainsFinalizer(infinispan, consts.InfinispanFinalizer) {
 		// Set Infinispan CR as owner reference for PVC if it not defined
 		pvcs := &corev1.PersistentVolumeClaimList{}
-		err := r.kubernetes.ResourcesList(infinispan.Namespace, LabelsResource(infinispan.Name, ""), pvcs)
+		err := r.kubernetes.ResourcesList(infinispan.Namespace, LabelsResource(infinispan.Name, ""), pvcs, r.ctx)
 		if err != nil {
 			return err
 		}
@@ -814,17 +814,17 @@ func upgradeRequired(infinispan *infinispanv1.Infinispan, podList *corev1.PodLis
 	return podDefaultImage != desiredImage, nil
 }
 
-func IsUpgradeRequired(infinispan *infinispanv1.Infinispan, kube *kube.Kubernetes) (bool, error) {
-	podList, err := PodList(infinispan, kube)
+func IsUpgradeRequired(infinispan *infinispanv1.Infinispan, kube *kube.Kubernetes, ctx context.Context) (bool, error) {
+	podList, err := PodList(infinispan, kube, ctx)
 	if err != nil {
 		return false, err
 	}
 	return upgradeRequired(infinispan, podList)
 }
 
-func PodList(infinispan *infinispanv1.Infinispan, kube *kube.Kubernetes) (*corev1.PodList, error) {
+func PodList(infinispan *infinispanv1.Infinispan, kube *kube.Kubernetes, ctx context.Context) (*corev1.PodList, error) {
 	podList := &corev1.PodList{}
-	return podList, kube.ResourcesList(infinispan.Namespace, PodLabels(infinispan.Name), podList)
+	return podList, kube.ResourcesList(infinispan.Namespace, PodLabels(infinispan.Name), podList, ctx)
 }
 
 func podAffinity(i *infinispanv1.Infinispan, matchLabels map[string]string) *corev1.Affinity {
@@ -928,7 +928,7 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 	ispn.AddLabelsForPods(labelsForPod)
 
 	pvcs := &corev1.PersistentVolumeClaimList{}
-	err := r.kubernetes.ResourcesList(ispn.Namespace, LabelsResource(ispn.Name, ""), pvcs)
+	err := r.kubernetes.ResourcesList(ispn.Namespace, LabelsResource(ispn.Name, ""), pvcs, r.ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1074,7 +1074,7 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 		pvc.OwnerReferences[0].BlockOwnerDeletion = pointer.BoolPtr(false)
 		// Set a storage class if it specified
 		if storageClassName := ispn.StorageClassName(); storageClassName != "" {
-			if _, err := kube.FindStorageClass(storageClassName, r.Client); err != nil {
+			if _, err := kube.FindStorageClass(storageClassName, r.Client, r.ctx); err != nil {
 				return nil, err
 			}
 			pvc.Spec.StorageClassName = &storageClassName

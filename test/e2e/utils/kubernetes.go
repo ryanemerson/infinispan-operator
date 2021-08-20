@@ -192,7 +192,7 @@ func (k TestKubernetes) CleanNamespaceAndLogOnPanic(namespace string, specLabel 
 }
 
 func (k TestKubernetes) PrintAllResources(namespace string, list runtime.Object, set labels.Set) {
-	if err := k.Kubernetes.ResourcesList(namespace, set, list); err != nil {
+	if err := k.Kubernetes.ResourcesList(namespace, set, list, context.TODO()); err != nil {
 		LogError(err)
 	}
 
@@ -206,7 +206,7 @@ func (k TestKubernetes) PrintAllResources(namespace string, list runtime.Object,
 		LogError(err)
 		if strings.Contains(reflect.TypeOf(list).String(), "PodList") {
 			fmt.Println(strings.Repeat("-", 30))
-			log, err := k.Kubernetes.Logs(item.GetName(), namespace)
+			log, err := k.Kubernetes.Logs(item.GetName(), namespace, context.TODO())
 			LogError(err)
 			fmt.Printf("%s", log)
 		}
@@ -427,13 +427,13 @@ func (k TestKubernetes) WaitForExternalService(ispn *ispnv1.Infinispan, timeout 
 		switch ispn.GetExposeType() {
 		case ispnv1.ExposeTypeNodePort, ispnv1.ExposeTypeLoadBalancer:
 			routeList := &v1.ServiceList{}
-			err = k.Kubernetes.ResourcesList(ispn.Namespace, controllers.ExternalServiceLabels(ispn.Name), routeList)
+			err = k.Kubernetes.ResourcesList(ispn.Namespace, controllers.ExternalServiceLabels(ispn.Name), routeList, context.TODO())
 			ExpectNoError(err)
 
 			if len(routeList.Items) > 0 {
 				switch ispn.GetExposeType() {
 				case ispnv1.ExposeTypeNodePort:
-					host, err := k.Kubernetes.GetNodeHost(log)
+					host, err := k.Kubernetes.GetNodeHost(log, context.TODO())
 					ExpectNoError(err)
 					hostAndPort = fmt.Sprintf("%s:%d", host, getNodePort(&routeList.Items[0]))
 				case ispnv1.ExposeTypeLoadBalancer:
@@ -442,7 +442,7 @@ func (k TestKubernetes) WaitForExternalService(ispn *ispnv1.Infinispan, timeout 
 			}
 		case ispnv1.ExposeTypeRoute:
 			routeList := &routev1.RouteList{}
-			err = k.Kubernetes.ResourcesList(ispn.Namespace, controllers.ExternalServiceLabels(ispn.Name), routeList)
+			err = k.Kubernetes.ResourcesList(ispn.Namespace, controllers.ExternalServiceLabels(ispn.Name), routeList, context.TODO())
 			ExpectNoError(err)
 			if len(routeList.Items) > 0 {
 				hostAndPort = routeList.Items[0].Spec.Host

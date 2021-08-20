@@ -29,8 +29,8 @@ const (
 )
 
 // LookupResource lookup for resource to be created by separate resource controller
-func LookupResource(name, namespace string, resource client.Object, client client.Client, logger logr.Logger, eventRec record.EventRecorder) (*reconcile.Result, error) {
-	err := client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, resource)
+func LookupResource(name, namespace string, resource client.Object, client client.Client, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) (*reconcile.Result, error) {
+	err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, resource)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if eventRec != nil {
@@ -53,14 +53,14 @@ func LookupResource(name, namespace string, resource client.Object, client clien
 	return nil, nil
 }
 
-func LookupServiceAccountTokenSecret(name, namespace string, client client.Client) (*corev1.Secret, error) {
+func LookupServiceAccountTokenSecret(name, namespace string, client client.Client, ctx context.Context) (*corev1.Secret, error) {
 	serviceAccount := &corev1.ServiceAccount{}
-	if err := client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, serviceAccount); err != nil {
+	if err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, serviceAccount); err != nil {
 		return nil, err
 	}
 	for _, secretReference := range serviceAccount.Secrets {
 		secret := &corev1.Secret{}
-		if err := client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: secretReference.Name}, secret); err != nil {
+		if err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: secretReference.Name}, secret); err != nil {
 			continue
 		}
 		if isServiceAccountToken(secret, serviceAccount) {

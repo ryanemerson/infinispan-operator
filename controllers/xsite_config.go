@@ -26,9 +26,9 @@ const (
 )
 
 // ComputeXSite compute the xsite struct for cross site function
-func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, service *corev1.Service, logger logr.Logger, eventRec record.EventRecorder) (*config.XSite, error) {
+func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, service *corev1.Service, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) (*config.XSite, error) {
 	siteServiceName := infinispan.GetSiteServiceName()
-	localSiteHost, localSitePort, err := getCrossSiteServiceHostPort(service, kubernetes, logger, eventRec, "XSiteLocalServiceUnsupported")
+	localSiteHost, localSitePort, err := getCrossSiteServiceHostPort(service, kubernetes, logger, eventRec, "XSiteLocalServiceUnsupported", ctx)
 	if err != nil {
 		logger.Error(err, "error retrieving local x-site service information")
 		return nil, err
@@ -66,7 +66,7 @@ func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, se
 			appendBackupSite(remoteLocation.Name, backupSiteURL.Hostname(), int32(port), xsite)
 		} else {
 			// lookup remote service via kubernetes API
-			if err = appendRemoteLocation(infinispan, &remoteLocation, kubernetes, logger, eventRec, xsite); err != nil {
+			if err = appendRemoteLocation(ctx, infinispan, &remoteLocation, kubernetes, logger, eventRec, xsite); err != nil {
 				return nil, err
 			}
 		}
@@ -76,9 +76,9 @@ func ComputeXSite(infinispan *ispnv1.Infinispan, kubernetes *kube.Kubernetes, se
 	return xsite, nil
 }
 
-func appendRemoteLocation(infinispan *ispnv1.Infinispan, remoteLocation *ispnv1.InfinispanSiteLocationSpec, kubernetes *kube.Kubernetes,
+func appendRemoteLocation(ctx context.Context, infinispan *ispnv1.Infinispan, remoteLocation *ispnv1.InfinispanSiteLocationSpec, kubernetes *kube.Kubernetes,
 	logger logr.Logger, eventRec record.EventRecorder, xsite *config.XSite) error {
-	restConfig, err := getRemoteSiteRESTConfig(infinispan.Namespace, remoteLocation, kubernetes, logger)
+	restConfig, err := getRemoteSiteRESTConfig(infinispan.Namespace, remoteLocation, kubernetes, logger, ctx)
 	if err != nil {
 		return err
 	}
@@ -89,24 +89,24 @@ func appendRemoteLocation(infinispan *ispnv1.Infinispan, remoteLocation *ispnv1.
 		return err
 	}
 
-	if err = appendKubernetesRemoteLocation(infinispan, remoteLocation.Name, remoteKubernetes, logger, eventRec, xsite); err != nil {
+	if err = appendKubernetesRemoteLocation(ctx, infinispan, remoteLocation.Name, remoteKubernetes, logger, eventRec, xsite); err != nil {
 		return err
 	}
 	return nil
 }
 
-func appendKubernetesRemoteLocation(infinispan *ispnv1.Infinispan, remoteLocationName string, remoteKubernetes *kube.Kubernetes, logger logr.Logger, eventRec record.EventRecorder, xsite *config.XSite) error {
+func appendKubernetesRemoteLocation(ctx context.Context, infinispan *ispnv1.Infinispan, remoteLocationName string, remoteKubernetes *kube.Kubernetes, logger logr.Logger, eventRec record.EventRecorder, xsite *config.XSite) error {
 	remoteNamespace := infinispan.GetRemoteSiteNamespace(remoteLocationName)
 	remoteServiceName := infinispan.GetRemoteSiteServiceName(remoteLocationName)
 
 	siteService := &corev1.Service{}
-	err := remoteKubernetes.Client.Get(context.TODO(), types.NamespacedName{Name: remoteServiceName, Namespace: remoteNamespace}, siteService)
+	err := remoteKubernetes.Client.Get(ctx, types.NamespacedName{Name: remoteServiceName, Namespace: remoteNamespace}, siteService)
 	if err != nil {
 		logger.Error(err, "could not get x-site service in remote cluster", "site service name", remoteServiceName, "site namespace", remoteNamespace)
 		return err
 	}
 
-	host, port, err := getCrossSiteServiceHostPort(siteService, remoteKubernetes, logger, eventRec, "XSiteRemoteServiceUnsupported")
+	host, port, err := getCrossSiteServiceHostPort(siteService, remoteKubernetes, logger, eventRec, "XSiteRemoteServiceUnsupported", ctx)
 	if err != nil {
 		logger.Error(err, "error retrieving remote x-site service information")
 		return err
@@ -137,12 +137,12 @@ func appendBackupSite(name, host string, port int32, xsite *config.XSite) {
 	xsite.Backups = append(xsite.Backups, backupSite)
 }
 
-func getCrossSiteServiceHostPort(service *corev1.Service, kubernetes *kube.Kubernetes, logger logr.Logger, eventRec record.EventRecorder, reason string) (string, int32, error) {
+func getCrossSiteServiceHostPort(service *corev1.Service, kubernetes *kube.Kubernetes, logger logr.Logger, eventRec record.EventRecorder, reason string, ctx context.Context) (string, int32, error) {
 	switch serviceType := service.Spec.Type; serviceType {
 	case corev1.ServiceTypeNodePort:
 		// If configuring NodePort, expect external IPs to be configured
 		nodePort := service.Spec.Ports[0].NodePort
-		nodeHost, err := kubernetes.GetNodeHost(logger)
+		nodeHost, err := kubernetes.GetNodeHost(logger, ctx)
 		return nodeHost, nodePort, err
 	case corev1.ServiceTypeLoadBalancer:
 		return getLoadBalancerServiceHostPort(service, logger, eventRec, reason)
@@ -182,7 +182,7 @@ func getLoadBalancerServiceHostPort(service *corev1.Service, logger logr.Logger,
 	return "", port, nil
 }
 
-func getRemoteSiteRESTConfig(namespace string, location *ispnv1.InfinispanSiteLocationSpec, kubernetes *kube.Kubernetes, logger logr.Logger) (*restclient.Config, error) {
+func getRemoteSiteRESTConfig(namespace string, location *ispnv1.InfinispanSiteLocationSpec, kubernetes *kube.Kubernetes, logger logr.Logger, ctx context.Context) (*restclient.Config, error) {
 	backupSiteURL, err := url.Parse(location.URL)
 	if err != nil {
 		return nil, err
@@ -199,9 +199,9 @@ func getRemoteSiteRESTConfig(namespace string, location *ispnv1.InfinispanSiteLo
 
 	switch scheme := backupSiteURL.Scheme; scheme {
 	case ispnv1.CrossSiteSchemeTypeKubernetes, ispnv1.CrossSiteSchemeTypeMinikube:
-		return kubernetes.GetKubernetesRESTConfig(copyURL.String(), location.SecretName, namespace, logger)
+		return kubernetes.GetKubernetesRESTConfig(copyURL.String(), location.SecretName, namespace, logger, ctx)
 	case ispnv1.CrossSiteSchemeTypeOpenShift:
-		return kubernetes.GetOpenShiftRESTConfig(copyURL.String(), location.SecretName, namespace, logger)
+		return kubernetes.GetOpenShiftRESTConfig(copyURL.String(), location.SecretName, namespace, logger, ctx)
 	default:
 		return nil, fmt.Errorf("backup site URL scheme '%s' not supported for remote connection", scheme)
 	}

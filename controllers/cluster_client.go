@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
 
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
@@ -10,8 +11,8 @@ import (
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 )
 
-func NewCluster(i *v1.Infinispan, kubernetes *kube.Kubernetes) (*ispn.Cluster, error) {
-	pass, err := users.AdminPassword(i.GetAdminSecretName(), i.Namespace, kubernetes)
+func NewCluster(i *v1.Infinispan, kubernetes *kube.Kubernetes, ctx context.Context) (*ispn.Cluster, error) {
+	pass, err := users.AdminPassword(i.GetAdminSecretName(), i.Namespace, kubernetes, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve opeator admin identities when creating Cluster instance: %w", err)
 	}

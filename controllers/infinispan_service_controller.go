@@ -256,7 +256,7 @@ func (s serviceRequest) cleanupExternalExpose(excludeKind string) error {
 			case consts.ExternalTypeService:
 				//TODO DeleteAllOf for Service objects not yet implemented. See https://github.com/kubernetes/kubernetes/issues/68468#issuecomment-419981870
 				serviceList := &corev1.ServiceList{}
-				if err := s.kube.ResourcesList(s.infinispan.Namespace, ExternalServiceLabels(s.infinispan.Name), serviceList); err != nil {
+				if err := s.kube.ResourcesList(s.infinispan.Namespace, ExternalServiceLabels(s.infinispan.Name), serviceList, s.ctx); err != nil {
 					return nil
 				}
 				for _, service := range serviceList.Items {
@@ -282,7 +282,7 @@ func (s serviceRequest) reconcileServiceMonitor(service *corev1.Service) (reconc
 
 	if s.infinispan.IsServiceMonitorEnabled() {
 		secret := &corev1.Secret{}
-		if result, err := kube.LookupResource(s.infinispan.GetAdminSecretName(), s.infinispan.Namespace, secret, s.Client, s.log, s.eventRec); result != nil {
+		if result, err := kube.LookupResource(s.infinispan.GetAdminSecretName(), s.infinispan.Namespace, secret, s.Client, s.log, s.eventRec, s.ctx); result != nil {
 			return *result, err
 		}
 

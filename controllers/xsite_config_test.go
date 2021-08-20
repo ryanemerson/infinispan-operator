@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -149,7 +150,7 @@ var staticSiteService = &corev1.Service{
 var logger = logf.Log.WithName("xiste-test")
 
 func TestComputeXSiteStatic(t *testing.T) {
-	xsite, err := ComputeXSite(staticXSiteInfinispan, nil, staticSiteService, logger, nil)
+	xsite, err := ComputeXSite(staticXSiteInfinispan, nil, staticSiteService, logger, nil, context.TODO())
 	assert.Nil(t, err)
 
 	assert.Equal(t, staticXSiteInfinispan.Spec.Service.Sites.Local.Name, xsite.Name, "Local site name")
@@ -162,7 +163,7 @@ func TestComputeXSiteStatic(t *testing.T) {
 }
 
 func TestComputeXSiteSelfStatic(t *testing.T) {
-	xsite, err := ComputeXSite(selfStaticXSiteInfinispan, nil, staticSiteService, logger, nil)
+	xsite, err := ComputeXSite(selfStaticXSiteInfinispan, nil, staticSiteService, logger, nil, context.TODO())
 	assert.Nil(t, err)
 
 	assert.Equal(t, 1, len(xsite.Backups), "Backup sites number")
@@ -171,7 +172,7 @@ func TestComputeXSiteSelfStatic(t *testing.T) {
 }
 
 func TestComputeXSiteSelfStaticError(t *testing.T) {
-	_, err := ComputeXSite(selfStaticXSiteErrorInfinispan, nil, staticSiteService, logger, nil)
+	_, err := ComputeXSite(selfStaticXSiteErrorInfinispan, nil, staticSiteService, logger, nil, context.TODO())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to link the cross-site service with itself")
 
