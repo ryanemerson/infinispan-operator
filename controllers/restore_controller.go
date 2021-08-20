@@ -7,7 +7,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	ispnctrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
-	zero "github.com/infinispan/infinispan-operator/controllers/zerocapacity"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	corev1 "k8s.io/api/core/v1"
@@ -45,10 +44,10 @@ type restore struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	backupEventRec := mgr.GetEventRecorderFor(BackupControllerName)
-	return zero.CreateController(BackupControllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
+	return newZeroCapacityController(BackupControllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }
 
-func (r *RestoreReconciler) ResourceInstance(name types.NamespacedName, ctrl *zero.Controller) (zero.Resource, error) {
+func (r *RestoreReconciler) ResourceInstance(name types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {
 	instance := &v2alpha1.Restore{}
 	if err := ctrl.Get(restoreCtx, name, instance); err != nil {
 		return nil, err
@@ -74,11 +73,11 @@ func (r *restore) Cluster() string {
 	return r.instance.Spec.Cluster
 }
 
-func (r *restore) Phase() zero.Phase {
-	return zero.Phase(string(r.instance.Status.Phase))
+func (r *restore) Phase() zeroCapacityPhase {
+	return zeroCapacityPhase(string(r.instance.Status.Phase))
 }
 
-func (r *restore) UpdatePhase(phase zero.Phase, phaseErr error) error {
+func (r *restore) UpdatePhase(phase zeroCapacityPhase, phaseErr error) error {
 	_, err := r.update(func() {
 		restore := r.instance
 		var reason string
@@ -124,7 +123,7 @@ func (r *restore) update(mutate func()) (bool, error) {
 	return res != controllerutil.OperationResultNone, err
 }
 
-func (r *restore) Init() (*zero.Spec, error) {
+func (r *restore) Init() (*zeroCapacitySpec, error) {
 	backup := &v2alpha1.Backup{}
 	backupKey := types.NamespacedName{
 		Namespace: r.instance.Namespace,
@@ -132,13 +131,13 @@ func (r *restore) Init() (*zero.Spec, error) {
 	}
 
 	if err := r.client.Get(restoreCtx, backupKey, backup); err != nil {
-		return nil, fmt.Errorf("Unable to load Infinispan Backup '%s': %w", backupKey.Name, err)
+		return nil, fmt.Errorf("unable to load Infinispan Backup '%s': %w", backupKey.Name, err)
 	}
 
-	return &zero.Spec{
+	return &zeroCapacitySpec{
 		Container: r.instance.Spec.Container,
 		PodLabels: RestorePodLabels(r.instance.Name, backup.Spec.Cluster),
-		Volume: zero.VolumeSpec{
+		Volume: zeroCapacityVolumeSpec{
 			MountPath: BackupDataMountPath,
 			VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
@@ -172,15 +171,15 @@ func (r *restore) Exec(client http.HttpClient) error {
 	return backupManager.Restore(instance.Name, config)
 }
 
-func (r *restore) ExecStatus(client http.HttpClient) (zero.Phase, error) {
+func (r *restore) ExecStatus(client http.HttpClient) (zeroCapacityPhase, error) {
 	name := r.instance.Name
 	backupManager := backup.NewManager(name, client)
 
 	status, err := backupManager.RestoreStatus(name)
 	if err != nil {
-		return zero.ZeroUnknown, err
+		return ZeroUnknown, err
 	}
-	return zero.Phase(status), nil
+	return zeroCapacityPhase(status), nil
 }
 
 func RestorePodLabels(backup, cluster string) map[string]string {

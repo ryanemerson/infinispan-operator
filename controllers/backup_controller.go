@@ -8,7 +8,6 @@ import (
 	v2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
 	ispnCtrl "github.com/infinispan/infinispan-operator/controllers/infinispan"
-	zero "github.com/infinispan/infinispan-operator/controllers/zerocapacity"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
 	corev1 "k8s.io/api/core/v1"
@@ -21,7 +20,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // +kubebuilder:rbac:groups=infinispan.org,resources=backups,verbs=get;list;watch;create;update;patch;delete
@@ -51,10 +49,10 @@ type backupResource struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	backupEventRec := mgr.GetEventRecorderFor(BackupControllerName)
-	return zero.CreateController(BackupControllerName, &BackupReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
+	return newZeroCapacityController(BackupControllerName, &BackupReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
 }
 
-func (r *BackupReconciler) ResourceInstance(key types.NamespacedName, ctrl *zero.Controller) (zero.Resource, error) {
+func (r *BackupReconciler) ResourceInstance(key types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {
 	instance := &v2alpha1.Backup{}
 	if err := ctrl.Get(ctx, key, instance); err != nil {
 		return nil, err
@@ -79,11 +77,11 @@ func (r *backupResource) Cluster() string {
 	return r.instance.Spec.Cluster
 }
 
-func (r *backupResource) Phase() zero.Phase {
-	return zero.Phase(r.instance.Status.Phase)
+func (r *backupResource) Phase() zeroCapacityPhase {
+	return zeroCapacityPhase(r.instance.Status.Phase)
 }
 
-func (r *backupResource) UpdatePhase(phase zero.Phase, phaseErr error) error {
+func (r *backupResource) UpdatePhase(phase zeroCapacityPhase, phaseErr error) error {
 	_, err := r.update(func() {
 		backup := r.instance
 		var reason string
@@ -119,7 +117,7 @@ func (r *backupResource) Transform() (bool, error) {
 
 func (r *backupResource) update(mutate func()) (bool, error) {
 	backup := r.instance
-	res, err := k8sctrlutil.CreateOrPatch(ctx, r.client, backup, func() error {
+	res, err := controllerutil.CreateOrPatch(ctx, r.client, backup, func() error {
 		if backup.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("backup.infinispan.org"), backup.Name)
 		}
@@ -129,7 +127,7 @@ func (r *backupResource) update(mutate func()) (bool, error) {
 	return res != controllerutil.OperationResultNone, err
 }
 
-func (r *backupResource) Init() (*zero.Spec, error) {
+func (r *backupResource) Init() (*zeroCapacitySpec, error) {
 	err := r.getOrCreatePvc()
 	if err != nil {
 		return nil, err
@@ -137,8 +135,8 @@ func (r *backupResource) Init() (*zero.Spec, error) {
 
 	// Status is updated in the zero_controller when UpdatePhase is called
 	r.instance.Status.PVC = fmt.Sprintf("pvc/%s", r.instance.Name)
-	return &zero.Spec{
-		Volume: zero.VolumeSpec{
+	return &zeroCapacitySpec{
+		Volume: zeroCapacityVolumeSpec{
 			UpdatePermissions: true,
 			MountPath:         BackupDataMountPath,
 			VolumeSource: corev1.VolumeSource{
@@ -203,7 +201,7 @@ func (r *backupResource) getOrCreatePvc() error {
 		return err
 	}
 	if err = r.client.Create(ctx, pvc); err != nil {
-		return fmt.Errorf("Unable to create pvc: %w", err)
+		return fmt.Errorf("unable to create pvc: %w", err)
 	}
 	return nil
 }
@@ -230,12 +228,12 @@ func (r *backupResource) Exec(client http.HttpClient) error {
 	return backupManager.Backup(instance.Name, config)
 }
 
-func (r *backupResource) ExecStatus(client http.HttpClient) (zero.Phase, error) {
+func (r *backupResource) ExecStatus(client http.HttpClient) (zeroCapacityPhase, error) {
 	name := r.instance.Name
 	backupManager := backup.NewManager(name, client)
 
 	status, err := backupManager.BackupStatus(name)
-	return zero.Phase(status), err
+	return zeroCapacityPhase(status), err
 }
 
 func BackupPodLabels(backup, cluster string) map[string]string {
