@@ -295,7 +295,7 @@ func (k TestKubernetes) DeleteRestore(restore *ispnv2.Restore) {
 }
 
 func (k TestKubernetes) DeleteBatch(batch *ispnv2.Batch) {
-	labelSelector := labels.SelectorFromSet(controllers.RestorePodLabels(batch.Name, batch.Spec.Cluster))
+	labelSelector := labels.SelectorFromSet(controllers.BatchLabels(batch.Name))
 	k.DeleteResource(batch.Namespace, labelSelector, batch, SinglePodTimeout)
 }
 

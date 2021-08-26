@@ -109,7 +109,7 @@ func TestBatchConfigAndConfigMap(t *testing.T) {
 	createBatch(name, "doesn't exist", pointer.StringPtr("Config"), pointer.StringPtr("ConfigMap"))
 
 	batch := waitForValidBatchPhase(name, v2.BatchFailed)
-	if batch.Status.Reason != "At most one of ['Spec.config', 'spec.ConfigMap'] must be configured" {
+	if batch.Status.Reason != "at most one of ['Spec.config', 'spec.ConfigMap'] must be configured" {
 		panic(fmt.Errorf("Unexpected 'Status.Reason': %s", batch.Status.Reason))
 	}
 	testKube.DeleteBatch(batch)

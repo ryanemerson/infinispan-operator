@@ -98,3 +98,4 @@ vendor/
 *.backup
 /cmd/manager/debug
 tls.crt
+**/__debug_bin

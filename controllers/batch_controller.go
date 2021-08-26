@@ -322,13 +322,6 @@ func (r *batchRequest) update(mutate func() error) (bool, error) {
 	return res != controllerutil.OperationResultNone, err
 }
 
-func BatchLabels(name string) map[string]string {
-	return map[string]string{
-		"infinispan_batch": name,
-		"app":              "infinispan-batch-pod",
-	}
-}
-
 func GetJobPodName(name, namespace string, c client.Client, ctx context.Context) (string, error) {
 	labelSelector := labels.SelectorFromSet(BatchLabels(name))
 	podList := &corev1.PodList{}

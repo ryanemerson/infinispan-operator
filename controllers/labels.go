@@ -35,3 +35,10 @@ func RestorePodLabels(backup, cluster string) map[string]string {
 	m["restore_cr"] = backup
 	return m
 }
+
+func BatchLabels(name string) map[string]string {
+	return map[string]string{
+		"infinispan_batch": name,
+		"app":              "infinispan-batch-pod",
+	}
+}
