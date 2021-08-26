@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 		for _, namespace := range namespaces {
 			testKube.NewNamespace(namespace)
 		}
-		stopCh := testKube.RunOperator(nsAsString, "../../../deploy/crds/")
+		stopCh := testKube.RunOperator(nsAsString, "../../../config/crd/bases/")
 		code := m.Run()
 		close(stopCh)
 		os.Exit(code)
