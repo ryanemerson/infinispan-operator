@@ -161,9 +161,9 @@ func SetConfigDefaults(config *rest.Config) *rest.Config {
 // ServiceCAsCRDResourceExists returns true if the platform
 // has the servicecas.operator.openshift.io custom resource deployed
 // Used to check if serviceca operator is serving TLS certificates
-func (k Kubernetes) hasServiceCAsCRDResource(ctx context.Context) bool {
+func (k Kubernetes) hasServiceCAsCRDResource(version string, ctx context.Context) bool {
 	// Using an ad-hoc path
-	req := k.RestClient.Get().AbsPath("apis/apiextensions.k8s.io/v1beta1/customresourcedefinitions/servicecas.operator.openshift.io")
+	req := k.RestClient.Get().AbsPath("apis/apiextensions.k8s.io/" + version + "/customresourcedefinitions/servicecas.operator.openshift.io")
 	result := req.Do(ctx)
 	var status int
 	result.StatusCode(&status)
@@ -173,7 +173,7 @@ func (k Kubernetes) hasServiceCAsCRDResource(ctx context.Context) bool {
 // GetServingCertsMode returns a label that identify the kind of serving
 // certs service is available. Returns 'openshift.io' for service-ca on openshift
 func (k Kubernetes) GetServingCertsMode(ctx context.Context) string {
-	if k.hasServiceCAsCRDResource(ctx) {
+	if k.hasServiceCAsCRDResource("v1beta1", ctx) || k.hasServiceCAsCRDResource("v1", ctx) {
 		return "openshift.io"
 
 		// Code to check if other modes of serving TLS cert service is available
