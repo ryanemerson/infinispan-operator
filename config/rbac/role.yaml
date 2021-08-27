@@ -7,132 +7,215 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - infinispan.org
+  - apiextensions.k8s.io
   resources:
-  - backups
+  - ingresses
   verbs:
   - create
   - delete
+  - deletecollection
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments/finalizers
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - replicasets
+  verbs:
+  - get
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - endpoints
+  - persistentvolumeclaims
+  - pods
+  - secrets
+  - services
+  - services/finalizers
+  verbs:
+  - create
+  - delete
+  - deletecollection
   - get
   - list
   - patch
   - update
   - watch
 - apiGroups:
-  - infinispan.org
+  - ""
   resources:
-  - backups/finalizers
+  - nodes
+  - serviceaccounts
   verbs:
-  - update
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/exec
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods/logs
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - infinispan.org
   resources:
+  - backups
+  - backups/finalizers
   - backups/status
   verbs:
+  - create
   - get
+  - list
   - patch
   - update
+  - watch
 - apiGroups:
   - infinispan.org
   resources:
   - batches
+  - batches/finalizers
+  - batches/status
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
   - update
   - watch
-- apiGroups:
-  - infinispan.org
-  resources:
-  - batches/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - infinispan.org
-  resources:
-  - batches/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - infinispan.org
   resources:
   - caches
+  - caches/finalizers
+  - caches/status
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
   - update
   - watch
-- apiGroups:
-  - infinispan.org
-  resources:
-  - caches/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - infinispan.org
-  resources:
-  - caches/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - infinispan.org
   resources:
   - infinispans
+  - infinispans/finalizers
+  - infinispans/status
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
   - update
   - watch
-- apiGroups:
-  - infinispan.org
-  resources:
-  - infinispans/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - infinispan.org
-  resources:
-  - infinispans/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - infinispan.org
   resources:
   - restores
+  - restores/finalizers
+  - restores/status
   verbs:
   - create
-  - delete
   - get
   - list
   - patch
   - update
   - watch
 - apiGroups:
-  - infinispan.org
+  - integreatly.org
   resources:
-  - restores/finalizers
+  - grafanadashboards
   verbs:
+  - create
+  - delete
+  - get
+  - list
   - update
+  - watch
 - apiGroups:
-  - infinispan.org
+  - monitoring.coreos.com
   resources:
-  - restores/status
+  - servicemonitors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - customresourcedefinitions
+  - customresourcedefinitions/status
   verbs:
   - get
-  - patch
+  - list
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  - routes/custom-host
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
   - update
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - get
+  - list
+  - watch

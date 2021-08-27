@@ -21,6 +21,8 @@ const (
 	grafanaDashboardMonitoringKey = "grafana.dashboard.monitoring.key"
 )
 
+// +kubebuilder:rbac:groups=integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;delete;update
+
 // reconcileGrafana reconciles grafana object status with the operator configuration settings
 func (r *ReconcileOperatorConfig) reconcileGrafana(ctx context.Context, config, currentConfig map[string]string, operatorNs string) (*reconcile.Result, error) {
 	grafanaNs := config[grafanaDashboardNamespaceKey]

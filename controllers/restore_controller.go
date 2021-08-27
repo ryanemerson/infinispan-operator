@@ -19,9 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// +kubebuilder:rbac:groups=infinispan.org,resources=restores,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infinispan.org,resources=restores/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=infinispan.org,resources=restores/finalizers,verbs=update
+// +kubebuilder:rbac:groups=infinispan.org,resources=restores;restores/status;restores/finalizers,verbs=get;list;watch;create;update;patch
 
 // RestoreReconciler reconciles a Restore object
 type RestoreReconciler struct {

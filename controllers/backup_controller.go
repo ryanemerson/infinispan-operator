@@ -21,9 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// +kubebuilder:rbac:groups=infinispan.org,resources=backups,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infinispan.org,resources=backups/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=infinispan.org,resources=backups/finalizers,verbs=update
+// +kubebuilder:rbac:groups=infinispan.org,resources=backups;backups/status;backups/finalizers,verbs=get;list;watch;create;update;patch
 
 const (
 	BackupDataMountPath = "/opt/infinispan/backups"
