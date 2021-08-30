@@ -173,7 +173,7 @@ func (k Kubernetes) hasServiceCAsCRDResource(version string, ctx context.Context
 // GetServingCertsMode returns a label that identify the kind of serving
 // certs service is available. Returns 'openshift.io' for service-ca on openshift
 func (k Kubernetes) GetServingCertsMode(ctx context.Context) string {
-	if k.hasServiceCAsCRDResource("v1beta1", ctx) || k.hasServiceCAsCRDResource("v1", ctx) {
+	if k.hasServiceCAsCRDResource("v1", ctx) {
 		return "openshift.io"
 
 		// Code to check if other modes of serving TLS cert service is available
