@@ -74,6 +74,7 @@ func init() {
 	SchemeBuilder.Register(&GrafanaDashboard{}, &GrafanaDashboardList{})
 }
 
+//nolint
 func (d *GrafanaDashboard) Hash() string {
 	hash := sha256.New()
 
