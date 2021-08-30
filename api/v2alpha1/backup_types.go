@@ -72,11 +72,9 @@ type BackupStatus struct {
 	PVC string `json:"pvc,omitempty"`
 }
 
-// +genclient
 // +kubebuilder:object:root=true
 
 // Backup is the Schema for the backups API
-// +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=backups,scope=Namespaced
 type Backup struct {

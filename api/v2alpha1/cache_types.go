@@ -62,7 +62,6 @@ type CacheStatus struct {
 // +kubebuilder:object:root=true
 
 // Cache is the Schema for the caches API
-// +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=caches,scope=Namespaced
 type Cache struct {
