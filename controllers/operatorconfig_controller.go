@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-logr/logr"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -29,8 +30,9 @@ type ReconcileOperatorConfig struct {
 }
 
 func (r *ReconcileOperatorConfig) SetupWithManager(mgr ctrl.Manager) error {
+	name := "config"
 	r.Client = mgr.GetClient()
-	r.log = ctrl.Log.WithName("controllers").WithName("OperatorConfig")
+	r.log = ctrl.Log.WithName("controllers").WithName(strings.Title(name))
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
 
@@ -41,6 +43,7 @@ func (r *ReconcileOperatorConfig) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(name).
 		For(&corev1.ConfigMap{}).
 		WithEventFilter(predicate.Funcs{
 			DeleteFunc: func(e event.DeleteEvent) bool {

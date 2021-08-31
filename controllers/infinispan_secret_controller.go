@@ -49,13 +49,15 @@ type secretRequest struct {
 }
 
 func (r *SecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	name := "secret"
 	r.Client = mgr.GetClient()
-	r.log = ctrl.Log.WithName("controllers").WithName("Secret")
+	r.log = ctrl.Log.WithName("controllers").WithName(strings.Title(name))
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
-	r.eventRec = mgr.GetEventRecorderFor("secret-controller")
+	r.eventRec = mgr.GetEventRecorderFor(name + "-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(name).
 		For(&ispnv1.Infinispan{}).
 		Owns(&corev1.Secret{}).
 		WithEventFilter(predicate.Funcs{

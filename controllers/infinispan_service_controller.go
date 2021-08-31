@@ -53,11 +53,12 @@ type serviceRequest struct {
 }
 
 func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	name := "service"
 	r.Client = mgr.GetClient()
-	r.log = ctrl.Log.WithName("controllers").WithName("Service")
+	r.log = ctrl.Log.WithName("controllers").WithName(strings.Title(name))
 	r.scheme = mgr.GetScheme()
 	r.kube = kube.NewKubernetesFromController(mgr)
-	r.eventRec = mgr.GetEventRecorderFor("service-controller")
+	r.eventRec = mgr.GetEventRecorderFor(name + "-controller")
 	r.supportedTypes = map[string]*reconcileType{
 		consts.ExternalTypeService: {ObjectType: &corev1.Service{}, GroupVersion: corev1.SchemeGroupVersion, GroupVersionSupported: true},
 		consts.ExternalTypeRoute:   {ObjectType: &routev1.Route{}, GroupVersion: routev1.SchemeGroupVersion, GroupVersionSupported: false},
@@ -66,6 +67,7 @@ func (r *ServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	builder := ctrl.NewControllerManagedBy(mgr).
+		Named(name).
 		For(&ispnv1.Infinispan{}).
 		WithEventFilter(predicate.Funcs{
 			CreateFunc: func(e event.CreateEvent) bool {

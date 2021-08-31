@@ -46,13 +46,15 @@ type configRequest struct {
 }
 
 func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	name := "configmap"
 	r.Client = mgr.GetClient()
-	r.log = ctrl.Log.WithName("controllers").WithName("Config")
+	r.log = ctrl.Log.WithName("controllers").WithName(strings.Title(name))
 	r.scheme = mgr.GetScheme()
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
-	r.eventRec = mgr.GetEventRecorderFor("config-controller")
+	r.eventRec = mgr.GetEventRecorderFor(name + "-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(name).
 		For(&v1.Infinispan{}).
 		Owns(&corev1.ConfigMap{}).
 		WithEventFilter(predicate.Funcs{
