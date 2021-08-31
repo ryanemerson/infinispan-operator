@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/backup"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/http"
@@ -24,8 +23,6 @@ import (
 // RestoreReconciler reconciles a Restore object
 type RestoreReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
 }
 
 type restore struct {
@@ -37,9 +34,7 @@ type restore struct {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	controllerName := "restore-controller"
-	backupEventRec := mgr.GetEventRecorderFor(controllerName)
-	return newZeroCapacityController(controllerName, &RestoreReconciler{mgr.GetClient(), mgr.GetLogger(), mgr.GetScheme()}, mgr, backupEventRec)
+	return newZeroCapacityController("Restore", &RestoreReconciler{mgr.GetClient()}, mgr)
 }
 
 func (r *RestoreReconciler) ResourceInstance(ctx context.Context, name types.NamespacedName, ctrl *zeroCapacityController) (zeroCapacityResource, error) {

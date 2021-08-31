@@ -5,6 +5,7 @@ import (
 	"fmt"
 	goHttp "net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -25,7 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -103,19 +103,21 @@ const (
 	ZeroUnknown zeroCapacityPhase = "Unknown"
 )
 
-func newZeroCapacityController(name string, reconciler zeroCapacityReconciler, mgr ctrl.Manager, eventRec record.EventRecorder) error {
+func newZeroCapacityController(name string, reconciler zeroCapacityReconciler, mgr ctrl.Manager) error {
 	r := &zeroCapacityController{
 		Name:       name,
 		Client:     mgr.GetClient(),
 		Reconciler: reconciler,
 		Kube:       kube.NewKubernetesFromController(mgr),
-		Log:        logf.Log.WithName(name),
+		Log:        ctrl.Log.WithName("controllers").WithName(name),
 		Scheme:     mgr.GetScheme(),
-		EventRec:   eventRec,
+		EventRec:   mgr.GetEventRecorderFor(strings.ToLower(name) + "-controller"),
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).WithOptions(controller.Options{Reconciler: r}).
-		For(reconciler.Type()).Owns(&corev1.Pod{}).
+	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{Reconciler: r}).
+		For(reconciler.Type()).
+		Owns(&corev1.Pod{}).
 		Complete(r)
 }
 

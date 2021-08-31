@@ -80,19 +80,11 @@ func Launch(p Parameters) {
 		setupLog.Error(err, "unable to create controller", "controller", "Infinispan")
 		os.Exit(1)
 	}
-	if err = (&controllers.BackupReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Backup"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.BackupReconciler{}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Backup")
 		os.Exit(1)
 	}
-	if err = (&controllers.RestoreReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Restore"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.RestoreReconciler{}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Restore")
 		os.Exit(1)
 	}
