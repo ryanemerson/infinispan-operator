@@ -79,7 +79,7 @@ func addToScheme(schemeBuilder *runtime.SchemeBuilder, scheme *runtime.Scheme) {
 // The configuration is resolved locally from known locations.
 func NewKubernetesFromLocalConfig(scheme *runtime.Scheme, mapperProvider MapperProvider, ctx string) (*kube.Kubernetes, error) {
 	config := resolveConfig(ctx)
-	config = kube.SetConfigDefaults(config)
+	config = kube.SetConfigDefaults(config, scheme)
 	mapper, err := mapperProvider(config)
 	if err != nil {
 		return nil, err

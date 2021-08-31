@@ -83,7 +83,7 @@ func appendRemoteLocation(ctx context.Context, infinispan *ispnv1.Infinispan, re
 		return err
 	}
 
-	remoteKubernetes, err := kube.NewKubernetesFromConfig(restConfig)
+	remoteKubernetes, err := kube.NewKubernetesFromConfig(restConfig, kubernetes.Client.Scheme())
 	if err != nil {
 		logger.Error(err, "could not connect to remote location URL", "URL", remoteLocation.URL)
 		return err

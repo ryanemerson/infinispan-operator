@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
@@ -37,7 +38,7 @@ type Kubernetes struct {
 // NewKubernetesFromController creates a new Kubernetes instance from controller runtime Manager
 func NewKubernetesFromController(mgr manager.Manager) *Kubernetes {
 	config := mgr.GetConfig()
-	config = SetConfigDefaults(config)
+	config = SetConfigDefaults(config, mgr.GetScheme())
 	restClient, err := rest.RESTClientFor(config)
 	if err != nil {
 		panic(err.Error())
@@ -51,12 +52,12 @@ func NewKubernetesFromController(mgr manager.Manager) *Kubernetes {
 }
 
 // NewKubernetesFromConfig creates a new Kubernetes from the Kubernetes master URL to connect to
-func NewKubernetesFromConfig(config *rest.Config) (*Kubernetes, error) {
+func NewKubernetesFromConfig(config *rest.Config, scheme *runtime.Scheme) (*Kubernetes, error) {
 	kubeClient, err := client.New(config, client.Options{})
 	if err != nil {
 		return nil, err
 	}
-	config = SetConfigDefaults(config)
+	config = SetConfigDefaults(config, scheme)
 	restClient, err := rest.RESTClientFor(config)
 	if err != nil {
 		panic(err.Error())
@@ -149,11 +150,11 @@ func FindKubeConfig() string {
 	return consts.GetEnvWithDefault("KUBECONFIG", consts.DefaultKubeConfig)
 }
 
-func SetConfigDefaults(config *rest.Config) *rest.Config {
+func SetConfigDefaults(config *rest.Config, scheme *runtime.Scheme) *rest.Config {
 	gv := corev1.SchemeGroupVersion
 	config.GroupVersion = &gv
 	config.APIPath = "/api"
-	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
 	config.UserAgent = rest.DefaultKubernetesUserAgent()
 	return config
 }
