@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/GeertJohan/go.rice v1.0.2
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/go-logr/logr v0.4.0
+	github.com/go-logr/logr v0.3.0
 	github.com/go-playground/validator/v10 v10.8.0
 	github.com/iancoleman/strcase v0.2.0
 	github.com/onsi/ginkgo v1.16.4
@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/common v0.26.0
 	github.com/stretchr/testify v1.7.0
 	gopkg.in/yaml.v2 v2.4.0
-	honnef.co/go/tools v0.0.1-2020.1.3
+	honnef.co/go/tools v0.0.1-2020.1.3 // indirect
 	k8s.io/api v0.19.4
 	k8s.io/apiextensions-apiserver v0.19.4
 	k8s.io/apimachinery v0.19.4
@@ -26,10 +26,11 @@ require (
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20210415151418-c5206de65a78
 )
 
-replace k8s.io/client-go => k8s.io/client-go v0.19.4
-
-replace sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.7.0
-
-replace k8s.io/client-go/plugin => k8s.io/client-go/plugin v0.19.4
-
-replace github.com/go-playground/validator/v10 => github.com/go-playground/validator/v10 v10.8.0
+replace (
+	github.com/go-playground/validator/v10 => github.com/go-playground/validator/v10 v10.8.0
+	k8s.io/api => k8s.io/api v0.19.4
+	k8s.io/apimachinery => k8s.io/apimachinery v0.19.4
+	k8s.io/client-go => k8s.io/client-go v0.19.4
+	k8s.io/client-go/plugin => k8s.io/client-go/plugin v0.19.4
+	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.7.0
+)

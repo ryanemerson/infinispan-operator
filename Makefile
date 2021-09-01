@@ -1,5 +1,5 @@
 # Current Operator version
-VERSION ?= 0.0.1
+VERSION ?= $(git describe --tags --always --dirty)
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 export KUBECONFIG ?= ${HOME}/.kube/config
@@ -16,6 +16,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
+
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -31,8 +32,9 @@ all: manager
 lint:
 	./build/run-lint.sh
 
+
 # Run tests
-test: generate fmt vet manifests
+test: manager manifests
 	build/run-tests.sh main
 
 multinamespace-test: build
@@ -49,7 +51,7 @@ manager: generate fmt vet
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
-run: generate fmt vet manifests
+run: manager manifests
 	OSDK_FORCE_RUN_MODE=local go run ./main.go
 
 # Install CRDs into a cluster
@@ -62,7 +64,7 @@ uninstall: manifests kustomize
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 # UnDeploy controller from the configured Kubernetes cluster in ~/.kube/config
@@ -90,12 +92,12 @@ generate: controller-gen rice
 
 
 # Build the docker image
-docker-build: test
-	docker build -t ${IMG} .
+docker-build: manager
+	docker build -t $(IMG) .
 
 # Push the docker image
 docker-push:
-	docker push ${IMG}
+	docker push $(IMG)
 
 # Download Rice locally if necessary
 RICE = $(shell pwd)/bin/rice
@@ -137,4 +139,4 @@ bundle: manifests kustomize
 # Build the bundle image.
 .PHONY: bundle-build
 bundle-build:
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	docker build --build-arg VERSION=$(VERSION) -f bundle.Dockerfile -t $(BUNDLE_IMG) .
