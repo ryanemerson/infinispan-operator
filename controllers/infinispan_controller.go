@@ -184,7 +184,7 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get
 // +kubebuilder:rbac:groups=apps,resources=deployments/finalizers;statefulsets,verbs=get;list;watch;create;update;delete
 
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=ingresses,verbs=get;list;watch;create;delete;deletecollection;update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;delete;deletecollection;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=customresourcedefinitions;customresourcedefinitions/status,verbs=get;list
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 
