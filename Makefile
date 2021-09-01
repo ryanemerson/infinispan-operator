@@ -32,8 +32,10 @@ all: manager
 lint:
 	./build/run-lint.sh
 
+unit-test: manager
+	go test ./api/... -v
+	go test ./controllers/... -v
 
-# Run tests
 test: manager manifests
 	build/run-tests.sh main
 
