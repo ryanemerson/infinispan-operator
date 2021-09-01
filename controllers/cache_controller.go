@@ -10,7 +10,6 @@ import (
 	"github.com/infinispan/infinispan-operator/controllers/constants"
 	caches "github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
-	"github.com/infinispan/infinispan-operator/version"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,7 +49,7 @@ func (r *CacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 
 	reqLogger := r.log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info(fmt.Sprintf("+++++ Reconciling Cache. Operator Version: %s", version.Version))
+	reqLogger.Info("+++++ Reconciling Cache.")
 	defer reqLogger.Info("----- End Reconciling Cache.")
 
 	// Fetch the Cache instance

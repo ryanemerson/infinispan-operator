@@ -2,6 +2,7 @@ package lancher
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -24,6 +25,8 @@ import (
 	ingressv1 "k8s.io/api/networking/v1"
 	// +kubebuilder:scaffold:imports
 )
+
+const Version = "undefined"
 
 var (
 	scheme   = runtime.NewScheme()
@@ -127,7 +130,7 @@ func Launch(p Parameters) {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
+	setupLog.Info(fmt.Sprintf("Starting Infinispan Operator Version: %s", Version))
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

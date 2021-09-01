@@ -18,7 +18,6 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/prometheus/common/log"
-	"honnef.co/go/tools/version"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	ingressv1 "k8s.io/api/networking/v1"
@@ -195,7 +194,7 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request) (ctrl.Result, error) {
 	reqLogger := reconciler.log.WithValues("Request.Namespace", ctrlRequest.Namespace, "Request.Name", ctrlRequest.Name)
-	reqLogger.Info(fmt.Sprintf("+++++ Reconciling Infinispan. Operator Version: %s", version.Version))
+	reqLogger.Info("+++++ Reconciling Infinispan.")
 	defer reqLogger.Info("----- End Reconciling Infinispan.")
 
 	// Fetch the Infinispan instance

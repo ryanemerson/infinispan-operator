@@ -8,7 +8,7 @@ echo "Using test bundle '${TEST_BUNDLE}'"
 KUBECONFIG=${KUBECONFIG-${HOME}/.kube/config}
 PARALLEL_COUNT=${PARALLEL_COUNT:-1}
 VERSION=$(git describe --tags --always --dirty)
-GO_LDFLAGS="-X github.com/infinispan/infinispan-operator/version.Version=${VERSION}"
+GO_LDFLAGS="-X github.com/infinispan/infinispan-operator/launcher.Version=${VERSION}"
 
 go clean -testcache ./test/e2e
 if [ -z "${TEST_NAME}" ]; then
