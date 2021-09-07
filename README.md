@@ -24,6 +24,7 @@ To create a docker container and push to a remote repository execute:
 
 `make docker-build docker-push IMG=<image_name:tag>`
 
+
 ## Running the Operator
 
 ### Locally
@@ -41,6 +42,18 @@ To deploy the operator to the cluster you're currently connected to, execute:
 
 This will update the `config/manager/manager.yaml` to utilise the specified image and will create all of the required
 resources on the kubernetes cluster in the `infinispan-operator-system` namespace.
+
+# OLM Bundle
+The OLM bundle manifests are created by executing `make bundle VERSION=<latest-version>`.
+
+This will create a `bundle/` dir in your local repositoray containing the bundle metadata and manifests, as well as a
+`bundle.Dockerfile` for generating the image.
+
+The bundle image can be created and pushed to a repository with:
+
+```
+make bundle-build bundle-push VERSION=<latest-version> IMG=<operator-image> BUNDLE_IMG=<bundle-image>
+```
 
 # Testing
 

@@ -1,5 +1,5 @@
 # Current Operator version
-VERSION ?= $(git describe --tags --always --dirty)
+VERSION ?= $(shell git describe --tags --always --dirty)
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 export KUBECONFIG ?= ${HOME}/.kube/config
@@ -142,3 +142,8 @@ bundle: manifests kustomize
 .PHONY: bundle-build
 bundle-build:
 	docker build --build-arg VERSION=$(VERSION) -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+# Push the bundle image.
+.PHONY: bundle-push
+bundle-push:
+	docker push $(BUNDLE_IMG)

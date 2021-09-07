@@ -99,3 +99,7 @@ vendor/
 /cmd/manager/debug
 tls.crt
 **/__debug_bin
+
+## Ignore OLM generated bundles
+bundle/
+bundle.Dockerfile
