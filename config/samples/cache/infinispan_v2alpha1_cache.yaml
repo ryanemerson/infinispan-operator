@@ -3,7 +3,6 @@ kind: Cache
 metadata:
   name: example-cache
 spec:
-  adminAuth:
-    secretName: basic-auth
   clusterName: example-infinispan
   name: mycache
+  templateName: org.infinispan.DIST_SYNC

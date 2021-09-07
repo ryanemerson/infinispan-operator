@@ -1,0 +1,22 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: example-infinispan
+spec:
+  replicas: 1
+  expose:
+    type: LoadBalancer
+  service:
+    type: DataGrid
+    sites:
+      local:
+        name: SiteA
+        expose:
+          type: LoadBalancer
+      locations:
+      - name: SiteA
+        url: openshift://api.infinispan-1209a.devcluster.openshift.com:6443
+        secretName: site-a-secrets
+      - name: SiteB
+        url: openshift://api.infinispan-1209b.devcluster.openshift.com:6443
+        secretName: site-b-secrets

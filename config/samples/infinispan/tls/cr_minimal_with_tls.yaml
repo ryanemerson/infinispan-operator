@@ -1,0 +1,16 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: example-infinispan
+spec:
+  replicas: 2
+  security:
+    endpointEncryption:
+            # Define the certificate to encrypt endpoint traffic.
+            # `type: Service` uses platform service certificate.
+            # `type: Secret` uses custom certificates.
+            type: Secret
+            # If `type: Service`, uncomment the following `certServiceName` line:
+            # certServiceName: service.beta.openshift.io
+            # Name the secret that contains encryption certificates.
+            certSecretName: tls-secret

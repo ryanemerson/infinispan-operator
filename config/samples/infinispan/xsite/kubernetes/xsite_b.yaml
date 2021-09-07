@@ -1,0 +1,22 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: example-infinispan
+spec:
+  replicas: 2
+  expose:
+    type: NodePort
+  service:
+    type: DataGrid
+    sites:
+      local:
+        name: SiteB
+        expose:
+          type: NodePort
+      locations:
+      - name: SiteA
+        url: minikube://192.168.99.101:8443
+        secretName: site-secrets
+      - name: SiteB
+        url: minikube://192.168.99.102:8443
+        secretName: site-secrets
