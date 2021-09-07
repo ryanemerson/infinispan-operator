@@ -7,6 +7,7 @@ KUBECONFIG=${KUBECONFIG-~/kind-kube-config.yaml}
 KIND_KUBEAPI_PORT=6443
 KIND_VERSION=v0.11.0
 METALLB_VERSION=v0.9.6
+TESTING_NAMESPACE=${TESTING_NAMESPACE-namespace-for-testing}
 
 # Cleanup any existing clusters
 kind delete clusters xsite1
