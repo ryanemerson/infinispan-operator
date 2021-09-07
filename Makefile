@@ -29,8 +29,9 @@ endif
 
 all: manager
 
-lint:
-	./build/run-lint.sh
+lint: golangci-lint
+	$(GOLANGCI_LINT) run --enable errorlint
+	$(GOLANGCI_LINT) run --disable-all --enable bodyclose --skip-dirs test
 
 unit-test: manager
 	go test ./api/... -v
@@ -115,6 +116,10 @@ controller-gen:
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize:
 	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
+
+GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
+golangci-lint:
+	$(call go-get-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint@v1.39.0)
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
