@@ -71,7 +71,7 @@ make bundle-build bundle-push VERSION=<latest-version> IMG=<operator-image> BUND
 ### Xsite
 Cross-Site tests require you to create two k8s Kind clusters or utilize already prepared OKD clusters:
 ```
-$ source build/ci/configure-xsite.sh $KIND_VERSION $METALLB_VERSION
+$ source scripts/ci/configure-xsite.sh $KIND_VERSION $METALLB_VERSION
 ```
 
 Actual `$KIND_VERSION` and `$METALLB_VERSION` values can be explored inside the `Jenkinsfile` file 
@@ -85,7 +85,7 @@ $ go test -v ./test/e2e/xsite/ -timeout 30m
 TODO
 
 # Cekit
-There also a Cekit build environment under `build/cekit`
+There also a Cekit build environment under `scripts/cekit`
 ```
 $ cekit build --overrides "{version: <version_default_is_latest>}" docker
 ```

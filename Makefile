@@ -38,16 +38,16 @@ unit-test: manager
 	go test ./controllers/... -v
 
 test: manager manifests
-	build/run-tests.sh main
+	scripts/run-tests.sh main
 
 multinamespace-test: build
-	build/run-tests.sh multinamespace
+	scripts/run-tests.sh multinamespace
 
 backuprestore-test: build
-	build/run-tests.sh backup-restore
+	scripts/run-tests.sh backup-restore
 
 batch-test: build
-	build/run-tests.sh batch
+	scripts/run-tests.sh batch
 	
 # Build manager binary
 manager: generate fmt vet
