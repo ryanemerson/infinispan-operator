@@ -1,60 +1,30 @@
 #!/usr/bin/env bash
 
-. build/common.sh
-
+IMG=ci/infinispan/operator:latest
 METALLB_ADDRESS_SHIFT=25
 METALLB_ADDRESS_START=200
-export MAKE_DATADIR_WRITABLE=true
-export GO111MODULE=on
-export INITCONTAINER_IMAGE=registry.access.redhat.com/ubi8-micro
-export TESTING_NAMESPACE=${TESTING_NAMESPACE-namespace-for-testing}
-export KUBECONFIG=${KUBECONFIG-~/kind-kube-config.yaml}
+KUBECONFIG=${KUBECONFIG-~/kind-kube-config.yaml}
 KIND_KUBEAPI_PORT=6443
-KIND_VERSION=${1-${KIND_VERSION}}
-METALLB_VERSION=${2-${METALLB_VERSION}}
-YQ_VERSION=4.6.1
+KIND_VERSION=v0.11.0
+METALLB_VERSION=v0.9.6
 
-#Ensure that GOPATH/bin is in the PATH
-if ! validateYQ; then
-  printf "Valid yq not found in PATH. Trying adding GOPATH/bin\n"
-  PATH=$(go env GOPATH)/bin:$PATH
-  if ! validateYQ; then
-    installYQ
-  fi
-fi
-
-if ! [ -x "$(command -v kind)" ]; then
-  curl -Lo kind https://github.com/kubernetes-sigs/kind/releases/download/"${KIND_VERSION}"/kind-linux-amd64 && chmod +x kind && mkdir -p /tmp/k8s/bin && mv kind /tmp/k8s/bin/
-  PATH=/tmp/k8s/bin:$PATH
-fi
-if ! [ -x "$(command -v kubectl)" ]; then
-  curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl && chmod +x kubectl && mkdir -p /tmp/k8s/bin && mv kubectl /tmp/k8s/bin/
-  PATH=/tmp/k8s/bin:$PATH
-fi
-# This requires for local (outside Travis CI) cleanup and run
+# Cleanup any existing clusters
 kind delete clusters xsite1
 kind delete clusters xsite2
 
 # Common part for both nodes
-./build/build.sh
-docker build -t infinispan-operator . -f ./build/Dockerfile.single
+make docker-build IMG=$IMG
 
 for INSTANCE_IDX in 1 2; do
   INSTANCE="xsite"${INSTANCE_IDX}
-  export TESTING_NAMESPACE_XSITE="${TESTING_NAMESPACE}"-"${INSTANCE}"
-  export KIND_INSTANCE="kind-"${INSTANCE}
 
   kind create cluster --config kind-config-xsite.yaml --name "${INSTANCE}"
-  kind load docker-image infinispan-operator --name "${INSTANCE}"
+  kind load docker-image $IMG --name "${INSTANCE}"
 
-  ./build/install-crds.sh kubectl
+  make deploy IMG=$IMG
+
+  TESTING_NAMESPACE_XSITE="${TESTING_NAMESPACE}-${INSTANCE}"
   kubectl create namespace "${TESTING_NAMESPACE_XSITE}"
-  kubectl apply -f deploy/service_account.yaml -n "${TESTING_NAMESPACE_XSITE}"
-  kubectl apply -f deploy/role.yaml -n "${TESTING_NAMESPACE_XSITE}"
-  kubectl apply -f deploy/role_binding.yaml -n "${TESTING_NAMESPACE_XSITE}"
-  kubectl apply -f deploy/clusterrole.yaml -n "${TESTING_NAMESPACE_XSITE}"
-  yq ea -e '.subjects[0].namespace = strenv(TESTING_NAMESPACE_XSITE)' deploy/clusterrole_binding.yaml | kubectl apply -n "${TESTING_NAMESPACE_XSITE}" -f -
-  yq ea -e '.spec.template.spec.containers[0].image = "infinispan-operator" | .spec.template.spec.containers[0].imagePullPolicy="Never"' deploy/operator.yaml | kubectl apply -n "${TESTING_NAMESPACE_XSITE}" -f -
 
   # Creating service account for the cross cluster token based auth
   kubectl create clusterrole xsite-cluster-role --verb=get,list,watch --resource=nodes,services
