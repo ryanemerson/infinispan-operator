@@ -40,13 +40,13 @@ unit-test: manager
 test: manager manifests
 	scripts/run-tests.sh main
 
-multinamespace-test: build
+multinamespace-test: manager manifests
 	scripts/run-tests.sh multinamespace
 
-backuprestore-test: build
+backuprestore-test: manager manifests
 	scripts/run-tests.sh backup-restore
 
-batch-test: build
+batch-test: manager manifests
 	scripts/run-tests.sh batch
 	
 # Build manager binary
