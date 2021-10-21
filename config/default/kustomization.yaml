@@ -18,3 +18,7 @@ resources:
 - ../crd
 - ../rbac
 - ../manager
+- ../webhook
+
+patchesStrategicMerge:
+- manager_webhook_patch.yaml
