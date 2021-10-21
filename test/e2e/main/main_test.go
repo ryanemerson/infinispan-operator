@@ -1432,7 +1432,7 @@ func TestPodDegradationAfterOOM(t *testing.T) {
 	//Check if all pods are running and they are not degraded
 	testKube.WaitForInfinispanPods(int(ispn.Spec.Replicas), tutils.SinglePodTimeout, ispn.Name, tutils.Namespace)
 	testKube.WaitForInfinispanCondition(ispn.Name, ispn.Namespace, ispnv1.ConditionWellFormed)
-	
+
 	//Verify whether the pod restarted for an OOM exception
 	hasOOMhappened := false
 	podList := &corev1.PodList{}
@@ -1441,7 +1441,7 @@ func TestPodDegradationAfterOOM(t *testing.T) {
 	for _, pod := range podList.Items {
 		status := pod.Status.ContainerStatuses
 
-		out:
+	out:
 		for _, containerStatuses := range status {
 			if containerStatuses.LastTerminationState.Terminated != nil {
 				terminatedPod := containerStatuses.LastTerminationState.Terminated
