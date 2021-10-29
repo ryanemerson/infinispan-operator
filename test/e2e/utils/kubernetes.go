@@ -788,3 +788,17 @@ func GetServerName(i *ispnv1.Infinispan) string {
 	hostname := strings.Split(strings.Replace(url.Host, "api.", "apps.", 1), ":")[0]
 	return fmt.Sprintf("%s-%s.%s", i.GetServiceExternalName(), i.GetNamespace(), hostname)
 }
+
+func (k *TestKubernetes) WaitForResource(name, namespace string, resource client.Object) {
+	err := wait.Poll(ConditionPollPeriod, ConditionWaitTimeout, func() (done bool, err error) {
+		err = k.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, resource)
+		if err != nil && k8serrors.IsNotFound(err) {
+			return false, err
+		}
+		if err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	ExpectNoError(err)
+}
