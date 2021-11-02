@@ -41,16 +41,15 @@ func TestCacheCR(t *testing.T) {
 	defer cleanup()
 
 	test := func(cache *v2alpha1.Cache) {
-		key := "testkey"
-		value := "test-operator"
 		testKube.Create(cache)
 		hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
 		testKube.WaitForCacheCondition(cache.Spec.Name, cache.Namespace, v2alpha1.CacheCondition{
 			Type:   "Ready",
 			Status: "True",
 		})
-		tutils.WaitForCacheToBeCreated(cache.Spec.Name, hostAddr, client)
-		tutils.CacheBasicUsageTest(key, value, cache.Spec.Name, hostAddr, client)
+		cacheHelper := tutils.NewCacheHelper(cache.Spec.Name, hostAddr, client)
+		cacheHelper.WaitForCacheToExist()
+		cacheHelper.TestBasicUsage("testkey", "test-operator")
 		testKube.DeleteCache(cache)
 		// TODO Ensure caches deleted on the server
 	}
@@ -84,7 +83,8 @@ func TestCacheCreatedOnServer(t *testing.T) {
 
 	// Create cache via REST
 	hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
-	tutils.CacheCreateWithYaml(cacheName, hostAddr, cacheYaml, client)
+	cacheHelper := tutils.NewCacheHelper(cacheName, hostAddr, client)
+	cacheHelper.CreateWithYaml(cacheYaml)
 
 	// Assert CR created with owner ref as Infinispan
 	cr := testKube.WaitForCacheCondition(cacheName, tutils.Namespace, v2alpha1.CacheCondition{
@@ -96,10 +96,10 @@ func TestCacheCreatedOnServer(t *testing.T) {
 	cr.GetOwnerReferences()
 
 	// TODO 2. Update cache via REST, CR updated
-	tutils.CacheUpdateWithYaml(cacheName, tutils.Namespace, "TODO", client)
+	cacheHelper.UpdateWithYaml("TODO")
 
 	// TODO 3. Delete cache via REST, assert CR deleted
-	tutils.DeleteCache(cacheName, hostAddr, client)
+	cacheHelper.Delete()
 }
 
 func TestStaticServerCacheCR(t *testing.T) {

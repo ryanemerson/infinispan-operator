@@ -9,6 +9,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+type CacheHelper struct {
+	client    HTTPClient
+	cacheName string
+	hostAddr  string
+	url       string
+}
+
 func CacheURL(cacheName, hostAddr, key string) string {
 	base := fmt.Sprintf("%v/rest/v2/caches/%s", hostAddr, cacheName)
 	if key != "" {
@@ -17,29 +24,41 @@ func CacheURL(cacheName, hostAddr, key string) string {
 	return base
 }
 
-func CacheCreateWithYaml(cacheName, hostAddr, payload string, client HTTPClient) {
-	createCache(cacheName, hostAddr, payload, map[string]string{"Content-Type": "application/yaml"}, client)
+func NewCacheHelper(cacheName, hostAddr string, client HTTPClient) *CacheHelper {
+	return &CacheHelper{
+		client:    client,
+		cacheName: cacheName,
+		hostAddr:  hostAddr,
+		url:       CacheURL(cacheName, hostAddr, ""),
+	}
 }
 
-func CacheCreateWithJSON(cacheName, hostAddr, payload string, client HTTPClient) {
-	createCache(cacheName, hostAddr, payload, map[string]string{"Content-Type": "application/json"}, client)
+func (c *CacheHelper) entryUrl(key string) string {
+	return CacheURL(c.cacheName, c.hostAddr, key)
 }
 
-func CacheCreateWithXML(cacheName, hostAddr, template string, client HTTPClient) {
-	createCache(cacheName, hostAddr, template, map[string]string{"Content-Type": "application/xml;charset=UTF-8"}, client)
+func (c *CacheHelper) CreateWithYaml(payload string) {
+	c.createCache(payload, map[string]string{"Content-Type": "application/yaml"})
 }
 
-func CacheCreateWithDefault(cacheName, hostAddr string, flags string, client HTTPClient) {
+func (c *CacheHelper) CreateWithJSON(payload string) {
+	c.createCache(payload, map[string]string{"Content-Type": "application/json"})
+}
+
+func (c *CacheHelper) CreateWithXML(payload string) {
+	c.createCache(payload, map[string]string{"Content-Type": "application/yaml"})
+}
+
+func (c *CacheHelper) CreateWithDefault(flags string) {
 	headers := map[string]string{}
 	if flags != "" {
 		headers["Flags"] = flags
 	}
-	createCache(cacheName, hostAddr, "", headers, client)
+	c.createCache("", headers)
 }
 
-func createCache(cacheName, hostAddr, payload string, headers map[string]string, client HTTPClient) {
-	httpURL := CacheURL(cacheName, hostAddr, "")
-	resp, err := client.Post(httpURL, payload, headers)
+func (c *CacheHelper) createCache(payload string, headers map[string]string) {
+	resp, err := c.client.Post(c.url, payload, headers)
 	ExpectNoError(err)
 	// Accept all the 2xx success codes
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
@@ -47,21 +66,20 @@ func createCache(cacheName, hostAddr, payload string, headers map[string]string,
 	}
 }
 
-func CacheUpdateWithYaml(cacheName, hostAddr, payload string, client HTTPClient) {
-	updateCache(cacheName, hostAddr, payload, map[string]string{"Content-Type": "application/yaml"}, client)
+func (c *CacheHelper) UpdateWithYaml(payload string) {
+	c.updateCache(payload, map[string]string{"Content-Type": "application/yaml"})
 }
 
-func CacheUpdateWithJSON(cacheName, hostAddr, payload string, client HTTPClient) {
-	updateCache(cacheName, hostAddr, payload, map[string]string{"Content-Type": "application/json"}, client)
+func (c *CacheHelper) UpdateWithJSON(payload string) {
+	c.updateCache(payload, map[string]string{"Content-Type": "application/json"})
 }
 
-func CacheUpdateWithXml(cacheName, hostAddr, payload string, client HTTPClient) {
-	updateCache(cacheName, hostAddr, payload, map[string]string{"Content-Type": "application/xml;charset=UTF-8"}, client)
+func (c *CacheHelper) UpdateWithXML(payload string) {
+	c.updateCache(payload, map[string]string{"Content-Type": "application/yaml"})
 }
 
-func updateCache(cacheName, hostAddr, payload string, headers map[string]string, client HTTPClient) {
-	httpURL := CacheURL(cacheName, hostAddr, "")
-	resp, err := client.Put(httpURL, payload, headers)
+func (c *CacheHelper) updateCache(payload string, headers map[string]string) {
+	resp, err := c.client.Put(c.url, payload, headers)
 	ExpectNoError(err)
 	// Accept all the 2xx success codes
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
@@ -69,18 +87,16 @@ func updateCache(cacheName, hostAddr, payload string, headers map[string]string,
 	}
 }
 
-func CacheBasicUsageTest(key, value, cacheName, hostAddr string, client HTTPClient) {
-	CachePutViaRoute(cacheName, hostAddr, key, value, client)
-	actual := CacheGetViaRoute(cacheName, hostAddr, key, client)
-
+func (c *CacheHelper) TestBasicUsage(key, value string) {
+	c.PutWithPlainText(key, value)
+	actual := c.Get(key)
 	if actual != value {
 		panic(fmt.Errorf("unexpected actual returned: %v (value %v)", actual, value))
 	}
 }
 
-func DeleteCache(cacheName, hostAddr string, client HTTPClient) {
-	httpURL := CacheURL(cacheName, hostAddr, "")
-	resp, err := client.Delete(httpURL, nil)
+func (c *CacheHelper) Delete() {
+	resp, err := c.client.Delete(c.url, nil)
 	ExpectNoError(err)
 
 	if resp.StatusCode != http.StatusOK {
@@ -88,9 +104,8 @@ func DeleteCache(cacheName, hostAddr string, client HTTPClient) {
 	}
 }
 
-func CacheGetViaRoute(cacheName, hostAddr, key string, client HTTPClient) string {
-	url := CacheURL(cacheName, hostAddr, key)
-	resp, err := client.Get(url, nil)
+func (c *CacheHelper) Get(key string) string {
+	resp, err := c.client.Get(c.entryUrl(key), nil)
 	ExpectNoError(err)
 	defer func(Body io.ReadCloser) {
 		ExpectNoError(Body.Close())
@@ -103,12 +118,12 @@ func CacheGetViaRoute(cacheName, hostAddr, key string, client HTTPClient) string
 	return string(bodyBytes)
 }
 
-func CachePutViaRoute(cacheName, hostAddr, key, value string, client HTTPClient) {
-	url := CacheURL(cacheName, hostAddr, key)
-	headers := map[string]string{
-		"Content-Type": "text/plain",
-	}
-	resp, err := client.Post(url, value, headers)
+func (c *CacheHelper) PutWithPlainText(key, value string) {
+	c.Put(key, value, map[string]string{"Content-Type": "text/plain"})
+}
+
+func (c *CacheHelper) Put(key, value string, headers map[string]string) {
+	resp, err := c.client.Post(c.entryUrl(key), value, headers)
 	defer CloseHttpResponse(resp)
 	ExpectNoError(err)
 	if resp.StatusCode != http.StatusNoContent {
@@ -116,11 +131,10 @@ func CachePutViaRoute(cacheName, hostAddr, key, value string, client HTTPClient)
 	}
 }
 
-func WaitForCacheToBeCreated(cacheName, hostAddr string, client HTTPClient) {
+func (c *CacheHelper) WaitForCacheToExist() {
 	err := wait.Poll(DefaultPollPeriod, MaxWaitTimeout, func() (done bool, err error) {
-		httpURL := CacheURL(cacheName, hostAddr, "")
 		fmt.Printf("Waiting for cache to be created")
-		resp, err := client.Get(httpURL, nil)
+		resp, err := c.client.Get(c.url, nil)
 		if err != nil {
 			return false, err
 		}
