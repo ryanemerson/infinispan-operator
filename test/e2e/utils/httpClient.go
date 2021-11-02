@@ -22,6 +22,7 @@ type HTTPClient interface {
 	Delete(path string, headers map[string]string) (*http.Response, error)
 	Get(path string, headers map[string]string) (*http.Response, error)
 	Post(path, payload string, headers map[string]string) (*http.Response, error)
+	Put(path, payload string, headers map[string]string) (*http.Response, error)
 	Quiet(quiet bool)
 }
 
@@ -112,6 +113,10 @@ func (c *httpClientConfig) Get(path string, headers map[string]string) (*http.Re
 
 func (c *httpClientConfig) Post(path, payload string, headers map[string]string) (*http.Response, error) {
 	return c.exec("POST", path, payload, headers)
+}
+
+func (c *httpClientConfig) Put(path, payload string, headers map[string]string) (*http.Response, error) {
+	return c.exec("PUT", path, payload, headers)
 }
 
 func (c *httpClientConfig) Quiet(quiet bool) {

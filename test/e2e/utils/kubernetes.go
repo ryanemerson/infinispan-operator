@@ -14,6 +14,7 @@ import (
 	"time"
 
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
+	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	ispnv2 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
@@ -761,7 +762,7 @@ func (k TestKubernetes) DeleteCache(cache *ispnv2.Cache) {
 	ExpectMaybeNotFound(err)
 }
 
-func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) {
+func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *v2alpha1.Cache {
 	cache := &ispnv2.Cache{}
 	err := wait.Poll(ConditionPollPeriod, ConditionWaitTimeout, func() (done bool, err error) {
 		err = k.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, cache)
@@ -780,6 +781,7 @@ func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition 
 		return false, nil
 	})
 	ExpectNoError(err)
+	return cache
 }
 
 func GetServerName(i *ispnv1.Infinispan) string {

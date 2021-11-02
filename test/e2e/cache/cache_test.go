@@ -6,9 +6,11 @@ import (
 
 	"github.com/iancoleman/strcase"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
+	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 var testKube = tutils.NewTestKubernetes(os.Getenv("TESTING_CONTEXT"))
@@ -17,45 +19,110 @@ func TestMain(m *testing.M) {
 	tutils.RunOperator(m, testKube)
 }
 
-func TestCacheCR(t *testing.T) {
-	t.Parallel()
+func initCluster(t *testing.T, configListener bool) (*v1.Infinispan, func()) {
 	spec := tutils.DefaultSpec(testKube)
+	spec.Spec.ConfigListener.Enabled = pointer.BoolPtr(configListener)
 	name := strcase.ToKebab(t.Name())
 	spec.Name = name
 	spec.Labels = map[string]string{"test-name": t.Name()}
 	testKube.CreateInfinispan(spec, tutils.Namespace)
-	defer testKube.CleanNamespaceAndLogOnPanic(tutils.Namespace, spec.Labels)
 	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+
 	ispn := testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+	cleanup := func() {
+		testKube.CleanNamespaceAndLogOnPanic(tutils.Namespace, spec.Labels)
+	}
+	return ispn, cleanup
+}
+
+func TestCacheCR(t *testing.T) {
+	t.Parallel()
+	ispn, cleanup := initCluster(t, false)
+	defer cleanup()
+
+	test := func(cache *v2alpha1.Cache) {
+		key := "testkey"
+		value := "test-operator"
+		testKube.Create(cache)
+		hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
+		testKube.WaitForCacheCondition(cache.Spec.Name, cache.Namespace, v2alpha1.CacheCondition{
+			Type:   "Ready",
+			Status: "True",
+		})
+		tutils.WaitForCacheToBeCreated(cache.Spec.Name, hostAddr, client)
+		tutils.CacheBasicUsageTest(key, value, cache.Spec.Name, hostAddr, client)
+		testKube.DeleteCache(cache)
+		// TODO Ensure caches deleted on the server
+	}
 
 	//Test for CacheCR with Templatename
-
-	cacheCRTemplateName := createCacheWithCR("cache-with-static-template", spec.Namespace, name)
-	cacheCRTemplateName.Spec.TemplateName = "org.infinispan.DIST_SYNC"
-	testCacheWithCR(ispn, cacheCRTemplateName)
+	cache := cacheCR("cache-with-static-template", ispn)
+	cache.Spec.TemplateName = "org.infinispan.DIST_SYNC"
+	test(cache)
 
 	//Test for CacheCR with TemplateXML
-
-	cacheCRTemplateXML := createCacheWithCR("cache-with-xml-template", spec.Namespace, name)
-	cacheCRTemplateXML.Spec.Template = "<infinispan><cache-container><distributed-cache name=\"cache-with-xml-template\" mode=\"SYNC\"><persistence><file-store/></persistence></distributed-cache></cache-container></infinispan>"
-	testCacheWithCR(ispn, cacheCRTemplateXML)
+	cache = cacheCR("cache-with-xml-template", ispn)
+	cache.Spec.Template = "<infinispan><cache-container><distributed-cache name=\"cache-with-xml-template\" mode=\"SYNC\"><persistence><file-store/></persistence></distributed-cache></cache-container></infinispan>"
+	test(cache)
 }
 
-func testCacheWithCR(ispn *ispnv1.Infinispan, cache *v2alpha1.Cache) {
-	key := "testkey"
-	value := "test-operator"
-	testKube.Create(cache)
+func TestUpdateCacheCR(t *testing.T) {
+	// 1. Create cache via CR
+	// 2. Update mutable attribute in .Spec
+	// 3. Verify update propogated to the server
+	// 4. Attempt to update immutable attribute
+	// 5. Verify Cache Status updated to reflect this is not possible
+}
+
+func TestCacheCreatedOnServer(t *testing.T) {
+	t.Parallel()
+	ispn, cleanup := initCluster(t, false)
+	defer cleanup()
+
+	cacheName := t.Name()
+	cacheYaml := "localCache:\n  name: " + cacheName
+
+	// Create cache via REST
 	hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
-	condition := v2alpha1.CacheCondition{
+	tutils.CacheCreateWithYaml(cacheName, hostAddr, cacheYaml, client)
+
+	// Assert CR created with owner ref as Infinispan
+	cr := testKube.WaitForCacheCondition(cacheName, tutils.Namespace, v2alpha1.CacheCondition{
 		Type:   "Ready",
 		Status: "True",
-	}
-	testKube.WaitForCacheCondition(cache.Spec.Name, cache.Namespace, condition)
-	tutils.WaitForCacheToBeCreated(cache.Spec.Name, hostAddr, client)
-	tutils.TestBasicCacheUsage(key, value, cache.Spec.Name, hostAddr, client)
-	defer testKube.DeleteCache(cache)
+	})
+
+	// TODO check owner reference is ispn
+	cr.GetOwnerReferences()
+
+	// TODO 2. Update cache via REST, CR updated
+	tutils.CacheUpdateWithYaml(cacheName, tutils.Namespace, "TODO", client)
+
+	// TODO 3. Delete cache via REST, assert CR deleted
+	tutils.DeleteCache(cacheName, hostAddr, client)
 }
-func createCacheWithCR(cacheName string, nameSpace string, clusterName string) *v2alpha1.Cache {
+
+func TestStaticServerCacheCR(t *testing.T) {
+	// TODO
+	// 1. Ensure that a Cache CR is created for static caches
+	// 2. Ensure that deleting the CR does not delete the runtime cache?
+}
+
+func TestCacheReconcilliationWithXML(t *testing.T) {
+	// TODO
+	// 1. Create Cache CR with XML template
+	// 2. Update cache via REST
+	// 3. Ensure that CR is updated and returned template is also in XML
+}
+
+func TestCacheReconcilliationWithJSON(t *testing.T) {
+	// TODO
+	// 1. Create Cache CR with XML template
+	// 2. Update cache via REST
+	// 3. Ensure that CR is updated and returned template is also in XML
+}
+
+func cacheCR(cacheName string, i *v1.Infinispan) *v2alpha1.Cache {
 	return &v2alpha1.Cache{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "infinispan.org/v2alpha1",
@@ -63,10 +130,10 @@ func createCacheWithCR(cacheName string, nameSpace string, clusterName string) *
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cacheName,
-			Namespace: nameSpace,
+			Namespace: i.Namespace,
 		},
 		Spec: v2alpha1.CacheSpec{
-			ClusterName: clusterName,
+			ClusterName: i.Name,
 			Name:        cacheName,
 		},
 	}
