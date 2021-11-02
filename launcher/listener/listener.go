@@ -6,11 +6,13 @@ import (
 	"os"
 	"time"
 
+	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	sse "github.com/r3labs/sse/v2"
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,14 +24,15 @@ var (
 )
 
 func init() {
+	utilruntime.Must(v1.AddToScheme(scheme))
 	utilruntime.Must(v2alpha1.AddToScheme(scheme))
 }
 
 type Parameters struct {
 	// The namespace in which to CRUD resources
 	Namespace string
-	// The DNS name of the Infinispan service to listen to in the current namespace
-	ServiceName string
+	// The Name of the Infinispan cluster to listen to in the configured namespace
+	Cluster string
 }
 
 type ResourceListener struct {
@@ -47,10 +50,16 @@ func New(ctx context.Context, p Parameters) {
 		os.Exit(1)
 	}
 
-	// TODO how to handle service unavailable?
+	infinispan := &v1.Infinispan{}
+	err = k8sClient.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Cluster}, infinispan)
+	if err != nil {
+		fmt.Println(fmt.Errorf("unable to load Infinispan cluster %s in Namespace %s: %v", p.Cluster, p.Namespace, err))
+		os.Exit(1)
+	}
+
 	// TODO handle authentication support
 	// TODO make sure to includeCurrentState so any existing caches are created
-	serviceUrl := fmt.Sprintf("%s.%s.svc.cluster.local:11223", p.ServiceName, p.Namespace)
+	serviceUrl := fmt.Sprintf("%s.%s.svc.cluster.local:11223", infinispan.GetServiceName(), p.Namespace)
 	containerSse := sse.NewClient(serviceUrl + "/rest/v2/container/config?action=listen")
 	containerSse.Headers = map[string]string{
 		"Accept": "application/yaml",

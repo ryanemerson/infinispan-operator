@@ -32,6 +32,7 @@ func main() {
 	listenerFs := flag.NewFlagSet("listener", flag.ExitOnError)
 	listenerFs.String("kubeconfig", "", "Paths to a kubeconfig. Only required if out-of-cluster.")
 	listenerNs := listenerFs.String("namespace", "", "The namespace of the Infinispan cluster.")
+	listenerCluster := listenerFs.String("cluster", "", "The name of the Infinispan cluster.")
 	zapOpts.BindFlags(listenerFs)
 
 	switch os.Args[1] {
@@ -51,6 +52,7 @@ func main() {
 		}
 		listener.New(context.Background(), listener.Parameters{
 			Namespace: *listenerNs,
+			Cluster:   *listenerCluster,
 		})
 	default:
 		exit()

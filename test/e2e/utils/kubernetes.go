@@ -42,6 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 // Runtime scheme
@@ -691,12 +692,17 @@ func (k TestKubernetes) UpdateConfigMap(configMap *corev1.ConfigMap) {
 }
 
 // RunOperator runs an operator on a Kubernetes cluster
-func (k TestKubernetes) RunOperator(namespace, crdsPath string) context.CancelFunc {
+func (k TestKubernetes) RunOperator(namespace, configBase string) context.CancelFunc {
+	crdsPath := configBase + "crd/bases/"
 	k.installCRD(crdsPath + "infinispan.org_infinispans.yaml")
 	k.installCRD(crdsPath + "infinispan.org_caches.yaml")
 	k.installCRD(crdsPath + "infinispan.org_backups.yaml")
 	k.installCRD(crdsPath + "infinispan.org_restores.yaml")
 	k.installCRD(crdsPath + "infinispan.org_batches.yaml")
+
+	// It's necessary to install the Roles and RoleBindings in local to ensure the ConfigListener deployment has the required permissions
+	k.installRoles(namespace, configBase+"rbac/")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go runOperatorLocally(ctx, namespace)
 	return cancel
@@ -708,7 +714,88 @@ func (k TestKubernetes) installCRD(path string) {
 	k.CreateOrUpdateAndWaitForCRD(crd)
 }
 
-func (k TestKubernetes) LoadResourceFromYaml(path string, obj runtime.Object) {
+func (k TestKubernetes) installRoles(namespace, path string) {
+	role, _ := k.LoadRolesFromYaml(path + "role.yaml")
+	r := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      role.Name,
+			Namespace: Namespace,
+		},
+	}
+	_, err := controllerutil.CreateOrUpdate(context.TODO(), k.Kubernetes.Client, r, func() error {
+		r.Rules = role.Rules
+		return nil
+	})
+	ExpectNoError(err)
+
+	roleBinding, _ := k.LoadRoleBindingsFromYaml(path + "role_binding.yaml")
+	rb := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      roleBinding.Name,
+			Namespace: Namespace,
+		},
+	}
+	_, err = controllerutil.CreateOrUpdate(context.TODO(), k.Kubernetes.Client, rb, func() error {
+		rb.Subjects = []rbacv1.Subject{{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      "default",
+			Namespace: Namespace,
+		}}
+		rb.RoleRef = roleBinding.RoleRef
+		return nil
+	})
+	ExpectNoError(err)
+}
+
+func (k TestKubernetes) LoadRolesFromYaml(path string) (*rbacv1.Role, *rbacv1.ClusterRole) {
+	role := &rbacv1.Role{}
+	clusterRole := &rbacv1.ClusterRole{}
+	yamlReader, err := GetYamlReaderFromFile(path)
+	ExpectNoError(err)
+
+	// The operator-sdk puts a new line and a separator before each Yaml resource
+	skipWhiteSpace := func() *strings.Reader {
+		y, err := yamlReader.Read()
+		if y[0] == '\n' {
+			y, err = yamlReader.Read()
+		}
+		ExpectNoError(err)
+		return strings.NewReader(string(y))
+	}
+
+	reader := skipWhiteSpace()
+	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(clusterRole))
+
+	reader = skipWhiteSpace()
+	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(role))
+	return role, clusterRole
+}
+
+func (k TestKubernetes) LoadRoleBindingsFromYaml(path string) (*rbacv1.RoleBinding, *rbacv1.ClusterRoleBinding) {
+	roleBinding := &rbacv1.RoleBinding{}
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{}
+	yamlReader, err := GetYamlReaderFromFile(path)
+	ExpectNoError(err)
+
+	// The operator-sdk puts a new line and a separator before each Yaml resource
+	skipWhiteSpace := func() *strings.Reader {
+		y, err := yamlReader.Read()
+		if y[0] == '\n' {
+			y, err = yamlReader.Read()
+		}
+		ExpectNoError(err)
+		return strings.NewReader(string(y))
+	}
+
+	reader := skipWhiteSpace()
+	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(clusterRoleBinding))
+
+	reader = skipWhiteSpace()
+	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(roleBinding))
+	return roleBinding, clusterRoleBinding
+}
+
+func (k TestKubernetes) LoadResourceFromYaml(path string, obj interface{}) {
 	yamlReader, err := GetYamlReaderFromFile(path)
 	ExpectNoError(err)
 	// TODO: seems that new sdk puts a new line and a separator at the crd start
@@ -732,7 +819,7 @@ func RunOperator(m *testing.M, k *TestKubernetes) {
 			k.DeleteCRD("batch.infinispan.org")
 			k.NewNamespace(namespace)
 		}
-		stopOperator := k.RunOperator(namespace, "../../../config/crd/bases/")
+		stopOperator := k.RunOperator(namespace, "../../../config/")
 		code := m.Run()
 		stopOperator()
 		os.Exit(code)
@@ -748,7 +835,11 @@ func runOperatorLocally(ctx context.Context, namespace string) {
 	_ = os.Setenv("KUBECONFIG", kube.FindKubeConfig())
 	_ = os.Setenv("OSDK_FORCE_RUN_MODE", "local")
 	_ = os.Setenv("OPERATOR_NAME", OperatorName)
-	operator.NewWithContext(ctx, operator.Parameters{})
+	operator.NewWithContext(ctx, operator.Parameters{
+		ZapOptions: &zap.Options{
+			Development: true,
+		},
+	})
 }
 func (k TestKubernetes) DeleteCache(cache *ispnv2.Cache) {
 	err := k.Kubernetes.Client.Delete(context.TODO(), cache)
@@ -789,16 +880,32 @@ func GetServerName(i *ispnv1.Infinispan) string {
 	return fmt.Sprintf("%s-%s.%s", i.GetServiceExternalName(), i.GetNamespace(), hostname)
 }
 
-func (k *TestKubernetes) WaitForResource(name, namespace string, resource client.Object) {
+func (k *TestKubernetes) WaitForDeployment(name, namespace string) {
+	deployment := &appsv1.Deployment{}
 	err := wait.Poll(ConditionPollPeriod, ConditionWaitTimeout, func() (done bool, err error) {
-		err = k.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, resource)
+		err = k.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, deployment)
 		if err != nil && k8serrors.IsNotFound(err) {
 			return false, err
 		}
 		if err != nil {
 			return false, nil
 		}
-		return true, nil
+
+		for _, condition := range deployment.Status.Conditions {
+			if condition.Type == appsv1.DeploymentAvailable {
+				return condition.Status == corev1.ConditionTrue, nil
+			}
+		}
+		return false, nil
 	})
 	ExpectNoError(err)
+}
+
+func (k *TestKubernetes) AssertK8ResourceExists(name, namespace string, obj client.Object) bool {
+	client := k.Kubernetes.Client
+	key := types.NamespacedName{
+		Name:      name,
+		Namespace: Namespace,
+	}
+	return client.Get(context.TODO(), key, obj) == nil
 }

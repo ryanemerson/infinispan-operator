@@ -1510,17 +1510,26 @@ xmlns:server="urn:infinispan:server:13.0">
 }
 
 func TestConfigListenerCreated(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	ispn := tutils.DefaultSpec(testKube)
 	ispn.Name = strcase.ToKebab(t.Name())
 	ispn.Labels = map[string]string{"test-name": t.Name()}
-	ispn.Spec.Security.EndpointAuthentication = pointer.BoolPtr(false)
+	ispn.Spec.ConfigListener.Enabled = pointer.Bool(true)
+
+	// TODO remove when using Adming endpoint in listener
+	ispn.Spec.Security.EndpointAuthentication = pointer.Bool(true)
 
 	testKube.CreateInfinispan(ispn, tutils.Namespace)
 	defer testKube.CleanNamespaceAndLogOnPanic(ispn.Namespace, ispn.Labels)
 	testKube.WaitForInfinispanCondition(ispn.Name, ispn.Namespace, ispnv1.ConditionWellFormed)
 
 	// Wait for ConfigListener Deployment to be created
-	deployment := &appsv1.Deployment{}
-	testKube.WaitForResource(ispn.GetConfigListenerName(), ispn.Namespace, deployment)
+	testKube.WaitForDeployment(ispn.GetConfigListenerName(), ispn.Namespace)
+
+	// Ensure that deployment is deleted with the Infinispan CR
+	testKube.DeleteInfinispan(ispn, tutils.SinglePodTimeout)
+	err := wait.Poll(tutils.ConditionPollPeriod, tutils.ConditionWaitTimeout, func() (bool, error) {
+		return !testKube.AssertK8ResourceExists(ispn.GetConfigListenerName(), ispn.Namespace, &appsv1.Deployment{}), nil
+	})
+	tutils.ExpectNoError(err)
 }

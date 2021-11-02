@@ -334,7 +334,7 @@ type InfinispanCloudEvents struct {
 type ConfigListenerSpec struct {
 	// If true, a dedicated pod is used to ensure that all config resources created on the Infinispan server have a matching CR resource
 	// +optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Toggle Authentication",xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Toggle Config Listener",xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch"
 	Enabled *bool `json:"enabled,omitempty"`
 }
 

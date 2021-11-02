@@ -1,14 +1,23 @@
 package controllers
 
 import (
+	"fmt"
+
+	"github.com/infinispan/infinispan-operator/controllers/constants"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func (r *infinispanRequest) ReconcileConfigListener() error {
+	if constants.ConfigListenerImageName == "" {
+		err := fmt.Errorf("'%s' has not been defined", constants.ConfigListenerEnvName)
+		r.log.Error(err, "unable to create ConfigListener deployment")
+		return nil
+	}
 	name := r.infinispan.GetConfigListenerName()
 	namespace := r.infinispan.Namespace
 	deployment := &appsv1.Deployment{}
@@ -26,25 +35,31 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 
 	// TODO mount authentication secret
 	// The deployment doesn't exist, create it
+	labels := ConfigListenerPodLabels(r.infinispan.Name)
 	deployment = &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
 							Name:  "listener",
-							Image: r.infinispan.ImageName(),
+							Image: constants.ConfigListenerImageName,
 							Args: []string{
 								"listener",
-								"--namespace",
+								"-namespace",
 								namespace,
-								"--service-name",
-								// r.infinispan.GetAdminServiceName(),
-								r.infinispan.GetServiceName(), // TODO remove. Use for dev to allow access without auth
+								"-cluster",
+								r.infinispan.Name,
 							},
 						},
 					},
@@ -52,7 +67,10 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 			},
 		},
 	}
-	return r.Client.Create(r.ctx, deployment)
+	_, err = controllerutil.CreateOrUpdate(r.ctx, r.Client, deployment, func() error {
+		return controllerutil.SetControllerReference(r.infinispan, deployment, r.scheme)
+	})
+	return err
 }
 
 func (r *infinispanRequest) DeleteConfigListener() error {

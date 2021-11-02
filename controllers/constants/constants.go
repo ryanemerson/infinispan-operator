@@ -16,6 +16,10 @@ var (
 	// InitContainerImageName allows a custom initContainer image to be used
 	InitContainerImageName = GetEnvWithDefault("INITCONTAINER_IMAGE", "registry.access.redhat.com/ubi8-micro")
 
+	// ConfigListenerImageName is the image used by the ConfigListener Deployment
+	ConfigListenerImageName = os.Getenv(ConfigListenerEnvName)
+	ConfigListenerEnvName   = "CONFIG_LISTENER_IMAGE"
+
 	// JGroupsDiagnosticsFlag is used to enable traces for JGroups
 	JGroupsDiagnosticsFlag = strings.ToUpper(GetEnvWithDefault("JGROUPS_DIAGNOSTICS", "FALSE"))
 

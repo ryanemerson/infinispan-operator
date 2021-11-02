@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -126,6 +127,9 @@ func DefaultSpec(testKube *TestKubernetes) *ispnv1.Infinispan {
 			},
 			Replicas: 1,
 			Expose:   ExposeServiceSpec(testKube),
+			ConfigListener: ispnv1.ConfigListenerSpec{
+				Enabled: pointer.BoolPtr(false),
+			},
 		},
 	}
 }
