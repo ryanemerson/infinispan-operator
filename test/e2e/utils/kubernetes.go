@@ -699,10 +699,6 @@ func (k TestKubernetes) RunOperator(namespace, configBase string) context.Cancel
 	k.installCRD(crdsPath + "infinispan.org_backups.yaml")
 	k.installCRD(crdsPath + "infinispan.org_restores.yaml")
 	k.installCRD(crdsPath + "infinispan.org_batches.yaml")
-
-	// It's necessary to install the Roles and RoleBindings in local to ensure the ConfigListener deployment has the required permissions
-	k.installRoles(namespace, configBase+"rbac/")
-
 	ctx, cancel := context.WithCancel(context.Background())
 	go runOperatorLocally(ctx, namespace)
 	return cancel
@@ -712,87 +708,6 @@ func (k TestKubernetes) installCRD(path string) {
 	crd := &apiextv1.CustomResourceDefinition{}
 	k.LoadResourceFromYaml(path, crd)
 	k.CreateOrUpdateAndWaitForCRD(crd)
-}
-
-func (k TestKubernetes) installRoles(namespace, path string) {
-	role, _ := k.LoadRolesFromYaml(path + "role.yaml")
-	r := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      role.Name,
-			Namespace: Namespace,
-		},
-	}
-	_, err := controllerutil.CreateOrUpdate(context.TODO(), k.Kubernetes.Client, r, func() error {
-		r.Rules = role.Rules
-		return nil
-	})
-	ExpectNoError(err)
-
-	roleBinding, _ := k.LoadRoleBindingsFromYaml(path + "role_binding.yaml")
-	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      roleBinding.Name,
-			Namespace: Namespace,
-		},
-	}
-	_, err = controllerutil.CreateOrUpdate(context.TODO(), k.Kubernetes.Client, rb, func() error {
-		rb.Subjects = []rbacv1.Subject{{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      "default",
-			Namespace: Namespace,
-		}}
-		rb.RoleRef = roleBinding.RoleRef
-		return nil
-	})
-	ExpectNoError(err)
-}
-
-func (k TestKubernetes) LoadRolesFromYaml(path string) (*rbacv1.Role, *rbacv1.ClusterRole) {
-	role := &rbacv1.Role{}
-	clusterRole := &rbacv1.ClusterRole{}
-	yamlReader, err := GetYamlReaderFromFile(path)
-	ExpectNoError(err)
-
-	// The operator-sdk puts a new line and a separator before each Yaml resource
-	skipWhiteSpace := func() *strings.Reader {
-		y, err := yamlReader.Read()
-		if y[0] == '\n' {
-			y, err = yamlReader.Read()
-		}
-		ExpectNoError(err)
-		return strings.NewReader(string(y))
-	}
-
-	reader := skipWhiteSpace()
-	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(clusterRole))
-
-	reader = skipWhiteSpace()
-	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(role))
-	return role, clusterRole
-}
-
-func (k TestKubernetes) LoadRoleBindingsFromYaml(path string) (*rbacv1.RoleBinding, *rbacv1.ClusterRoleBinding) {
-	roleBinding := &rbacv1.RoleBinding{}
-	clusterRoleBinding := &rbacv1.ClusterRoleBinding{}
-	yamlReader, err := GetYamlReaderFromFile(path)
-	ExpectNoError(err)
-
-	// The operator-sdk puts a new line and a separator before each Yaml resource
-	skipWhiteSpace := func() *strings.Reader {
-		y, err := yamlReader.Read()
-		if y[0] == '\n' {
-			y, err = yamlReader.Read()
-		}
-		ExpectNoError(err)
-		return strings.NewReader(string(y))
-	}
-
-	reader := skipWhiteSpace()
-	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(clusterRoleBinding))
-
-	reader = skipWhiteSpace()
-	ExpectNoError(k8syaml.NewYAMLToJSONDecoder(reader).Decode(roleBinding))
-	return roleBinding, clusterRoleBinding
 }
 
 func (k TestKubernetes) LoadResourceFromYaml(path string, obj interface{}) {

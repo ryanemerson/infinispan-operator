@@ -27,6 +27,7 @@ import (
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1509,14 +1510,14 @@ xmlns:server="urn:infinispan:server:13.0">
 	}
 }
 
-func TestConfigListenerCreated(t *testing.T) {
+func TestConfigListenerDeployment(t *testing.T) {
 	// t.Parallel()
 	ispn := tutils.DefaultSpec(testKube)
 	ispn.Name = strcase.ToKebab(t.Name())
 	ispn.Labels = map[string]string{"test-name": t.Name()}
 	ispn.Spec.ConfigListener.Enabled = pointer.Bool(true)
 
-	// TODO remove when using Adming endpoint in listener
+	// TODO remove when using Admin endpoint in listener
 	ispn.Spec.Security.EndpointAuthentication = pointer.Bool(true)
 
 	testKube.CreateInfinispan(ispn, tutils.Namespace)
@@ -1524,12 +1525,33 @@ func TestConfigListenerCreated(t *testing.T) {
 	testKube.WaitForInfinispanCondition(ispn.Name, ispn.Namespace, ispnv1.ConditionWellFormed)
 
 	// Wait for ConfigListener Deployment to be created
-	testKube.WaitForDeployment(ispn.GetConfigListenerName(), ispn.Namespace)
+	clName, namespace := ispn.GetConfigListenerName(), ispn.Namespace
+	testKube.WaitForDeployment(clName, namespace)
+
+	waitForNoConfigListener := func() {
+		err := wait.Poll(tutils.ConditionPollPeriod, tutils.ConditionWaitTimeout, func() (bool, error) {
+			exists := testKube.AssertK8ResourceExists(clName, namespace, &appsv1.Deployment{}) &&
+				testKube.AssertK8ResourceExists(clName, namespace, &rbacv1.Role{}) &&
+				testKube.AssertK8ResourceExists(clName, namespace, &rbacv1.RoleBinding{}) &&
+				testKube.AssertK8ResourceExists(clName, namespace, &corev1.ServiceAccount{})
+			return !exists, nil
+		})
+		tutils.ExpectNoError(err)
+	}
+
+	// Ensure that the deployment is deleted if the spec is updated
+	testKube.UpdateInfinispan(ispn, func() {
+		ispn.Spec.ConfigListener.Enabled = pointer.BoolPtr(false)
+	})
+	waitForNoConfigListener()
+
+	// Re-add the ConfigListener to ensure that it's removed when the Infinispan CR is finally deleted
+	testKube.UpdateInfinispan(ispn, func() {
+		ispn.Spec.ConfigListener.Enabled = pointer.BoolPtr(true)
+	})
+	testKube.WaitForDeployment(clName, namespace)
 
 	// Ensure that deployment is deleted with the Infinispan CR
 	testKube.DeleteInfinispan(ispn, tutils.SinglePodTimeout)
-	err := wait.Poll(tutils.ConditionPollPeriod, tutils.ConditionWaitTimeout, func() (bool, error) {
-		return !testKube.AssertK8ResourceExists(ispn.GetConfigListenerName(), ispn.Namespace, &appsv1.Deployment{}), nil
-	})
-	tutils.ExpectNoError(err)
+	waitForNoConfigListener()
 }

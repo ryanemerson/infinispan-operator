@@ -13,5 +13,4 @@ configMapGenerator:
   name: manager-config
 images:
 - name: controller
-  newName: quay.io/infinispan/operator
-  newTag: 2.2.1.Final
+  newName: localhost:5000/infinispan-operator
