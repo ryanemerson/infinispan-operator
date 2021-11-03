@@ -159,7 +159,8 @@ func mutate(f controllerutil.MutateFn, key client.ObjectKey, obj client.Object) 
 }
 
 // LookupResource lookup for resource to be created by separate resource controller
-func LookupResource(name, namespace string, resource, caller client.Object, client client.Client, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) (*reconcile.Result, error) {	err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, resource)
+func LookupResource(name, namespace string, resource, caller client.Object, client client.Client, logger logr.Logger, eventRec record.EventRecorder, ctx context.Context) (*reconcile.Result, error) {
+	err := client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, resource)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if eventRec != nil {

@@ -275,6 +275,16 @@ func (k TestKubernetes) GetBatch(name, namespace string) *ispnv2.Batch {
 	return batch
 }
 
+func (k TestKubernetes) GetCache(name, namespace string) *ispnv2.Cache {
+	cache := &ispnv2.Cache{}
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectMaybeNotFound(k.Kubernetes.Client.Get(context.TODO(), key, cache))
+	return cache
+}
+
 func (k TestKubernetes) Create(obj client.Object) {
 	ExpectNoError(k.Kubernetes.Client.Create(context.TODO(), obj))
 }
@@ -762,7 +772,7 @@ func (k TestKubernetes) DeleteCache(cache *ispnv2.Cache) {
 	ExpectMaybeNotFound(err)
 }
 
-func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *v2alpha1.Cache {
+func (k TestKubernetes) WaitForCacheState(name, namespace string, predicate func(*v2alpha1.Cache) bool) *v2alpha1.Cache {
 	cache := &ispnv2.Cache{}
 	err := wait.Poll(ConditionPollPeriod, ConditionWaitTimeout, func() (done bool, err error) {
 		err = k.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, cache)
@@ -772,16 +782,22 @@ func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition 
 		if err != nil {
 			return false, nil
 		}
-		for _, c := range cache.Status.Conditions {
-			if strings.EqualFold(c.Type, condition.Type) && (c.Status == condition.Status) {
-				log.Info("Cache condition met", "condition", condition)
-				return true, nil
-			}
-		}
-		return false, nil
+		return predicate(cache), nil
 	})
 	ExpectNoError(err)
 	return cache
+}
+
+func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *v2alpha1.Cache {
+	return k.WaitForCacheState(name, namespace, func(cache *v2alpha1.Cache) bool {
+		for _, c := range cache.Status.Conditions {
+			if strings.EqualFold(c.Type, condition.Type) && (c.Status == condition.Status) {
+				log.Info("Cache condition met", "condition", condition)
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func GetServerName(i *ispnv1.Infinispan) string {

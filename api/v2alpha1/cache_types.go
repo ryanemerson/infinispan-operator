@@ -56,7 +56,7 @@ type CacheStatus struct {
 	// Conditions list for this cache
 	// +optional
 	Conditions []CacheCondition `json:"conditions,omitempty"`
-	// Service name that exposes the cache inside the cluster
+	// Deprecated. This is no longer set. Service name that exposes the cache inside the cluster
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
 }

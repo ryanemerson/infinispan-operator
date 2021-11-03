@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -83,12 +84,13 @@ func TestCacheCreatedOnServer(t *testing.T) {
 	defer cleanup()
 
 	cacheName := ispn.Name
-	cacheYaml := "localCache:\n  name: " + cacheName
+	yamlTemplate := "localCache:\n  memory:\n    maxCount: \"%d\"\n"
+	originalConfig := fmt.Sprintf(yamlTemplate, 100)
 
 	// Create cache via REST
 	hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
 	cacheHelper := tutils.NewCacheHelper(cacheName, hostAddr, client)
-	cacheHelper.CreateWithYaml(cacheYaml)
+	cacheHelper.CreateWithYaml(originalConfig)
 
 	// Assert CR created with owner ref as Infinispan
 	cr := testKube.WaitForCacheCondition(cacheName, tutils.Namespace, v2alpha1.CacheCondition{
@@ -101,8 +103,14 @@ func TestCacheCreatedOnServer(t *testing.T) {
 		panic("Cache has unexpected owner reference")
 	}
 
-	// TODO 2. Update cache via REST, CR updated
-	// cacheHelper.UpdateWithYaml("TODO")
+	// Update cache configuration via REST
+	updatedConfig := fmt.Sprintf(yamlTemplate, 50)
+	cacheHelper.UpdateWithYaml(updatedConfig)
+
+	// Assert CR spec.Template updated
+	testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.Spec.Template == updatedConfig
+	})
 
 	// TODO 3. Delete cache via REST, assert CR deleted
 	// cacheHelper.Delete()

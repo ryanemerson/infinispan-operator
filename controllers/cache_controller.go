@@ -7,9 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/iancoleman/strcase"
-	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
-	infinispanv2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	v2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan"
@@ -60,7 +58,7 @@ func (r *CacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.kubernetes = kube.NewKubernetesFromController(mgr)
 	r.eventRec = mgr.GetEventRecorderFor("cache-controller")
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&infinispanv2alpha1.Cache{}).
+		For(&v2alpha1.Cache{}).
 		Complete(r)
 }
 
@@ -72,7 +70,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 	defer reqLogger.Info("----- End Reconciling Cache.")
 
 	// Fetch the Cache instance
-	instance := &infinispanv2alpha1.Cache{}
+	instance := &v2alpha1.Cache{}
 	if err := r.Client.Get(ctx, request.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			// TODO implement Finalizer https://sdk.operatorframework.io/docs/building-operators/golang/advanced-topics/
@@ -82,7 +80,6 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 			reqLogger.Info("Cache resource not found. Ignoring it since cache deletion is not supported")
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
@@ -95,23 +92,19 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		return reconcile.Result{}, err
 	}
 
-	// Reconcile cache
-	reqLogger.Info("Identify the target cluster")
-	// Fetch the Infinispan cluster info
-	ispnInstance := &infinispanv1.Infinispan{}
-	nsName := types.NamespacedName{Namespace: instance.Namespace, Name: instance.Spec.ClusterName}
-	if err := r.Client.Get(ctx, nsName, ispnInstance); err != nil {
+	// Fetch the Infinispan cluster
+	infinispan := &v1.Infinispan{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: instance.Spec.ClusterName}, infinispan); err != nil {
 		if errors.IsNotFound(err) {
-			reqLogger.Error(err, fmt.Sprintf("Infinispan cluster %s not found", ispnInstance.Name))
+			reqLogger.Error(err, fmt.Sprintf("Infinispan cluster %s not found", infinispan.Name))
 			return reconcile.Result{RequeueAfter: constants.DefaultWaitOnCluster}, err
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
 	// Cluster must be well formed
-	if !ispnInstance.IsWellFormed() {
-		reqLogger.Info(fmt.Sprintf("Infinispan cluster %s not well formed", ispnInstance.Name))
+	if !infinispan.IsWellFormed() {
+		reqLogger.Info(fmt.Sprintf("Infinispan cluster %s not well formed", infinispan.Name))
 		return reconcile.Result{RequeueAfter: constants.DefaultWaitOnCluster}, nil
 	}
 
@@ -119,10 +112,10 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		CacheReconciler: r,
 		ctx:             ctx,
 		cache:           instance,
-		infinispan:      ispnInstance,
+		infinispan:      infinispan,
 	}
 
-	// Don't attempt to update the Infinispan server for resources created by the ConfigListener
+	// Don't contact the Infinispan server for resources created by the ConfigListener
 	if !cache.listenerResource() {
 		if result, err := cache.reconcileInfinispan(); result != nil {
 			return *result, err
@@ -133,7 +126,6 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		if instance.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("cache.infinispan.org"), instance.Name)
 		}
-		instance.Status.ServiceName = ispnInstance.GetAdminServiceName()
 		instance.SetCondition("Ready", metav1.ConditionTrue, "")
 		return nil
 	})
@@ -143,7 +135,6 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		reqLogger.Error(err, "")
 		return reconcile.Result{}, err
 	}
-
 	return ctrl.Result{}, nil
 }
 
@@ -173,23 +164,19 @@ func (r *cacheRequest) newClusterClient() (string, *infinispan.Cluster, error) {
 }
 
 func (r *cacheRequest) reconcileInfinispan() (*reconcile.Result, error) {
-	cache := r.cache
-	cacheName := cache.GetCacheName()
-	ispn := r.infinispan
-
 	podName, cluster, err := r.newClusterClient()
 	if err != nil {
 		return &reconcile.Result{}, fmt.Errorf("unable to create Cluster client: %w", err)
 	}
 
-	cacheExists, err := cluster.ExistsCache(cacheName, podName)
+	cacheExists, err := cluster.ExistsCache(r.cache.GetCacheName(), podName)
 	if err != nil {
 		err := fmt.Errorf("unable to determine if cache exists: %w", err)
 		r.reqLogger.Error(err, "")
 		return &reconcile.Result{}, err
 	}
 
-	if ispn.IsDataGrid() {
+	if r.infinispan.IsDataGrid() {
 		err = r.reconcileDataGrid(cacheExists, podName, cluster)
 	} else {
 		err = r.reconcileCacheService(cacheExists, podName, cluster)
@@ -253,52 +240,30 @@ func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, clust
 }
 
 func (cl *CacheListener) Create(data []byte) error {
-	type Config struct {
-		Infinispan struct {
-			CacheContainer struct {
-				Caches map[string]interface{}
-			} `yaml:"cacheContainer"`
-		}
-	}
-
-	config := &Config{}
-	if err := yaml.Unmarshal(data, config); err != nil {
+	cacheName, configYaml, err := unmarshallEventConfig(data)
+	if err != nil {
 		return err
 	}
 
-	if len(config.Infinispan.CacheContainer.Caches) > 1 {
-		return fmt.Errorf("unexpected yaml format: %s", data)
-	}
-	var cacheName string
-	var cacheConfig interface{}
-	for cacheName, cacheConfig = range config.Infinispan.CacheContainer.Caches {
-		break
-	}
-
-	configYaml, err := yaml.Marshal(cacheConfig)
-	if err != nil {
-		return fmt.Errorf("unable to marshall cache configuration: %w", err)
-	}
-
-	kebab := strcase.ToKebab(cacheName)
-	if cacheName != kebab {
-		fmt.Printf("Converting cache name from '%s' to '%s'. Transformation required by k8s conventions\n", cacheName, kebab)
-		cacheName = kebab
+	kebabCacheName := strcase.ToKebab(cacheName)
+	if cacheName != kebabCacheName {
+		fmt.Printf("Creating Cache CR with name '%s' for cache '%s'. Transformation required by k8s conventions\n", cacheName, kebabCacheName)
 	}
 
 	fmt.Printf("Create cache %s\n%s\n", cacheName, configYaml)
 	// TODO add labels?
 	cache := &v2alpha1.Cache{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cacheName,
+			Name:      kebabCacheName,
 			Namespace: cl.Cluster.Namespace,
 			Annotations: map[string]string{
 				constants.ListenerAnnotationGeneration: "1",
 			},
 		},
 		Spec: v2alpha1.CacheSpec{
+			Name:        cacheName,
 			ClusterName: cl.Cluster.Name,
-			Template:    string(configYaml),
+			Template:    configYaml,
 		},
 	}
 	if err = controllerutil.SetControllerReference(cl.Cluster, cache, cl.Client.Scheme()); err != nil {
@@ -307,16 +272,26 @@ func (cl *CacheListener) Create(data []byte) error {
 	return cl.Client.Create(cl.Ctx, cache)
 }
 
+// TODO what happens if a Template is updated on the server? How to handle with consuming CRs?
 func (cl *CacheListener) Update(data []byte) error {
+	cacheName, configYaml, err := unmarshallEventConfig(data)
+	if err != nil {
+		return err
+	}
+
 	cache := &v2alpha1.Cache{
 		ObjectMeta: metav1.ObjectMeta{
-			ClusterName: cl.Cluster.Name,
-			Namespace:   cl.Cluster.Namespace,
+			Name:      strcase.ToKebab(cacheName),
+			Namespace: cl.Cluster.Namespace,
 		},
 	}
 	res, err := controllerutil.CreateOrUpdate(cl.Ctx, cl.Client, cache, func() error {
-		if cache.CreationTimestamp.IsZero() {
-			// TODO
+		// TODO handle conversion of Yaml -> User format
+		cache.ObjectMeta.Annotations[constants.ListenerAnnotationGeneration] = strconv.FormatInt(cache.Generation+1, 10)
+		cache.Spec = v2alpha1.CacheSpec{
+			Name:        cacheName,
+			ClusterName: cl.Cluster.Name,
+			Template:    configYaml,
 		}
 		return nil
 	})
@@ -328,9 +303,52 @@ func (cl *CacheListener) Update(data []byte) error {
 	return nil
 }
 
-func (l *CacheListener) Delete(data []byte) error {
+func (cl *CacheListener) Delete(data []byte) error {
 	cacheName := string(data)
 	fmt.Printf("Remove cache %s\n", cacheName)
-	// TODO Lookup Cache CR and delete if it exists
+	crName := strcase.ToKebab(cacheName)
+
+	cache := &v2alpha1.Cache{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      crName,
+			Namespace: cl.Cluster.Namespace,
+		},
+	}
+	// TODO how do we prevent controller from issuing REST DELETE call to server in Finalizer?
+	err := cl.Client.Delete(cl.Ctx, cache)
+	// If the CR can't be found, do nothing
+	if !errors.IsNotFound(err) {
+		return err
+	}
 	return nil
+}
+
+func unmarshallEventConfig(data []byte) (string, string, error) {
+	type Config struct {
+		Infinispan struct {
+			CacheContainer struct {
+				Caches map[string]interface{}
+			} `yaml:"cacheContainer"`
+		}
+	}
+
+	config := &Config{}
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return "", "", fmt.Errorf("unable to unmarshal event data: %w", err)
+	}
+
+	if len(config.Infinispan.CacheContainer.Caches) > 1 {
+		return "", "", fmt.Errorf("unexpected yaml format: %s", data)
+	}
+	var cacheName string
+	var cacheConfig interface{}
+	for cacheName, cacheConfig = range config.Infinispan.CacheContainer.Caches {
+		break
+	}
+
+	configYaml, err := yaml.Marshal(cacheConfig)
+	if err != nil {
+		return "", "", fmt.Errorf("unable to marshall cache configuration: %w", err)
+	}
+	return cacheName, string(configYaml), nil
 }
