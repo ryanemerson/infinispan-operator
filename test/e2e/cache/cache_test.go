@@ -32,6 +32,10 @@ func initCluster(t *testing.T, configListener bool) (*v1.Infinispan, func()) {
 	cleanup := func() {
 		testKube.CleanNamespaceAndLogOnPanic(tutils.Namespace, spec.Labels)
 	}
+
+	if configListener {
+		testKube.WaitForDeployment(spec.GetConfigListenerName(), tutils.Namespace)
+	}
 	return ispn, cleanup
 }
 
@@ -75,10 +79,10 @@ func TestUpdateCacheCR(t *testing.T) {
 
 func TestCacheCreatedOnServer(t *testing.T) {
 	t.Parallel()
-	ispn, cleanup := initCluster(t, false)
+	ispn, cleanup := initCluster(t, true)
 	defer cleanup()
 
-	cacheName := t.Name()
+	cacheName := ispn.Name
 	cacheYaml := "localCache:\n  name: " + cacheName
 
 	// Create cache via REST
@@ -92,14 +96,16 @@ func TestCacheCreatedOnServer(t *testing.T) {
 		Status: "True",
 	})
 
-	// TODO check owner reference is ispn
-	cr.GetOwnerReferences()
+	// Assert that the owner reference has been correctly set to the Infinispan CR
+	if cr.GetOwnerReferences()[0].UID != ispn.UID {
+		panic("Cache has unexpected owner reference")
+	}
 
 	// TODO 2. Update cache via REST, CR updated
-	cacheHelper.UpdateWithYaml("TODO")
+	// cacheHelper.UpdateWithYaml("TODO")
 
 	// TODO 3. Delete cache via REST, assert CR deleted
-	cacheHelper.Delete()
+	// cacheHelper.Delete()
 }
 
 func TestStaticServerCacheCR(t *testing.T) {

@@ -61,10 +61,11 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 				Verbs:     []string{rbacv1.VerbAll},
 			},
 			{
-				APIGroups: []string{v2alpha1.GroupVersion.Group},
-				Resources: []string{"infinispans"},
+				APIGroups: []string{"", v2alpha1.GroupVersion.Group},
+				Resources: []string{"infinispans", "secrets"},
 				Verbs:     []string{"get"},
-			}},
+			},
+		},
 	}
 	if err := setCtrlRefAndCreate(role); err != nil {
 		return err

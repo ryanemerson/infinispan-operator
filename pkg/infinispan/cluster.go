@@ -226,6 +226,7 @@ func (c Cluster) CacheNames(podName string) (caches []string, err error) {
 
 // CreateCacheWithTemplate create cluster cache on the pod `podName`
 func (c Cluster) CreateCacheWithTemplate(cacheName, cacheXML, podName string) error {
+	// TODO update to handle XML|YAML|JSON
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/xml"
 
