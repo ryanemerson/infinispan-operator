@@ -190,7 +190,7 @@ func (r *cacheRequest) reconcileCacheService(cacheExists bool, podName string, c
 		return err
 	}
 
-	err = cluster.CreateCacheWithTemplate(r.cache.Spec.Name, template, podName)
+	err = cluster.CreateCacheWithConfiguration(r.cache.Spec.Name, template, "application/xml", podName)
 	if err != nil {
 		err = fmt.Errorf("unable to create cache using default template: %w", err)
 		r.reqLogger.Error(err, "Error in creating cache")
@@ -213,7 +213,8 @@ func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, clust
 			err = fmt.Errorf("unable to create cache with template name '%s': %w", spec.TemplateName, err)
 		}
 	} else {
-		if err = cluster.CreateCacheWithTemplate(cacheName, spec.Template, podName); err != nil {
+		mediaType := guessMediaType(spec.Template)
+		if err = cluster.CreateCacheWithConfiguration(cacheName, spec.Template, mediaType, podName); err != nil {
 			err = fmt.Errorf("unable to create cache with template: %w", err)
 		}
 	}

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/iancoleman/strcase"
-	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
@@ -32,7 +31,7 @@ func initCluster(t *testing.T, configListener bool) (*v1.Infinispan, func()) {
 	testKube.CreateInfinispan(spec, tutils.Namespace)
 	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
 
-	ispn := testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+	ispn := testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, v1.ConditionWellFormed)
 	cleanup := func() {
 		testKube.CleanNamespaceAndLogOnPanic(tutils.Namespace, spec.Labels)
 	}
@@ -164,11 +163,43 @@ func TestCacheWithXML(t *testing.T) {
 	})
 }
 
-func TestCacheReconcilliationWithJSON(t *testing.T) {
-	// TODO
-	// 1. Create Cache CR with XML template
-	// 2. Update cache via REST
-	// 3. Ensure that CR is updated and returned template is also in XML
+func TestCacheWithJSON(t *testing.T) {
+	t.Parallel()
+	ispn, cleanup := initCluster(t, true)
+	defer cleanup()
+	cacheName := ispn.Name
+	originalJson := `{"local-cache":{"memory":{"max-count":"100"}}}`
+
+	// Create Cache CR with XML template
+	cr := cacheCR(cacheName, ispn)
+	cr.Spec.Template = originalJson
+	testKube.Create(cr)
+	testKube.WaitForCacheConditionReady(cacheName, tutils.Namespace)
+
+	// Wait for 2nd generation of Cache CR with server formatting
+	cr = testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.ObjectMeta.Generation == 2
+	})
+
+	// Assert CR spec.Template updated and returned template is in the JSON format
+	if cr.Spec.Template == originalJson {
+		panic("Expected CR template format to be different to original")
+	}
+
+	if !strings.Contains(cr.Spec.Template, `"100"`) {
+		panic("Unexpected cr.Spec.Template content")
+	}
+
+	// Update cache via REST
+	hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
+	cacheHelper := tutils.NewCacheHelper(cacheName, hostAddr, client)
+	updatedJson := strings.Replace(cr.Spec.Template, "100", "50", 1)
+	cacheHelper.UpdateWithJSON(updatedJson)
+
+	// Assert CR spec.Template updated and returned template is in the JSON format
+	testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.Spec.Template == updatedJson
+	})
 }
 
 func cacheCR(cacheName string, i *v1.Infinispan) *v2alpha1.Cache {

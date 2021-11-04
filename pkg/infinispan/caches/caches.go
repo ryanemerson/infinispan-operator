@@ -42,5 +42,5 @@ func CreateCacheFromDefault(podName string, infinispan *infinispanv1.Infinispan,
 	if err != nil {
 		return err
 	}
-	return cluster.CreateCacheWithTemplate(consts.DefaultCacheName, defaultCacheXML, podName)
+	return cluster.CreateCacheWithConfiguration(consts.DefaultCacheName, defaultCacheXML, "application/xml", podName)
 }

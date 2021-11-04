@@ -61,7 +61,7 @@ type ClusterInterface interface {
 	GracefulShutdownTask(podName string) error
 	GetClusterMembers(podName string) ([]string, error)
 	ExistsCache(cacheName, podName string) (bool, error)
-	CreateCacheWithTemplate(cacheName, cacheXML, podName string) error
+	CreateCacheWithConfiguration(cacheName, config, contentType, podName string) error
 	CreateCacheWithTemplateName(cacheName, templateName, podName string) error
 	ConvertCacheConfiguration(config, configType, reqType, podName string) (string, error)
 	GetMemoryLimitBytes(podName string) (uint64, error)
@@ -226,14 +226,13 @@ func (c Cluster) CacheNames(podName string) (caches []string, err error) {
 	return
 }
 
-// CreateCacheWithTemplate create cluster cache on the pod `podName`
-func (c Cluster) CreateCacheWithTemplate(cacheName, cacheXML, podName string) error {
-	// TODO update to handle XML|YAML|JSON
+// CreateCacheWithConfiguration create cluster cache on the pod `podName`
+func (c Cluster) CreateCacheWithConfiguration(cacheName, config, contentType, podName string) error {
 	headers := make(map[string]string)
-	headers["Content-Type"] = "application/xml"
+	headers["Content-Type"] = contentType
 
 	path := fmt.Sprintf("%s/caches/%s", consts.ServerHTTPBasePath, cacheName)
-	rsp, err, reason := c.Client.Post(podName, path, cacheXML, headers)
+	rsp, err, reason := c.Client.Post(podName, path, config, headers)
 	return validateResponse(rsp, reason, err, "creating cache", http.StatusOK)
 }
 
