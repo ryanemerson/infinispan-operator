@@ -36,6 +36,10 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 		return nil
 	}
 
+	if err != nil {
+
+	}
+
 	setCtrlRefAndCreate := func(obj client.Object) error {
 		err := controllerutil.SetControllerReference(r.infinispan, obj, r.scheme)
 		if err != nil {

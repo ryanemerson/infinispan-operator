@@ -788,6 +788,13 @@ func (k TestKubernetes) WaitForCacheState(name, namespace string, predicate func
 	return cache
 }
 
+func (k TestKubernetes) WaitForCacheConditionReady(name, namespace string) *v2alpha1.Cache {
+	return k.WaitForCacheCondition(name, namespace, v2alpha1.CacheCondition{
+		Type:   "Ready",
+		Status: "True",
+	})
+}
+
 func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *v2alpha1.Cache {
 	return k.WaitForCacheState(name, namespace, func(cache *v2alpha1.Cache) bool {
 		for _, c := range cache.Status.Conditions {

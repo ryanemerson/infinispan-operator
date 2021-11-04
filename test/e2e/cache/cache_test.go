@@ -3,6 +3,7 @@ package cache
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,11 +50,8 @@ func TestCacheCR(t *testing.T) {
 
 	test := func(cache *v2alpha1.Cache) {
 		testKube.Create(cache)
+		testKube.WaitForCacheConditionReady(cache.Spec.Name, cache.Namespace)
 		hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
-		testKube.WaitForCacheCondition(cache.Spec.Name, cache.Namespace, v2alpha1.CacheCondition{
-			Type:   "Ready",
-			Status: "True",
-		})
 		cacheHelper := tutils.NewCacheHelper(cache.Spec.Name, hostAddr, client)
 		cacheHelper.WaitForCacheToExist()
 		cacheHelper.TestBasicUsage("testkey", "test-operator")
@@ -95,10 +93,7 @@ func TestCacheWithServerLifecycle(t *testing.T) {
 	cacheHelper.CreateWithYaml(originalConfig)
 
 	// Assert CR created with owner ref as Infinispan
-	cr := testKube.WaitForCacheCondition(cacheName, tutils.Namespace, v2alpha1.CacheCondition{
-		Type:   "Ready",
-		Status: "True",
-	})
+	cr := testKube.WaitForCacheConditionReady(cacheName, tutils.Namespace)
 
 	// Assert that the owner reference has been correctly set to the Infinispan CR
 	if cr.GetOwnerReferences()[0].UID != ispn.UID {
@@ -130,11 +125,43 @@ func TestStaticServerCacheCR(t *testing.T) {
 	// 2. Ensure that deleting the CR does not delete the runtime cache?
 }
 
-func TestCacheReconcilliationWithXML(t *testing.T) {
-	// TODO
-	// 1. Create Cache CR with XML template
-	// 2. Update cache via REST
-	// 3. Ensure that CR is updated and returned template is also in XML
+func TestCacheWithXML(t *testing.T) {
+	t.Parallel()
+	ispn, cleanup := initCluster(t, true)
+	defer cleanup()
+	cacheName := ispn.Name
+	originalXml := `<local-cache><memory max-count="100"/></local-cache>`
+
+	// Create Cache CR with XML template
+	cr := cacheCR(cacheName, ispn)
+	cr.Spec.Template = originalXml
+	testKube.Create(cr)
+	testKube.WaitForCacheConditionReady(cacheName, tutils.Namespace)
+
+	// Wait for 2nd generation of Cache CR with server formatting
+	cr = testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.ObjectMeta.Generation == 2
+	})
+
+	// Assert CR spec.Template updated and returned template is in the XML format
+	if cr.Spec.Template == originalXml {
+		panic("Expected CR template format to be different to original")
+	}
+
+	if !strings.Contains(cr.Spec.Template, `memory max-count="100"`) {
+		panic("Unexpected cr.Spec.Template content")
+	}
+
+	// Update cache via REST
+	hostAddr, client := tutils.HTTPClientAndHost(ispn, testKube)
+	cacheHelper := tutils.NewCacheHelper(cacheName, hostAddr, client)
+	updatedXml := strings.Replace(cr.Spec.Template, "100", "50", 1)
+	cacheHelper.UpdateWithXML(updatedXml)
+
+	// Assert CR spec.Template updated and returned template is in the XML format
+	testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.Spec.Template == updatedXml
+	})
 }
 
 func TestCacheReconcilliationWithJSON(t *testing.T) {

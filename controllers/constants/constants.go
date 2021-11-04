@@ -161,8 +161,8 @@ const (
 )
 
 const (
-	AnnotationDomain             = "infinispan.org/"
-	ListenerAnnotationGeneration = AnnotationDomain + "listener-generation"
+	AnnotationDomain            = "infinispan.org/"
+	ListenerAnnotationGenerated = AnnotationDomain + "listener-generated"
 )
 
 // GetWithDefault return value if not empty else return defValue

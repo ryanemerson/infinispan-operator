@@ -93,15 +93,12 @@ func New(ctx context.Context, p Parameters) {
 		err = containerSse.SubscribeRawWithContext(ctx, func(msg *sse.Event) {
 			var err error
 			event := string(msg.Event)
-			fmt.Printf("ConfigListener received event %s\n", event)
-			fmt.Println(string(msg.Data))
+			fmt.Printf("ConfigListener received event '%s':\n---\n%s\n---", event, msg.Data)
 			switch event {
-			case "create-cache":
-				err = cacheListener.Create(msg.Data)
+			case "create-cache", "update-cache":
+				err = cacheListener.CreateOrUpdate(msg.Data)
 			case "remove-cache":
 				err = cacheListener.Delete(msg.Data)
-			case "update-cache":
-				err = cacheListener.Update(msg.Data)
 			default:
 				err = fmt.Errorf("unknown msg.Event: %s", event)
 			}

@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/go-logr/logr"
 	"github.com/iancoleman/strcase"
@@ -116,7 +115,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 	}
 
 	// Don't contact the Infinispan server for resources created by the ConfigListener
-	if !cache.listenerResource() {
+	if !cache.generatedResource() {
 		if result, err := cache.reconcileInfinispan(); result != nil {
 			return *result, err
 		}
@@ -126,6 +125,8 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 		if instance.CreationTimestamp.IsZero() {
 			return errors.NewNotFound(schema.ParseGroupResource("cache.infinispan.org"), instance.Name)
 		}
+		// Remove the ListenerAnnotationGenerated key so that subsequent user updates contact the server
+		delete(instance.ObjectMeta.Annotations, constants.ListenerAnnotationGenerated)
 		instance.SetCondition("Ready", metav1.ConditionTrue, "")
 		return nil
 	})
@@ -139,11 +140,10 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 }
 
 // Determine if reconciliation was triggered by the ConfigListener
-func (r *cacheRequest) listenerResource() bool {
+func (r *cacheRequest) generatedResource() bool {
 	annotations := r.cache.ObjectMeta.Annotations
-	if val, exists := annotations[constants.ListenerAnnotationGeneration]; exists {
-		listenerGeneration, _ := strconv.ParseInt(val, 10, 64)
-		return r.cache.Generation == listenerGeneration
+	if _, exists := annotations[constants.ListenerAnnotationGenerated]; exists {
+		return exists
 	}
 	return false
 }
@@ -239,55 +239,34 @@ func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, clust
 	return err
 }
 
-func (cl *CacheListener) Create(data []byte) error {
-	cacheName, configYaml, err := unmarshallEventConfig(data)
-	if err != nil {
-		return err
-	}
-
-	kebabCacheName := strcase.ToKebab(cacheName)
-	if cacheName != kebabCacheName {
-		fmt.Printf("Creating Cache CR with name '%s' for cache '%s'. Transformation required by k8s conventions\n", cacheName, kebabCacheName)
-	}
-
-	fmt.Printf("Create cache %s\n%s\n", cacheName, configYaml)
-	// TODO add labels?
-	cache := &v2alpha1.Cache{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      kebabCacheName,
-			Namespace: cl.Cluster.Namespace,
-			Annotations: map[string]string{
-				constants.ListenerAnnotationGeneration: "1",
-			},
-		},
-		Spec: v2alpha1.CacheSpec{
-			Name:        cacheName,
-			ClusterName: cl.Cluster.Name,
-			Template:    configYaml,
-		},
-	}
-	if err = controllerutil.SetControllerReference(cl.Cluster, cache, cl.Client.Scheme()); err != nil {
-		return err
-	}
-	return cl.Client.Create(cl.Ctx, cache)
-}
-
 // TODO what happens if a Template is updated on the server? How to handle with consuming CRs?
-func (cl *CacheListener) Update(data []byte) error {
+func (cl *CacheListener) CreateOrUpdate(data []byte) error {
 	cacheName, configYaml, err := unmarshallEventConfig(data)
 	if err != nil {
 		return err
 	}
 
+	cacheCrName := strcase.ToKebab(cacheName)
 	cache := &v2alpha1.Cache{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      strcase.ToKebab(cacheName),
+			Name:      cacheCrName,
 			Namespace: cl.Cluster.Namespace,
 		},
 	}
 	res, err := controllerutil.CreateOrUpdate(cl.Ctx, cl.Client, cache, func() error {
+		if cache.CreationTimestamp.IsZero() {
+			fmt.Printf("Create Cache CR %s\n%s\n", cacheCrName, configYaml)
+			if err = controllerutil.SetControllerReference(cl.Cluster, cache, cl.Client.Scheme()); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("Update Cache CR %s\n%s\n", cacheCrName, configYaml)
+		}
 		// TODO handle conversion of Yaml -> User format
-		cache.ObjectMeta.Annotations[constants.ListenerAnnotationGeneration] = strconv.FormatInt(cache.Generation+1, 10)
+		if cache.ObjectMeta.Annotations == nil {
+			cache.ObjectMeta.Annotations = make(map[string]string, 1)
+		}
+		cache.ObjectMeta.Annotations[constants.ListenerAnnotationGenerated] = "true"
 		cache.Spec = v2alpha1.CacheSpec{
 			Name:        cacheName,
 			ClusterName: cl.Cluster.Name,
@@ -296,7 +275,7 @@ func (cl *CacheListener) Update(data []byte) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("unable to update Cache CR: %w", err)
+		return fmt.Errorf("unable to CreateOrUpdate Cache CR: %w", err)
 	}
 	// TODO handle res
 	fmt.Print(res)
