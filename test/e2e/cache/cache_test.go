@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/iancoleman/strcase"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
@@ -11,6 +12,7 @@ import (
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/pointer"
 )
 
@@ -78,7 +80,7 @@ func TestUpdateCacheCR(t *testing.T) {
 	// 5. Verify Cache Status updated to reflect this is not possible
 }
 
-func TestCacheCreatedOnServer(t *testing.T) {
+func TestCacheWithServerLifecycle(t *testing.T) {
 	t.Parallel()
 	ispn, cleanup := initCluster(t, true)
 	defer cleanup()
@@ -112,8 +114,14 @@ func TestCacheCreatedOnServer(t *testing.T) {
 		return cache.Spec.Template == updatedConfig
 	})
 
-	// TODO 3. Delete cache via REST, assert CR deleted
-	// cacheHelper.Delete()
+	// Delete cache via REST
+	cacheHelper.Delete()
+
+	// Assert CR deleted
+	err := wait.Poll(10*time.Millisecond, tutils.MaxWaitTimeout, func() (bool, error) {
+		return !testKube.AssertK8ResourceExists(cacheName, tutils.Namespace, &v2alpha1.Cache{}), nil
+	})
+	tutils.ExpectNoError(err)
 }
 
 func TestStaticServerCacheCR(t *testing.T) {

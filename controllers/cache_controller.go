@@ -337,11 +337,12 @@ func unmarshallEventConfig(data []byte) (string, string, error) {
 		return "", "", fmt.Errorf("unable to unmarshal event data: %w", err)
 	}
 
-	if len(config.Infinispan.CacheContainer.Caches) > 1 {
+	if len(config.Infinispan.CacheContainer.Caches) != 1 {
 		return "", "", fmt.Errorf("unexpected yaml format: %s", data)
 	}
 	var cacheName string
 	var cacheConfig interface{}
+	// Retrieve the first (and only) entry in the map
 	for cacheName, cacheConfig = range config.Infinispan.CacheContainer.Caches {
 		break
 	}
