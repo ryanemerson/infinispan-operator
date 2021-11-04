@@ -75,7 +75,7 @@ func (c *CacheHelper) UpdateWithJSON(payload string) {
 }
 
 func (c *CacheHelper) UpdateWithXML(payload string) {
-	c.updateCache(payload, map[string]string{"Content-Type": "application/yaml"})
+	c.updateCache(payload, map[string]string{"Content-Type": "application/xml"})
 }
 
 func (c *CacheHelper) updateCache(payload string, headers map[string]string) {

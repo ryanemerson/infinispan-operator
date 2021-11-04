@@ -36,10 +36,6 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 		return nil
 	}
 
-	if err != nil {
-
-	}
-
 	setCtrlRefAndCreate := func(obj client.Object) error {
 		err := controllerutil.SetControllerReference(r.infinispan, obj, r.scheme)
 		if err != nil {
@@ -68,6 +64,14 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 				APIGroups: []string{"", v2alpha1.GroupVersion.Group},
 				Resources: []string{"infinispans", "secrets"},
 				Verbs:     []string{"get"},
+			}, {
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
+				Verbs:     []string{"list"},
+			}, {
+				APIGroups: []string{""},
+				Resources: []string{"pods/exec"},
+				Verbs:     []string{"create"},
 			},
 		},
 	}

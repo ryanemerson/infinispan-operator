@@ -36,9 +36,9 @@ type CacheReconciler struct {
 
 type CacheListener struct {
 	// The Infinispan cluster to listen to in the configured namespace
-	Cluster *v1.Infinispan
-	Ctx     context.Context
-	Client  client.Client
+	Infinispan *v1.Infinispan
+	Ctx        context.Context
+	Kubernetes *kube.Kubernetes
 }
 
 type cacheRequest struct {
@@ -148,23 +148,8 @@ func (r *cacheRequest) generatedResource() bool {
 	return false
 }
 
-func (r *cacheRequest) newClusterClient() (string, *infinispan.Cluster, error) {
-	podList, err := PodList(r.infinispan, r.kubernetes, r.ctx)
-	if err != nil {
-		return "", nil, err
-	} else if len(podList.Items) < 1 {
-		return "", nil, fmt.Errorf("no Infinispan pods available")
-	}
-
-	cluster, err := NewCluster(r.infinispan, r.kubernetes, r.ctx)
-	if err != nil {
-		return "", nil, err
-	}
-	return podList.Items[0].Name, cluster, nil
-}
-
 func (r *cacheRequest) reconcileInfinispan() (*reconcile.Result, error) {
-	podName, cluster, err := r.newClusterClient()
+	podName, cluster, err := newClusterClient(r.ctx, r.infinispan, r.kubernetes)
 	if err != nil {
 		return &reconcile.Result{}, fmt.Errorf("unable to create Cluster client: %w", err)
 	}
@@ -181,10 +166,10 @@ func (r *cacheRequest) reconcileInfinispan() (*reconcile.Result, error) {
 	} else {
 		err = r.reconcileCacheService(cacheExists, podName, cluster)
 	}
-	return &reconcile.Result{}, err
+	return nil, err
 }
 
-func (r *cacheRequest) reconcileCacheService(cacheExists bool, podName string, cluster *infinispan.Cluster) error {
+func (r *cacheRequest) reconcileCacheService(cacheExists bool, podName string, cluster infinispan.ClusterInterface) error {
 	spec := r.cache.Spec
 	if cacheExists {
 		err := fmt.Errorf("cannot update an existing cache in a CacheService cluster")
@@ -214,7 +199,7 @@ func (r *cacheRequest) reconcileCacheService(cacheExists bool, podName string, c
 	return nil
 }
 
-func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, cluster *infinispan.Cluster) error {
+func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, cluster infinispan.ClusterInterface) error {
 	spec := r.cache.Spec
 	cacheName := r.cache.GetCacheName()
 	if cacheExists {
@@ -240,6 +225,7 @@ func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, clust
 }
 
 // TODO what happens if a Template is updated on the server? How to handle with consuming CRs?
+// Is an event created for updated configurations?
 func (cl *CacheListener) CreateOrUpdate(data []byte) error {
 	cacheName, configYaml, err := unmarshallEventConfig(data)
 	if err != nil {
@@ -250,35 +236,65 @@ func (cl *CacheListener) CreateOrUpdate(data []byte) error {
 	cache := &v2alpha1.Cache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cacheCrName,
-			Namespace: cl.Cluster.Namespace,
+			Namespace: cl.Infinispan.Namespace,
 		},
 	}
-	res, err := controllerutil.CreateOrUpdate(cl.Ctx, cl.Client, cache, func() error {
-		if cache.CreationTimestamp.IsZero() {
-			fmt.Printf("Create Cache CR %s\n%s\n", cacheCrName, configYaml)
-			if err = controllerutil.SetControllerReference(cl.Cluster, cache, cl.Client.Scheme()); err != nil {
-				return err
+	client := cl.Kubernetes.Client
+	maxRetries := 5
+	for i := 1; i <= maxRetries; i++ {
+		_, err = controllerutil.CreateOrPatch(cl.Ctx, client, cache, func() error {
+			var template string
+			if cache.CreationTimestamp.IsZero() {
+				fmt.Printf("Create Cache CR %s\n%s\n", cacheCrName, configYaml)
+				if err = controllerutil.SetControllerReference(cl.Infinispan, cache, client.Scheme()); err != nil {
+					return err
+				}
+				// Define template using YAML provided by the stream when Cache is being created for the first time
+				template = configYaml
+			} else {
+				fmt.Printf("Update Cache CR %s\n%s\n", cacheCrName, configYaml)
+				// Determinate the original user markup format and convert stream configuration to that format if required
+				yamlMediaType := "application/yaml"
+				mediaType := guessMediaType(cache.Spec.Template)
+				if mediaType == yamlMediaType {
+					template = configYaml
+				} else {
+					podName, cluster, err := newClusterClient(cl.Ctx, cl.Infinispan, cl.Kubernetes)
+					if err != nil {
+						return err
+					}
+
+					template, err = cluster.ConvertCacheConfiguration(configYaml, yamlMediaType, mediaType, podName)
+					if err != nil {
+						return fmt.Errorf("unable to convert cache configuration from '%s' to '%s': %w", yamlMediaType, mediaType, err)
+					}
+				}
 			}
-		} else {
-			fmt.Printf("Update Cache CR %s\n%s\n", cacheCrName, configYaml)
+			if cache.ObjectMeta.Annotations == nil {
+				cache.ObjectMeta.Annotations = make(map[string]string, 1)
+			}
+			cache.ObjectMeta.Annotations[constants.ListenerAnnotationGenerated] = "true"
+			cache.Spec = v2alpha1.CacheSpec{
+				Name:        cacheName,
+				ClusterName: cl.Infinispan.Name,
+				Template:    template,
+			}
+			return nil
+		})
+
+		if err == nil {
+			break
 		}
-		// TODO handle conversion of Yaml -> User format
-		if cache.ObjectMeta.Annotations == nil {
-			cache.ObjectMeta.Annotations = make(map[string]string, 1)
+
+		if !errors.IsConflict(err) {
+			return fmt.Errorf("unable to CreateOrUpdate Cache CR: %w", err)
 		}
-		cache.ObjectMeta.Annotations[constants.ListenerAnnotationGenerated] = "true"
-		cache.Spec = v2alpha1.CacheSpec{
-			Name:        cacheName,
-			ClusterName: cl.Cluster.Name,
-			Template:    configYaml,
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("unable to CreateOrUpdate Cache CR: %w", err)
+		fmt.Printf("Conflict encountered on Cache update. Retry %d..%d", i, maxRetries)
 	}
-	// TODO handle res
-	fmt.Print(res)
+
+	if err != nil {
+		return fmt.Errorf("unable to CreateOrPatch Cache CR %s after %d attempts", cacheCrName, maxRetries)
+	}
 	return nil
 }
 
@@ -290,16 +306,31 @@ func (cl *CacheListener) Delete(data []byte) error {
 	cache := &v2alpha1.Cache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crName,
-			Namespace: cl.Cluster.Namespace,
+			Namespace: cl.Infinispan.Namespace,
 		},
 	}
 	// TODO how do we prevent controller from issuing REST DELETE call to server in Finalizer?
-	err := cl.Client.Delete(cl.Ctx, cache)
+	err := cl.Kubernetes.Client.Delete(cl.Ctx, cache)
 	// If the CR can't be found, do nothing
 	if !errors.IsNotFound(err) {
 		return err
 	}
 	return nil
+}
+
+func newClusterClient(ctx context.Context, ispn *v1.Infinispan, kube *kube.Kubernetes) (string, infinispan.ClusterInterface, error) {
+	podList, err := PodList(ispn, kube, ctx)
+	if err != nil {
+		return "", nil, err
+	} else if len(podList.Items) < 1 {
+		return "", nil, fmt.Errorf("no Infinispan pods available")
+	}
+
+	cluster, err := NewCluster(ispn, kube, ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	return podList.Items[0].Name, cluster, nil
 }
 
 func unmarshallEventConfig(data []byte) (string, string, error) {
@@ -331,4 +362,15 @@ func unmarshallEventConfig(data []byte) (string, string, error) {
 		return "", "", fmt.Errorf("unable to marshall cache configuration: %w", err)
 	}
 	return cacheName, string(configYaml), nil
+}
+
+func guessMediaType(config string) string {
+	switch config[0:1] {
+	case "<":
+		return "application/xml"
+	case "{":
+		return "application/json"
+	default:
+		return "application/yaml"
+	}
 }

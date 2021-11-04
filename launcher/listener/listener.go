@@ -12,6 +12,7 @@ import (
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
+	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	sse "github.com/r3labs/sse/v2"
 	"gopkg.in/cenkalti/backoff.v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -42,20 +42,20 @@ type Parameters struct {
 func New(ctx context.Context, p Parameters) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	k8sClient, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	kubernetes, err := kubernetes.NewKubernetesFromConfig(ctrl.GetConfigOrDie(), scheme)
 	if err != nil {
 		fmt.Println("failed to create client")
 		os.Exit(1)
 	}
 
 	infinispan := &v1.Infinispan{}
-	if err = k8sClient.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Cluster}, infinispan); err != nil {
+	if err = kubernetes.Client.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.Cluster}, infinispan); err != nil {
 		fmt.Println(fmt.Errorf("unable to load Infinispan cluster %s in Namespace %s: %v", p.Cluster, p.Namespace, err))
 		os.Exit(1)
 	}
 
 	secret := &corev1.Secret{}
-	if err = k8sClient.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: infinispan.GetAdminSecretName()}, secret); err != nil {
+	if err = kubernetes.Client.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: infinispan.GetAdminSecretName()}, secret); err != nil {
 		fmt.Println(fmt.Errorf("unable to load Infinispan Admin identities secret %s in Namespace %s: %v", p.Cluster, p.Namespace, err))
 		os.Exit(1)
 	}
@@ -84,16 +84,16 @@ func New(ctx context.Context, p Parameters) {
 	}
 
 	cacheListener := &controllers.CacheListener{
-		Cluster: infinispan,
-		Ctx:     ctx,
-		Client:  k8sClient,
+		Infinispan: infinispan,
+		Ctx:        ctx,
+		Kubernetes: kubernetes,
 	}
 
 	go func() {
 		err = containerSse.SubscribeRawWithContext(ctx, func(msg *sse.Event) {
 			var err error
 			event := string(msg.Event)
-			fmt.Printf("ConfigListener received event '%s':\n---\n%s\n---", event, msg.Data)
+			fmt.Printf("ConfigListener received event '%s':\n---\n%s\n---\n", event, msg.Data)
 			switch event {
 			case "create-cache", "update-cache":
 				err = cacheListener.CreateOrUpdate(msg.Data)
@@ -102,16 +102,17 @@ func New(ctx context.Context, p Parameters) {
 			default:
 				err = fmt.Errorf("unknown msg.Event: %s", event)
 			}
-			// TODO handle gracefully. Log?
-			fmt.Printf("Error encountered for event '%s': %v", event, err)
+			if err != nil {
+				err = fmt.Errorf("eError encountered for event '%s': %v", event, err)
+				// TODO handle gracefully. Log?
+				fmt.Println(err)
+			}
 		})
 		if err != nil {
-			fmt.Println("Error encountered on SSE subscribe")
+			err = fmt.Errorf("error encountered on SSE subscribe")
 			fmt.Println(err)
 			cancel()
 		}
 	}()
-
 	<-ctx.Done()
-	fmt.Println("finish")
 }

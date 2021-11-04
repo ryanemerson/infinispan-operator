@@ -53,6 +53,7 @@ func (i CacheManagerInfo) GetSitesView() (map[string]bool, error) {
 	return sitesView, nil
 }
 
+// TODO split cache methods into there own package and interface
 // ClusterInterface represents the interface of a Cluster instance
 type ClusterInterface interface {
 	GetClusterSize(podName string) (int, error)
@@ -62,6 +63,7 @@ type ClusterInterface interface {
 	ExistsCache(cacheName, podName string) (bool, error)
 	CreateCacheWithTemplate(cacheName, cacheXML, podName string) error
 	CreateCacheWithTemplateName(cacheName, templateName, podName string) error
+	ConvertCacheConfiguration(config, configType, reqType, podName string) (string, error)
 	GetMemoryLimitBytes(podName string) (uint64, error)
 	GetMaxMemoryUnboundedBytes(podName string) (uint64, error)
 	CacheNames(podName string) ([]string, error)
@@ -240,6 +242,24 @@ func (c Cluster) CreateCacheWithTemplateName(cacheName, templateName, podName st
 	path := fmt.Sprintf("%s/caches/%s?template=%s", consts.ServerHTTPBasePath, cacheName, templateName)
 	rsp, err, reason := c.Client.Post(podName, path, "", nil)
 	return validateResponse(rsp, reason, err, "creating cache with template", http.StatusOK)
+}
+
+func (c Cluster) ConvertCacheConfiguration(config, configType, reqType, podName string) (string, error) {
+	path := consts.ServerHTTPBasePath + "/caches?action=convert"
+	headers := map[string]string{
+		"Accept":       reqType,
+		"Content-Type": configType,
+	}
+	rsp, err, reason := c.Client.Post(podName, path, config, headers)
+	err = validateResponse(rsp, reason, err, "creating cache with template", http.StatusOK)
+	if err != nil {
+		return "", err
+	}
+	responseBody, responseErr := ioutil.ReadAll(rsp.Body)
+	if responseErr != nil {
+		return "", fmt.Errorf("unable to read response body: %w", responseErr)
+	}
+	return string(responseBody), nil
 }
 
 func (c Cluster) GetMemoryLimitBytes(podName string) (uint64, error) {
