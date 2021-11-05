@@ -70,11 +70,44 @@ func TestCacheCR(t *testing.T) {
 }
 
 func TestUpdateCacheCR(t *testing.T) {
-	// 1. Create cache via CR
-	// 2. Update mutable attribute in .Spec
-	// 3. Verify update propogated to the server
-	// 4. Attempt to update immutable attribute
-	// 5. Verify Cache Status updated to reflect this is not possible
+	t.Parallel()
+	ispn, cleanup := initCluster(t, false)
+	defer cleanup()
+	cacheName := ispn.Name
+	originalYaml := "localCache:\n  memory:\n    maxCount: 10\n"
+
+	// Create Cache CR with Yaml template
+	cr := cacheCR(cacheName, ispn)
+	cr.Spec.Template = originalYaml
+	testKube.Create(cr)
+	cr = testKube.WaitForCacheConditionReady(cacheName, tutils.Namespace)
+
+	validUpdateYaml := strings.Replace(cr.Spec.Template, "10", "50", 1)
+	cr.Spec.Template = validUpdateYaml
+	testKube.Update(cr)
+
+	// Assert CR spec.Template updated
+	testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.Spec.Template == validUpdateYaml
+	})
+
+	// Assert CR remains ready
+	cr = testKube.WaitForCacheConditionReady(cacheName, tutils.Namespace)
+
+	invalidUpdateYaml := `distributedCache: {}`
+	cr.Spec.Template = invalidUpdateYaml
+	testKube.Update(cr)
+
+	// Assert CR spec.Template updated
+	testKube.WaitForCacheState(cacheName, tutils.Namespace, func(cache *v2alpha1.Cache) bool {
+		return cache.Spec.Template == invalidUpdateYaml
+	})
+
+	// Wait for the Cache CR to become unready as the spec.Template cannot be reconciled with the server
+	testKube.WaitForCacheCondition(cacheName, tutils.Namespace, v2alpha1.CacheCondition{
+		Type:   v2alpha1.CacheConditionReady,
+		Status: metav1.ConditionFalse,
+	})
 }
 
 func TestCacheWithServerLifecycle(t *testing.T) {

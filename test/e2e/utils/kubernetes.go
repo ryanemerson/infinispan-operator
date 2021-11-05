@@ -289,6 +289,10 @@ func (k TestKubernetes) Create(obj client.Object) {
 	ExpectNoError(k.Kubernetes.Client.Create(context.TODO(), obj))
 }
 
+func (k TestKubernetes) Update(obj client.Object) {
+	ExpectNoError(k.Kubernetes.Client.Update(context.TODO(), obj))
+}
+
 // CreateInfinispan creates an Infinispan resource in the given namespace
 func (k TestKubernetes) CreateInfinispan(infinispan *ispnv1.Infinispan, namespace string) {
 	infinispan.Namespace = namespace
@@ -790,15 +794,15 @@ func (k TestKubernetes) WaitForCacheState(name, namespace string, predicate func
 
 func (k TestKubernetes) WaitForCacheConditionReady(name, namespace string) *v2alpha1.Cache {
 	return k.WaitForCacheCondition(name, namespace, v2alpha1.CacheCondition{
-		Type:   "Ready",
-		Status: "True",
+		Type:   v2alpha1.CacheConditionReady,
+		Status: metav1.ConditionTrue,
 	})
 }
 
 func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *v2alpha1.Cache {
 	return k.WaitForCacheState(name, namespace, func(cache *v2alpha1.Cache) bool {
 		for _, c := range cache.Status.Conditions {
-			if strings.EqualFold(c.Type, condition.Type) && (c.Status == condition.Status) {
+			if c.Type == condition.Type && c.Status == condition.Status {
 				log.Info("Cache condition met", "condition", condition)
 				return true
 			}

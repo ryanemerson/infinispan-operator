@@ -8,6 +8,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type CacheConditionType string
+
+const (
+	CacheConditionReady CacheConditionType = "Ready"
+)
+
 // AdminAuth description of the auth info
 type AdminAuth struct {
 	// The secret that contains user credentials.
@@ -43,7 +49,7 @@ type CacheSpec struct {
 // CacheCondition define a condition of the cluster
 type CacheCondition struct {
 	// Type is the type of the condition.
-	Type string `json:"type"`
+	Type CacheConditionType `json:"type"`
 	// Status is the status of the condition.
 	Status metav1.ConditionStatus `json:"status"`
 	// Human-readable message indicating details about last transition.

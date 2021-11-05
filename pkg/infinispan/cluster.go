@@ -61,6 +61,7 @@ type ClusterInterface interface {
 	GracefulShutdownTask(podName string) error
 	GetClusterMembers(podName string) ([]string, error)
 	ExistsCache(cacheName, podName string) (bool, error)
+	UpdateCacheWithConfiguration(cacheName, config, contentType, podName string) error
 	CreateCacheWithConfiguration(cacheName, config, contentType, podName string) error
 	CreateCacheWithTemplateName(cacheName, templateName, podName string) error
 	ConvertCacheConfiguration(config, configType, reqType, podName string) (string, error)
@@ -226,7 +227,17 @@ func (c Cluster) CacheNames(podName string) (caches []string, err error) {
 	return
 }
 
-// CreateCacheWithConfiguration create cluster cache on the pod `podName`
+// UpdateCacheWithConfiguration update cache on the pod `podName`
+func (c Cluster) UpdateCacheWithConfiguration(cacheName, config, contentType, podName string) error {
+	headers := make(map[string]string)
+	headers["Content-Type"] = contentType
+
+	path := fmt.Sprintf("%s/caches/%s", consts.ServerHTTPBasePath, cacheName)
+	rsp, err, reason := c.Client.Put(podName, path, config, headers)
+	return validateResponse(rsp, reason, err, "updating cache", http.StatusOK)
+}
+
+// CreateCacheWithConfiguration create cache on the pod `podName`
 func (c Cluster) CreateCacheWithConfiguration(cacheName, config, contentType, podName string) error {
 	headers := make(map[string]string)
 	headers["Content-Type"] = contentType
@@ -236,7 +247,7 @@ func (c Cluster) CreateCacheWithConfiguration(cacheName, config, contentType, po
 	return validateResponse(rsp, reason, err, "creating cache", http.StatusOK)
 }
 
-// CreateCacheWithTemplateName create cluster cache on the pod `podName`
+// CreateCacheWithTemplateName create cache on the pod `podName`
 func (c Cluster) CreateCacheWithTemplateName(cacheName, templateName, podName string) error {
 	path := fmt.Sprintf("%s/caches/%s?template=%s", consts.ServerHTTPBasePath, cacheName, templateName)
 	rsp, err, reason := c.Client.Post(podName, path, "", nil)

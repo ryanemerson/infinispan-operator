@@ -77,9 +77,9 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
 			reqLogger.Info("Cache resource not found. Ignoring it since cache deletion is not supported")
-			return reconcile.Result{}, nil
+			return ctrl.Result{}, nil
 		}
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	if instance.Spec.AdminAuth != nil {
@@ -88,7 +88,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 			instance.Spec.AdminAuth = nil
 			return nil
 		})
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	// Fetch the Infinispan cluster
@@ -98,7 +98,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 			reqLogger.Error(err, fmt.Sprintf("Infinispan cluster %s not found", infinispan.Name))
 			return reconcile.Result{RequeueAfter: constants.DefaultWaitOnCluster}, err
 		}
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	// Cluster must be well formed
@@ -117,26 +117,37 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, request ctrl.Request) (
 	// Don't contact the Infinispan server for resources created by the ConfigListener
 	if !cache.generatedResource() {
 		if result, err := cache.reconcileInfinispan(); result != nil {
+			if err != nil {
+				return *result, cache.update(func() error {
+					instance.SetCondition(v2alpha1.CacheConditionReady, metav1.ConditionFalse, err.Error())
+					return nil
+				})
+			}
 			return *result, err
 		}
 	}
 
-	_, err := kube.CreateOrPatch(ctx, r.Client, instance, func() error {
-		if instance.CreationTimestamp.IsZero() {
-			return errors.NewNotFound(schema.ParseGroupResource("cache.infinispan.org"), instance.Name)
-		}
+	err := cache.update(func() error {
 		// Remove the ListenerAnnotationGenerated key so that subsequent user updates contact the server
 		delete(instance.ObjectMeta.Annotations, constants.ListenerAnnotationGenerated)
-		instance.SetCondition("Ready", metav1.ConditionTrue, "")
+		instance.SetCondition(v2alpha1.CacheConditionReady, metav1.ConditionTrue, "")
 		return nil
 	})
+	return ctrl.Result{}, err
+}
 
+func (r *cacheRequest) update(mutate func() error) error {
+	cache := r.cache
+	_, err := kube.CreateOrPatch(r.ctx, r.Client, cache, func() error {
+		if cache.CreationTimestamp.IsZero() {
+			return errors.NewNotFound(schema.ParseGroupResource("cache.infinispan.org"), cache.Name)
+		}
+		return mutate()
+	})
 	if err != nil {
-		err = fmt.Errorf("unable to update cache %s status: %w", instance.Name, err)
-		reqLogger.Error(err, "")
-		return reconcile.Result{}, err
+		return fmt.Errorf("unable to update cache %s: %w", cache.Name, err)
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // Determine if reconciliation was triggered by the ConfigListener
@@ -151,14 +162,14 @@ func (r *cacheRequest) generatedResource() bool {
 func (r *cacheRequest) reconcileInfinispan() (*reconcile.Result, error) {
 	podName, cluster, err := newClusterClient(r.ctx, r.infinispan, r.kubernetes)
 	if err != nil {
-		return &reconcile.Result{}, fmt.Errorf("unable to create Cluster client: %w", err)
+		return &ctrl.Result{}, fmt.Errorf("unable to create Cluster client: %w", err)
 	}
 
 	cacheExists, err := cluster.ExistsCache(r.cache.GetCacheName(), podName)
 	if err != nil {
 		err := fmt.Errorf("unable to determine if cache exists: %w", err)
 		r.reqLogger.Error(err, "")
-		return &reconcile.Result{}, err
+		return &ctrl.Result{}, err
 	}
 
 	if r.infinispan.IsDataGrid() {
@@ -166,7 +177,10 @@ func (r *cacheRequest) reconcileInfinispan() (*reconcile.Result, error) {
 	} else {
 		err = r.reconcileCacheService(cacheExists, podName, cluster)
 	}
-	return nil, err
+	if err != nil {
+		return &ctrl.Result{}, err
+	}
+	return nil, nil
 }
 
 func (r *cacheRequest) reconcileCacheService(cacheExists bool, podName string, cluster infinispan.ClusterInterface) error {
@@ -203,7 +217,17 @@ func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, clust
 	spec := r.cache.Spec
 	cacheName := r.cache.GetCacheName()
 	if cacheExists {
-		// TODO handle update
+		if spec.TemplateName != "" {
+			// TODO replace with webhook validation when supported
+			return fmt.Errorf("updating an existing Cache's 'spec.TemplateName' field is not supported")
+		}
+
+		mediaType := guessMediaType(spec.Template)
+		fmt.Println(spec.Template)
+		err := cluster.UpdateCacheWithConfiguration(cacheName, spec.Template, mediaType, podName)
+		if err != nil {
+			return fmt.Errorf("unable to update cache template: %w", err)
+		}
 		return nil
 	}
 
@@ -214,6 +238,7 @@ func (r *cacheRequest) reconcileDataGrid(cacheExists bool, podName string, clust
 		}
 	} else {
 		mediaType := guessMediaType(spec.Template)
+		fmt.Println(spec.Template)
 		if err = cluster.CreateCacheWithConfiguration(cacheName, spec.Template, mediaType, podName); err != nil {
 			err = fmt.Errorf("unable to create cache with template: %w", err)
 		}
