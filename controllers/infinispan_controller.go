@@ -214,6 +214,7 @@ func (r *InfinispanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=core,namespace=infinispan-operator-system,resources=pods/logs,verbs=get
 // +kubebuilder:rbac:groups=core,namespace=infinispan-operator-system,resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups=core;events.k8s.io,namespace=infinispan-operator-system,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=core,resources=roles;rolebindings;serviceaccounts,verbs=create;delete
 
 // +kubebuilder:rbac:groups=apps,namespace=infinispan-operator-system,resources=deployments,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=apps,namespace=infinispan-operator-system,resources=replicasets,verbs=get
@@ -584,6 +585,17 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		return ctrl.Result{}, err
 	}
 
+	// Create the ConfigListener Deployment if enabled
+	if infinispan.IsConfigListenerEnabled() {
+		if err := r.ReconcileConfigListener(); err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		if err := r.DeleteConfigListener(); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Create default cache if it doesn't exists.
 	if infinispan.IsCache() {
 		if existsCache, err := cluster.ExistsCache(consts.DefaultCacheName, podList.Items[0].Name); err != nil {
@@ -750,6 +762,12 @@ func (r *infinispanRequest) destroyResources() error {
 	err := r.upgradeInfinispan()
 	if err != nil {
 		return err
+	}
+
+	if r.infinispan.IsConfigListenerEnabled() {
+		if err = r.DeleteConfigListener(); err != nil {
+			return err
+		}
 	}
 
 	err = r.Client.Delete(r.ctx,

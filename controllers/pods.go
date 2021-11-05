@@ -34,16 +34,16 @@ func PodPortsWithXsite(i *infinispanv1.Infinispan) []corev1.ContainerPort {
 }
 
 func PodLivenessProbe() *corev1.Probe {
-	return probe(5, 10, 10, 1, 80)
+	return probe(5, 10, 10, 1, 80*2)
 }
 
 func PodReadinessProbe() *corev1.Probe {
-	return probe(5, 10, 10, 1, 80)
+	return probe(5, 10, 10, 1, 80*2)
 }
 
 func PodStartupProbe() *corev1.Probe {
 	// Maximum 10 minutes (60 * 10s) to finish startup
-	return probe(60, 10, 10, 1, 80)
+	return probe(60, 10, 10, 1, 80*2)
 }
 
 func probe(failureThreshold, initialDelay, period, successThreshold, timeout int32) *corev1.Probe {

@@ -4,18 +4,19 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
-	"github.com/infinispan/infinispan-operator/test/e2e/utils"
-	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"syscall"
 	"testing"
+
+	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
+	"github.com/infinispan/infinispan-operator/test/e2e/utils"
+	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
+	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -59,7 +60,7 @@ func runOperatorSameProcess() context.CancelFunc {
 // runOperatorNewProcess Starts the operator in a new Process, as it's not possible to start it after stopping in the
 //same process due to several internal concurrency issues like https://github.com/kubernetes-sigs/controller-runtime/issues/1346
 func runOperatorNewProcess(image string) {
-	command = exec.Command("go", "run", mainPath)
+	command = exec.Command("go", "run", mainPath, "operator")
 
 	// Sets the gid since "go run" spawns a subprocess
 	command.SysProcAttr = &syscall.SysProcAttr{
