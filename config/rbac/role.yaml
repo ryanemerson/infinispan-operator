@@ -25,6 +25,15 @@ rules:
   - list
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - rolebindings
+  - roles
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+- apiGroups:
   - storage.k8s.io
   resources:
   - storageclasses
