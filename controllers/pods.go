@@ -4,15 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"os"
+	"strconv"
+	"strings"
 
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
+	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -51,7 +54,7 @@ func probe(failureThreshold, initialDelay, period, successThreshold, timeout int
 		Handler: corev1.Handler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Scheme: corev1.URISchemeHTTP,
-				Path:   consts.ServerHTTPHealthStatusPath,
+				Path:   "rest/v2/cache-managers/default/health/status",
 				Port:   intstr.FromInt(consts.InfinispanAdminPort)},
 		},
 		FailureThreshold:    failureThreshold,
@@ -266,4 +269,43 @@ func PodList(infinispan *infinispanv1.Infinispan, kube *kube.Kubernetes, ctx con
 	}
 	podList.Items = podList.Items[:pos]
 	return podList, nil
+}
+
+func GetPodMemoryLimitBytes(podName, namespace string, kube *kube.Kubernetes) (uint64, error) {
+	command := []string{"cat", "/sys/fs/cgroup/memory/memory.limit_in_bytes"}
+	execOptions := kubernetes.ExecOptions{Command: command, PodName: podName, Namespace: namespace}
+	execOut, execErr, err := kube.ExecWithOptions(execOptions)
+
+	if err != nil {
+		return 0, fmt.Errorf("unexpected error getting memory limit bytes, stderr: %v, err: %w", execErr, err)
+	}
+
+	result := strings.TrimSuffix(execOut.String(), "\n")
+	limitBytes, err := strconv.ParseUint(result, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return limitBytes, nil
+}
+
+func GetPodMaxMemoryUnboundedBytes(podName, namespace string, kube *kubernetes.Kubernetes) (uint64, error) {
+	command := []string{"cat", "/proc/meminfo"}
+	execOptions := kubernetes.ExecOptions{Command: command, PodName: podName, Namespace: namespace}
+	execOut, execErr, err := kube.ExecWithOptions(execOptions)
+
+	if err != nil {
+		return 0, fmt.Errorf("unexpected error getting max unbounded memory, stderr: %v, err: %w", execErr, err)
+	}
+
+	for _, line := range strings.Split(execOut.String(), "\n") {
+		if strings.Contains(line, "MemTotal:") {
+			tokens := strings.Fields(line)
+			maxUnboundKb, err := strconv.ParseUint(tokens[1], 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			return maxUnboundKb * 1024, nil
+		}
+	}
+	return 0, fmt.Errorf("meminfo lacking MemTotal information")
 }

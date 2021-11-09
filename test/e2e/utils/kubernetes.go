@@ -14,7 +14,6 @@ import (
 	"time"
 
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
-	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	ispnv2 "github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
@@ -490,7 +489,7 @@ func getNodePort(service *corev1.Service) int32 {
 }
 
 func CheckExternalAddress(c HTTPClient, hostAndPort string) bool {
-	httpURL := fmt.Sprintf("%s/%s", hostAndPort, consts.ServerHTTPHealthPath)
+	httpURL := fmt.Sprintf("%s/%s", hostAndPort, "rest/v2/cache-managers/default/health/status")
 	resp, err := c.Get(httpURL, nil)
 	if isTemporary(err) {
 		return false
@@ -782,7 +781,7 @@ func (k TestKubernetes) DeleteCache(cache *ispnv2.Cache) {
 	ExpectMaybeNotFound(err)
 }
 
-func (k TestKubernetes) WaitForCacheState(name, namespace string, predicate func(*v2alpha1.Cache) bool) *v2alpha1.Cache {
+func (k TestKubernetes) WaitForCacheState(name, namespace string, predicate func(*ispnv2.Cache) bool) *ispnv2.Cache {
 	cache := &ispnv2.Cache{}
 	err := wait.Poll(ConditionPollPeriod, ConditionWaitTimeout, func() (done bool, err error) {
 		err = k.Kubernetes.Client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: name}, cache)
@@ -798,15 +797,15 @@ func (k TestKubernetes) WaitForCacheState(name, namespace string, predicate func
 	return cache
 }
 
-func (k TestKubernetes) WaitForCacheConditionReady(name, namespace string) *v2alpha1.Cache {
-	return k.WaitForCacheCondition(name, namespace, v2alpha1.CacheCondition{
-		Type:   v2alpha1.CacheConditionReady,
+func (k TestKubernetes) WaitForCacheConditionReady(name, namespace string) *ispnv2.Cache {
+	return k.WaitForCacheCondition(name, namespace, ispnv2.CacheCondition{
+		Type:   ispnv2.CacheConditionReady,
 		Status: metav1.ConditionTrue,
 	})
 }
 
-func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *v2alpha1.Cache {
-	return k.WaitForCacheState(name, namespace, func(cache *v2alpha1.Cache) bool {
+func (k TestKubernetes) WaitForCacheCondition(name, namespace string, condition ispnv2.CacheCondition) *ispnv2.Cache {
+	return k.WaitForCacheState(name, namespace, func(cache *ispnv2.Cache) bool {
 		for _, c := range cache.Status.Conditions {
 			if c.Type == condition.Type && c.Status == condition.Status {
 				log.Info("Cache condition met", "condition", condition)
