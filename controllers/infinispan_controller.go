@@ -12,10 +12,11 @@ import (
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	hash "github.com/infinispan/infinispan-operator/pkg/hash"
-	ispn "github.com/infinispan/infinispan-operator/pkg/infinispan"
-	"github.com/infinispan/infinispan-operator/pkg/infinispan/caches"
-	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration"
+	"github.com/infinispan/infinispan-operator/pkg/http/curl"
+	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client"
+	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/server"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	"github.com/infinispan/infinispan-operator/pkg/mime"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/prometheus/common/log"
@@ -521,15 +522,10 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		return *result, err
 	}
 
-	cluster, err := NewCluster(infinispan, r.kubernetes, r.ctx)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	// If user set Spec.replicas=0 we need to perform a graceful shutdown
 	// to preserve the data
 	var res *ctrl.Result
-	res, err = r.reconcileGracefulShutdown(statefulSet, podList, reqLogger, cluster)
+	res, err = r.reconcileGracefulShutdown(statefulSet, podList, reqLogger)
 	if res != nil {
 		return *res, err
 	}
@@ -563,8 +559,14 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	if infinispan.Spec.Autoscale != nil && infinispan.IsCache() {
 		r.addAutoscalingEquipment()
 	}
+
+	curl, err := NewCurlClient(ctx, podList.Items[0].Name, infinispan, r.kubernetes)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Inspect the system and get the current Infinispan conditions
-	currConds := getInfinispanConditions(podList.Items, infinispan.Spec.Replicas, cluster)
+	currConds := getInfinispanConditions(podList.Items, infinispan, curl)
 
 	// Update the Infinispan status with the pod status
 	if err := r.update(func() {
@@ -580,8 +582,7 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	}
 
 	// Below the code for a wellFormed cluster
-	err = configureLoggers(podList, cluster, infinispan)
-	if err != nil {
+	if err = configureLoggers(podList, infinispan, curl); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -596,14 +597,21 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		}
 	}
 
+	ispnClient := ispnApi.New(curl)
 	// Create default cache if it doesn't exists.
 	if infinispan.IsCache() {
-		if existsCache, err := cluster.ExistsCache(consts.DefaultCacheName, podList.Items[0].Name); err != nil {
+		cacheClient := ispnClient.Cache(consts.DefaultCacheName)
+		if existsCache, err := cacheClient.Exists(); err != nil {
 			reqLogger.Error(err, "failed to validate default cache for cache service")
 			return ctrl.Result{}, err
 		} else if !existsCache {
 			reqLogger.Info("createDefaultCache")
-			if err = caches.CreateCacheFromDefault(podList.Items[0].Name, infinispan, cluster, reqLogger); err != nil {
+			defaultXml, err := DefaultCacheTemplateXML(podList.Items[0].Name, infinispan, r.kubernetes, reqLogger)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			if err = cacheClient.Create(defaultXml, mime.ApplicationXml); err != nil {
 				reqLogger.Error(err, "failed to create default cache for cache service")
 				return ctrl.Result{}, err
 			}
@@ -673,19 +681,20 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 	}
 
 	if infinispan.HasSites() {
-		crossSiteViewCondition, err := r.GetCrossSiteViewCondition(podList, infinispan.GetSiteLocationsName(), cluster)
+		crossSiteViewCondition, err := r.GetCrossSiteViewCondition(podList, infinispan.GetSiteLocationsName(), curl)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 		// ISPN-13116 If xsite view has been formed, then we must perform state-transfer to all sites if a SFS recovery has occurred
 		if crossSiteViewCondition.Status == metav1.ConditionTrue {
 			podName := podList.Items[0].Name
+			curl.SetPodname(podName)
 			logs, err := r.kubernetes.Logs(podName, infinispan.Namespace, ctx)
 			if err != nil {
 				log.Error(err, fmt.Sprintf("Unable to retrive logs for infinispan pod %s", podName))
 			}
 			if strings.Contains(logs, "ISPN000643") {
-				if err := cluster.XsitePushAllState(podName); err != nil {
+				if err := ispnClient.Container().Xsite().PushAllState(); err != nil {
 					log.Error(err, "Unable to push xsite state after SFS data recovery")
 				}
 			}
@@ -728,24 +737,28 @@ func (r *infinispanRequest) preliminaryChecks() (*ctrl.Result, error) {
 	return nil, nil
 }
 
-func configureLoggers(pods *corev1.PodList, cluster ispn.ClusterInterface, infinispan *infinispanv1.Infinispan) error {
+func configureLoggers(pods *corev1.PodList, infinispan *infinispanv1.Infinispan, curl *curl.Client) error {
 	if infinispan.Spec.Logging == nil || len(infinispan.Spec.Logging.Categories) == 0 {
 		return nil
 	}
+
 	for _, pod := range pods.Items {
-		serverLoggers, err := cluster.GetLoggers(pod.Name)
+		curl.SetPodname(pod.Name)
+		logging := ispnApi.New(curl).Logging()
+		serverLoggers, err := logging.GetLoggers()
 		if err != nil {
 			return err
 		}
 		for category, level := range infinispan.Spec.Logging.Categories {
 			serverLevel, ok := serverLoggers[category]
 			if !(ok && string(level) == serverLevel) {
-				if err := cluster.SetLogger(pod.Name, category, string(level)); err != nil {
+				if err := logging.SetLogger(category, string(level)); err != nil {
 					return err
 				}
 			}
 		}
 	}
+	curl.SetPodname(pods.Items[0].Name)
 	return nil
 }
 
@@ -1367,18 +1380,18 @@ func (r *infinispanRequest) statefulSetForInfinispan(adminSecret, userSecret, ke
 }
 
 // getInfinispanConditions returns the pods status and a summary status for the cluster
-func getInfinispanConditions(pods []corev1.Pod, replicas int32, cluster ispn.ClusterInterface) []infinispanv1.InfinispanCondition {
+func getInfinispanConditions(pods []corev1.Pod, m *infinispanv1.Infinispan, curl *curl.Client) []infinispanv1.InfinispanCondition {
 	var status []infinispanv1.InfinispanCondition
 	clusterViews := make(map[string]bool)
 	var errors []string
 	// Avoid to inspect the system if we're still waiting for the pods
-	if int32(len(pods)) < replicas {
-		errors = append(errors, fmt.Sprintf("Running %d pods. Needed %d", len(pods), replicas))
+	if int32(len(pods)) < m.Spec.Replicas {
+		errors = append(errors, fmt.Sprintf("Running %d pods. Needed %d", len(pods), m.Spec.Replicas))
 	} else {
 		for _, pod := range pods {
 			if kube.IsPodReady(pod) {
-				members, err := cluster.GetClusterMembers(pod.Name)
-				if err == nil {
+				curl.SetPodname(pod.Name)
+				if members, err := ispnApi.New(curl).Container().Members(); err == nil {
 					sort.Strings(members)
 					clusterView := strings.Join(members, ",")
 					clusterViews[clusterView] = true
@@ -1391,6 +1404,8 @@ func getInfinispanConditions(pods []corev1.Pod, replicas int32, cluster ispn.Clu
 			}
 		}
 	}
+	curl.SetPodname(pods[0].Name)
+
 	// Evaluating WellFormed condition
 	wellformed := infinispanv1.InfinispanCondition{Type: infinispanv1.ConditionWellFormed}
 	views := make([]string, len(clusterViews))
@@ -1417,7 +1432,7 @@ func getInfinispanConditions(pods []corev1.Pod, replicas int32, cluster ispn.Clu
 }
 
 func (r *infinispanRequest) reconcileGracefulShutdown(statefulSet *appsv1.StatefulSet, podList *corev1.PodList,
-	logger logr.Logger, cluster ispn.ClusterInterface) (*ctrl.Result, error) {
+	logger logr.Logger) (*ctrl.Result, error) {
 	ispn := r.infinispan
 	if ispn.Spec.Replicas == 0 {
 		logger.Info(".Spec.Replicas==0")
@@ -1425,7 +1440,7 @@ func (r *infinispanRequest) reconcileGracefulShutdown(statefulSet *appsv1.Statef
 			logger.Info("StatefulSet.Spec.Replicas!=0")
 			// If cluster hasn't a `stopping` condition or it's false then send a graceful shutdown
 			if !ispn.IsConditionTrue(infinispanv1.ConditionStopping) {
-				res, err := r.gracefulShutdownReq(podList, logger, cluster)
+				res, err := r.gracefulShutdownReq(podList, logger)
 				if res != nil {
 					return res, err
 				}
@@ -1485,18 +1500,23 @@ func (r *infinispanRequest) reconcileGracefulShutdown(statefulSet *appsv1.Statef
 }
 
 // gracefulShutdownReq send a graceful shutdown request to the cluster
-func (r *infinispanRequest) gracefulShutdownReq(podList *corev1.PodList, logger logr.Logger, cluster ispn.ClusterInterface) (*ctrl.Result, error) {
+func (r *infinispanRequest) gracefulShutdownReq(podList *corev1.PodList, logger logr.Logger) (*ctrl.Result, error) {
 	ispn := r.infinispan
 	logger.Info("Sending graceful shutdown request")
 	// Send a graceful shutdown to the first ready pod. If no pods are ready, then there's nothing to shutdown
 	for _, pod := range podList.Items {
 		if kube.IsPodReady(pod) {
-			if err := cluster.GracefulShutdown(pod.GetName()); err != nil {
+			ispnClient, err := NewInfinispanForPod(r.ctx, pod.Name, r.infinispan, r.kubernetes)
+			if err != nil {
+				return &ctrl.Result{}, fmt.Errorf("unable to create Infinispan client for ready pod '%s': %w", pod.Name, err)
+			}
+
+			if err := ispnClient.Cluster().GracefulShutdown(); err != nil {
 				logger.Error(err, "Error encountered on cluster shutdown")
 
 				// ISPN-13141 causes GracefulShutdown to fail if there are issues with the server
 				logger.Info("Cluster Shutdown failed. Attempting to execute GracefulShutdownTask")
-				if err := cluster.GracefulShutdownTask(pod.GetName()); err != nil {
+				if err := ispnClient.Cluster().GracefulShutdownTask(); err != nil {
 					logger.Error(err, fmt.Sprintf("Error encountered using GracefulShutdownTask on pod %s", pod.Name))
 					continue
 				}
