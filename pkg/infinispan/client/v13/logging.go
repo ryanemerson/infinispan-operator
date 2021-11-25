@@ -16,12 +16,12 @@ type logging struct {
 }
 
 func (l *logging) GetLoggers() (lm map[string]string, err error) {
-	rsp, reason, err := l.Get(LoggersPath, nil)
+	rsp, err := l.Get(LoggersPath, nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
 
-	if err = httpClient.ValidateResponse(rsp, reason, err, "getting cluster loggers", http.StatusOK); err != nil {
+	if err = httpClient.ValidateResponse(rsp, err, "getting cluster loggers", http.StatusOK); err != nil {
 		return
 	}
 
@@ -44,12 +44,12 @@ func (l *logging) GetLoggers() (lm map[string]string, err error) {
 
 func (l *logging) SetLogger(name, level string) error {
 	path := fmt.Sprintf("%s/%s?level=%s", LoggersPath, name, strings.ToUpper(level))
-	rsp, reason, err := l.Put(path, "", nil)
+	rsp, err := l.Put(path, "", nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
 
-	if err := httpClient.ValidateResponse(rsp, reason, err, "setting cluster logger", http.StatusNoContent); err != nil {
+	if err := httpClient.ValidateResponse(rsp, err, "setting cluster logger", http.StatusNoContent); err != nil {
 		return err
 	}
 	return nil

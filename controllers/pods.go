@@ -274,10 +274,10 @@ func PodList(infinispan *infinispanv1.Infinispan, kube *kube.Kubernetes, ctx con
 func GetPodMemoryLimitBytes(podName, namespace string, kube *kube.Kubernetes) (uint64, error) {
 	command := []string{"cat", "/sys/fs/cgroup/memory/memory.limit_in_bytes"}
 	execOptions := kubernetes.ExecOptions{Command: command, PodName: podName, Namespace: namespace}
-	execOut, execErr, err := kube.ExecWithOptions(execOptions)
+	execOut, err := kube.ExecWithOptions(execOptions)
 
 	if err != nil {
-		return 0, fmt.Errorf("unexpected error getting memory limit bytes, stderr: %v, err: %w", execErr, err)
+		return 0, fmt.Errorf("unexpected error getting memory limit bytes, err: %w", err)
 	}
 
 	result := strings.TrimSuffix(execOut.String(), "\n")
@@ -291,10 +291,10 @@ func GetPodMemoryLimitBytes(podName, namespace string, kube *kube.Kubernetes) (u
 func GetPodMaxMemoryUnboundedBytes(podName, namespace string, kube *kubernetes.Kubernetes) (uint64, error) {
 	command := []string{"cat", "/proc/meminfo"}
 	execOptions := kubernetes.ExecOptions{Command: command, PodName: podName, Namespace: namespace}
-	execOut, execErr, err := kube.ExecWithOptions(execOptions)
+	execOut, err := kube.ExecWithOptions(execOptions)
 
 	if err != nil {
-		return 0, fmt.Errorf("unexpected error getting max unbounded memory, stderr: %v, err: %w", execErr, err)
+		return 0, fmt.Errorf("unexpected error getting max unbounded memory, err: %w", err)
 	}
 
 	for _, line := range strings.Split(execOut.String(), "\n") {

@@ -19,12 +19,12 @@ type container struct {
 }
 
 func (c *container) Info() (info *api.ContainerInfo, error error) {
-	rsp, reason, err := c.Get(CacheManagerPath, nil)
+	rsp, err := c.Get(CacheManagerPath, nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
 
-	if err = httpClient.ValidateResponse(rsp, reason, err, "getting cache manager info", http.StatusOK); err != nil {
+	if err = httpClient.ValidateResponse(rsp, err, "getting cache manager info", http.StatusOK); err != nil {
 		return
 	}
 
@@ -35,12 +35,12 @@ func (c *container) Info() (info *api.ContainerInfo, error error) {
 }
 
 func (c *container) Members() (members []string, err error) {
-	rsp, reason, err := c.Get(HealthPath, nil)
+	rsp, err := c.Get(HealthPath, nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
 
-	if err = httpClient.ValidateResponse(rsp, reason, err, "getting cluster members", http.StatusOK); err != nil {
+	if err = httpClient.ValidateResponse(rsp, err, "getting cluster members", http.StatusOK); err != nil {
 		return
 	}
 

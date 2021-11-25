@@ -28,8 +28,8 @@ func (c *cache) url() string {
 
 func (c *cache) Config(contentType mime.MimeType) (config string, err error) {
 	path := c.url() + "?action=config"
-	rsp, reason, err := c.Get(path, nil)
-	if err = httpClient.ValidateResponse(rsp, reason, err, "getting cache config", http.StatusOK); err != nil {
+	rsp, err := c.Get(path, nil)
+	if err = httpClient.ValidateResponse(rsp, err, "getting cache config", http.StatusOK); err != nil {
 		return
 	}
 	defer func() {
@@ -48,39 +48,39 @@ func (c *cache) Create(config string, contentType mime.MimeType) (err error) {
 		"Content-Type": string(contentType),
 	}
 
-	rsp, reason, err := c.Post(c.url(), config, headers)
+	rsp, err := c.Post(c.url(), config, headers)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "creating cache", http.StatusOK)
+	err = httpClient.ValidateResponse(rsp, err, "creating cache", http.StatusOK)
 	return
 }
 
 func (c *cache) CreateWithTemplate(templateName string) (err error) {
 	path := fmt.Sprintf("%s?template=%s", c.url(), templateName)
-	rsp, reason, err := c.Post(path, "", nil)
+	rsp, err := c.Post(path, "", nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "creating cache with template", http.StatusOK)
+	err = httpClient.ValidateResponse(rsp, err, "creating cache with template", http.StatusOK)
 	return
 }
 
 func (c *cache) Delete() (err error) {
-	rsp, reason, err := c.HttpClient.Delete(c.url(), nil)
+	rsp, err := c.HttpClient.Delete(c.url(), nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "deleting cache", http.StatusOK, http.StatusNotFound)
+	err = httpClient.ValidateResponse(rsp, err, "deleting cache", http.StatusOK, http.StatusNotFound)
 	return
 }
 
 func (c *cache) Exists() (exist bool, err error) {
-	rsp, reason, err := c.Head(c.url(), nil)
+	rsp, err := c.Head(c.url(), nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	if err = httpClient.ValidateResponse(rsp, reason, err, "validating cache exists", http.StatusOK, http.StatusNoContent, http.StatusNotFound); err != nil {
+	if err = httpClient.ValidateResponse(rsp, err, "validating cache exists", http.StatusOK, http.StatusNoContent, http.StatusNotFound); err != nil {
 		return
 	}
 
@@ -105,11 +105,11 @@ func (c *cache) UpdateConfig(config string, contentType mime.MimeType) (err erro
 		"Content-Type": string(contentType),
 	}
 
-	rsp, reason, err := c.Put(c.url(), config, headers)
+	rsp, err := c.Put(c.url(), config, headers)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "updating cache", http.StatusOK)
+	err = httpClient.ValidateResponse(rsp, err, "updating cache", http.StatusOK)
 	return
 }
 
@@ -119,11 +119,11 @@ func (c *caches) ConvertConfiguration(config string, contentType mime.MimeType, 
 		"Accept":       string(reqType),
 		"Content-Type": string(contentType),
 	}
-	rsp, reason, err := c.Post(path, config, headers)
+	rsp, err := c.Post(path, config, headers)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "creating cache with template", http.StatusOK)
+	err = httpClient.ValidateResponse(rsp, err, "creating cache with template", http.StatusOK)
 	if err != nil {
 		return
 	}
@@ -135,8 +135,8 @@ func (c *caches) ConvertConfiguration(config string, contentType mime.MimeType, 
 }
 
 func (c *caches) Names() (names []string, err error) {
-	rsp, reason, err := c.Get(CachesPath, nil)
-	if err = httpClient.ValidateResponse(rsp, reason, err, "getting caches", http.StatusOK); err != nil {
+	rsp, err := c.Get(CachesPath, nil)
+	if err = httpClient.ValidateResponse(rsp, err, "getting caches", http.StatusOK); err != nil {
 		return
 	}
 

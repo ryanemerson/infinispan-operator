@@ -13,10 +13,10 @@ type server struct {
 }
 
 func (s *server) Stop() (err error) {
-	rsp, reason, err := s.Post(ServerPath+"?action=stop", "", nil)
+	rsp, err := s.Post(ServerPath+"?action=stop", "", nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "stopping server", http.StatusNoContent)
+	err = httpClient.ValidateResponse(rsp, err, "stopping server", http.StatusNoContent)
 	return
 }

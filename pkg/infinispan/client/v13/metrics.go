@@ -21,8 +21,8 @@ func (m *metrics) Get(postfix string) (buf *bytes.Buffer, err error) {
 	}
 
 	path := fmt.Sprintf("%s/%s", MetricsPath, postfix)
-	rsp, reason, err := m.HttpClient.Get(path, headers)
-	if err = httpClient.ValidateResponse(rsp, reason, err, "getting metrics", http.StatusOK); err != nil {
+	rsp, err := m.HttpClient.Get(path, headers)
+	if err = httpClient.ValidateResponse(rsp, err, "getting metrics", http.StatusOK); err != nil {
 		return
 	}
 

@@ -15,8 +15,8 @@ type xsite struct {
 }
 
 func (x *xsite) PushAllState() (err error) {
-	rsp, reason, err := x.Get(XSitePath, nil)
-	if err = httpClient.ValidateResponse(rsp, reason, err, "Retrieving xsite status", http.StatusOK); err != nil {
+	rsp, err := x.Get(XSitePath, nil)
+	if err = httpClient.ValidateResponse(rsp, err, "Retrieving xsite status", http.StatusOK); err != nil {
 		return
 	}
 
@@ -39,8 +39,8 @@ func (x *xsite) PushAllState() (err error) {
 	for k, v := range statuses {
 		if v.Status == "online" {
 			url := fmt.Sprintf("%s/%s?action=start-push-state", XSitePath, k)
-			rsp, reason, err = x.Post(url, "", nil)
-			if err = httpClient.ValidateResponse(rsp, reason, err, "Pushing xsite state", http.StatusOK); err != nil {
+			rsp, err = x.Post(url, "", nil)
+			if err = httpClient.ValidateResponse(rsp, err, "Pushing xsite state", http.StatusOK); err != nil {
 				return
 			}
 		}

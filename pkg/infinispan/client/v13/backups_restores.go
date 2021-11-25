@@ -62,11 +62,11 @@ func create(url, name, op string, config interface{}, client httpClient.HttpClie
 	}
 
 	payload := string(json)
-	rsp, reason, err := client.Post(url, payload, headers)
+	rsp, err := client.Post(url, payload, headers)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	return httpClient.ValidateResponse(rsp, reason, err, "creating "+op, http.StatusAccepted)
+	return httpClient.ValidateResponse(rsp, err, "creating "+op, http.StatusAccepted)
 }
 
 func status(url, name, op string, client httpClient.HttpClient) (api.Status, error) {
@@ -74,7 +74,7 @@ func status(url, name, op string, client httpClient.HttpClient) (api.Status, err
 		return api.StatusUnknown, err
 	}
 
-	rsp, _, err := client.Head(url, nil)
+	rsp, err := client.Head(url, nil)
 	if err != nil {
 		return api.StatusUnknown, err
 	}

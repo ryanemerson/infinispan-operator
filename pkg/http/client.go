@@ -9,16 +9,16 @@ import (
 )
 
 type HttpClient interface {
-	Head(path string, headers map[string]string) (*http.Response, string, error)
-	Get(path string, headers map[string]string) (*http.Response, string, error)
-	Post(path, payload string, headers map[string]string) (*http.Response, string, error)
-	Put(path, payload string, headers map[string]string) (*http.Response, string, error)
-	Delete(path string, headers map[string]string) (*http.Response, string, error)
+	Head(path string, headers map[string]string) (*http.Response, error)
+	Get(path string, headers map[string]string) (*http.Response, error)
+	Post(path, payload string, headers map[string]string) (*http.Response, error)
+	Put(path, payload string, headers map[string]string) (*http.Response, error)
+	Delete(path string, headers map[string]string) (*http.Response, error)
 }
 
-func ValidateResponse(rsp *http.Response, reason string, inperr error, entity string, validCodes ...int) (err error) {
+func ValidateResponse(rsp *http.Response, inperr error, entity string, validCodes ...int) (err error) {
 	if inperr != nil {
-		return fmt.Errorf("unexpected error %s, stderr: %s, err: %w", entity, reason, inperr)
+		return fmt.Errorf("unexpected error %s: %w", entity, inperr)
 	}
 
 	if rsp == nil || len(validCodes) == 0 {

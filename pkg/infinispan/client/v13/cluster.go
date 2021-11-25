@@ -16,11 +16,11 @@ type cluster struct {
 }
 
 func (c *cluster) GracefulShutdown() (err error) {
-	rsp, reason, err := c.Post(ClusterPath+"?action=stop", "", nil)
+	rsp, err := c.Post(ClusterPath+"?action=stop", "", nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "during graceful shutdown", http.StatusNoContent)
+	err = httpClient.ValidateResponse(rsp, err, "during graceful shutdown", http.StatusNoContent)
 	return err
 }
 
@@ -64,18 +64,18 @@ func (c *cluster) GracefulShutdownTask() (err error) {
 	// Remove all new lines to prevent a "100 continue" response
 	task = strings.ReplaceAll(task, "\n", "")
 
-	rsp, reason, err := c.Post(url, task, headers)
+	rsp, err := c.Post(url, task, headers)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	if err = httpClient.ValidateResponse(rsp, reason, err, "Uploading GracefulShutdownTask", http.StatusOK); err != nil {
+	if err = httpClient.ValidateResponse(rsp, err, "Uploading GracefulShutdownTask", http.StatusOK); err != nil {
 		return
 	}
 
-	rsp, reason, err = c.Post(url+"?action=exec", "", nil)
+	rsp, err = c.Post(url+"?action=exec", "", nil)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
-	err = httpClient.ValidateResponse(rsp, reason, err, "Executing GracefulShutdownTask", http.StatusOK)
+	err = httpClient.ValidateResponse(rsp, err, "Executing GracefulShutdownTask", http.StatusOK)
 	return
 }
