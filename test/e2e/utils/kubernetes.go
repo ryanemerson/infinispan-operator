@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"reflect"
@@ -18,6 +17,7 @@ import (
 	"github.com/infinispan/infinispan-operator/controllers"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/launcher/operator"
+	ispnClient "github.com/infinispan/infinispan-operator/pkg/infinispan/client"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	routev1 "github.com/openshift/api/route/v1"
 	"gopkg.in/yaml.v2"
@@ -448,9 +448,10 @@ func (k TestKubernetes) WaitForCrd(crd *apiextv1.CustomResourceDefinition) {
 }
 
 // WaitForExternalService checks if an http server is listening at the endpoint exposed by the service (ns, name)
-func (k TestKubernetes) WaitForExternalService(ispn *ispnv1.Infinispan, timeout time.Duration, client HTTPClient) string {
-	var hostAndPort string
+// The HostAndPort of the provided HTTPClient is updated to use the external service when available
+func (k TestKubernetes) WaitForExternalService(ispn *ispnv1.Infinispan, timeout time.Duration, client HTTPClient) HTTPClient {
 	err := wait.Poll(DefaultPollPeriod, timeout, func() (done bool, err error) {
+		var hostAndPort string
 		switch ispn.GetExposeType() {
 		case ispnv1.ExposeTypeNodePort, ispnv1.ExposeTypeLoadBalancer:
 			routeList := &corev1.ServiceList{}
@@ -478,26 +479,25 @@ func (k TestKubernetes) WaitForExternalService(ispn *ispnv1.Infinispan, timeout 
 		if hostAndPort == "" {
 			return false, nil
 		}
-		return CheckExternalAddress(client, hostAndPort), nil
+		client.SetHostAndPort(hostAndPort)
+		return CheckExternalAddress(client), nil
 	})
 	ExpectNoError(err)
-	return hostAndPort
+	return client
 }
 
 func getNodePort(service *corev1.Service) int32 {
 	return service.Spec.Ports[0].NodePort
 }
 
-func CheckExternalAddress(c HTTPClient, hostAndPort string) bool {
-	httpURL := fmt.Sprintf("%s/%s", hostAndPort, "rest/v2/cache-managers/default/health/status")
-	resp, err := c.Get(httpURL, nil)
+func CheckExternalAddress(client HTTPClient) bool {
+	status, err := ispnClient.New(client).Container().HealthStatus()
 	if isTemporary(err) {
 		return false
 	}
 	ExpectNoError(err)
-	defer LogError(resp.Body.Close())
-	log.Info("Received response for external address", "response code", resp.StatusCode)
-	return resp.StatusCode == http.StatusOK
+	log.Info("Received response for external address", "status", status)
+	return status != ""
 }
 
 func isTemporary(err error) bool {

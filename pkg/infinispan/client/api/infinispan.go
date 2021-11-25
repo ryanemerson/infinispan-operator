@@ -19,6 +19,7 @@ type Infinispan interface {
 type Container interface {
 	Info() (*ContainerInfo, error)
 	Backups() Backups
+	HealthStatus() (HealthStatus, error)
 	Members() ([]string, error)
 	Restores() Restores
 	Xsite() Xsite
@@ -36,11 +37,14 @@ type Restores interface {
 
 type Cache interface {
 	Config(contentType mime.MimeType) (string, error)
-	Create(config string, contentType mime.MimeType) error
+	Create(config string, contentType mime.MimeType, flags ...string) error
 	CreateWithTemplate(templateName string) error
 	Delete() error
 	Exists() (bool, error)
+	Get(key string) (string, bool, error)
+	Put(key, value string, contentType mime.MimeType) error
 	RollingUpgrade() RollingUpgrade
+	Size() (int, error)
 	UpdateConfig(config string, contentType mime.MimeType) error
 }
 
@@ -77,6 +81,15 @@ type Server interface {
 type Xsite interface {
 	PushAllState() error
 }
+
+type HealthStatus string
+
+const (
+	HealthStatusDegraded          HealthStatus = "DEGRADED"
+	HealthStatusHealth            HealthStatus = "HEALTHY"
+	HealthStatusHealthRebalancing HealthStatus = "HEALTHY_REBALANCING"
+	HealthStatusFailed            HealthStatus = "FAILED"
+)
 
 type Status string
 

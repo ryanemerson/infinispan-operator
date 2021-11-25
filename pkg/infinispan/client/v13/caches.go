@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
+	"strings"
 
 	httpClient "github.com/infinispan/infinispan-operator/pkg/http"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
@@ -26,9 +28,13 @@ func (c *cache) url() string {
 	return fmt.Sprintf("%s/%s", CachesPath, c.name)
 }
 
+func (c *cache) entryUrl(key string) string {
+	return fmt.Sprintf("%s/%s", c.url(), key)
+}
+
 func (c *cache) Config(contentType mime.MimeType) (config string, err error) {
 	path := c.url() + "?action=config"
-	rsp, err := c.Get(path, nil)
+	rsp, err := c.HttpClient.Get(path, nil)
 	if err = httpClient.ValidateResponse(rsp, err, "getting cache config", http.StatusOK); err != nil {
 		return
 	}
@@ -43,9 +49,13 @@ func (c *cache) Config(contentType mime.MimeType) (config string, err error) {
 	return string(body), nil
 }
 
-func (c *cache) Create(config string, contentType mime.MimeType) (err error) {
+func (c *cache) Create(config string, contentType mime.MimeType, flags ...string) (err error) {
 	headers := map[string]string{
 		"Content-Type": string(contentType),
+	}
+
+	if len(flags) > 0 {
+		headers["Flags"] = strings.Join(flags, ",")
 	}
 
 	rsp, err := c.Post(c.url(), config, headers)
@@ -93,6 +103,53 @@ func (c *cache) Exists() (exist bool, err error) {
 	return
 }
 
+func (c *cache) Get(key string) (val string, exists bool, err error) {
+	rsp, err := c.HttpClient.Get(c.entryUrl(key), nil)
+	defer func() {
+		err = httpClient.CloseBody(rsp, err)
+	}()
+	if err = httpClient.ValidateResponse(rsp, err, "getting cache entry", http.StatusOK, http.StatusNotFound); err != nil {
+		return
+	}
+	if rsp.StatusCode == http.StatusNotFound {
+		return
+	}
+	body, err := readResponseBody(rsp)
+	if err != nil {
+		return "", false, err
+	}
+	return body, true, err
+}
+
+func (c *cache) Put(key, value string, contentType mime.MimeType) (err error) {
+	headers := map[string]string{
+		"Content-Type": string(contentType),
+	}
+	rsp, err := c.HttpClient.Post(c.entryUrl(key), value, headers)
+	defer func() {
+		err = httpClient.CloseBody(rsp, err)
+	}()
+	if err = httpClient.ValidateResponse(rsp, err, "putting cache entry", http.StatusNoContent); err != nil {
+		return
+	}
+	return nil
+}
+
+func (c *cache) Size() (size int, err error) {
+	rsp, err := c.HttpClient.Get(c.url()+"?action=size", nil)
+	defer func() {
+		err = httpClient.CloseBody(rsp, err)
+	}()
+	if err = httpClient.ValidateResponse(rsp, err, "get cache size", http.StatusOK); err != nil {
+		return
+	}
+	body, err := readResponseBody(rsp)
+	if err != nil {
+		return
+	}
+	return strconv.Atoi(body)
+}
+
 func (c *cache) RollingUpgrade() api.RollingUpgrade {
 	return &rollingUpgrade{
 		cache:      c,
@@ -105,7 +162,7 @@ func (c *cache) UpdateConfig(config string, contentType mime.MimeType) (err erro
 		"Content-Type": string(contentType),
 	}
 
-	rsp, err := c.Put(c.url(), config, headers)
+	rsp, err := c.HttpClient.Put(c.url(), config, headers)
 	defer func() {
 		err = httpClient.CloseBody(rsp, err)
 	}()
@@ -127,11 +184,7 @@ func (c *caches) ConvertConfiguration(config string, contentType mime.MimeType, 
 	if err != nil {
 		return
 	}
-	responseBody, responseErr := ioutil.ReadAll(rsp.Body)
-	if responseErr != nil {
-		return "", fmt.Errorf("unable to read response body: %w", responseErr)
-	}
-	return string(responseBody), nil
+	return readResponseBody(rsp)
 }
 
 func (c *caches) Names() (names []string, err error) {
@@ -148,4 +201,12 @@ func (c *caches) Names() (names []string, err error) {
 		return nil, fmt.Errorf("unable to decode: %w", err)
 	}
 	return
+}
+
+func readResponseBody(rsp *http.Response) (string, error) {
+	responseBody, responseErr := ioutil.ReadAll(rsp.Body)
+	if responseErr != nil {
+		return "", fmt.Errorf("unable to read response body: %w", responseErr)
+	}
+	return string(responseBody), nil
 }

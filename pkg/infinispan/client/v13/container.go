@@ -3,6 +3,7 @@ package v13
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	httpClient "github.com/infinispan/infinispan-operator/pkg/http"
@@ -12,6 +13,7 @@ import (
 const (
 	CacheManagerPath = BasePath + "/cache-managers/default"
 	HealthPath       = CacheManagerPath + "/health"
+	HealthStatusPath = HealthPath + "/status"
 )
 
 type container struct {
@@ -32,6 +34,22 @@ func (c *container) Info() (info *api.ContainerInfo, error error) {
 		return nil, fmt.Errorf("unable to decode: %w", err)
 	}
 	return
+}
+
+func (c *container) HealthStatus() (status api.HealthStatus, error error) {
+	rsp, err := c.Get(HealthStatusPath, nil)
+	defer func() {
+		err = httpClient.CloseBody(rsp, err)
+	}()
+
+	if err = httpClient.ValidateResponse(rsp, err, "getting cache manager health status", http.StatusOK); err != nil {
+		return
+	}
+	all, err := ioutil.ReadAll(rsp.Body)
+	if err != nil {
+		return "", fmt.Errorf("unable to decode: %w", err)
+	}
+	return api.HealthStatus(string(all)), nil
 }
 
 func (c *container) Members() (members []string, err error) {

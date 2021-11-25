@@ -13,18 +13,17 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+
+	httpClient "github.com/infinispan/infinispan-operator/pkg/http"
 )
 
 const DEBUG = false
 
 // HTTPClient can perform HTTP operations
 type HTTPClient interface {
-	Delete(path string, headers map[string]string) (*http.Response, error)
-	Get(path string, headers map[string]string) (*http.Response, error)
-	Head(path string, headers map[string]string) (*http.Response, error)
-	Post(path, payload string, headers map[string]string) (*http.Response, error)
-	Put(path, payload string, headers map[string]string) (*http.Response, error)
+	httpClient.HttpClient
 	Quiet(quiet bool)
+	SetHostAndPort(hostAndPort string)
 }
 
 type authType int
@@ -41,11 +40,12 @@ type authenticationRealm struct {
 
 type httpClientConfig struct {
 	*http.Client
-	username *string
-	password *string
-	protocol string
-	auth     authType
-	quiet    bool
+	hostAndPort string
+	username    *string
+	password    *string
+	protocol    string
+	auth        authType
+	quiet       bool
 }
 
 type HttpError struct {
@@ -126,6 +126,10 @@ func (c *httpClientConfig) Post(path, payload string, headers map[string]string)
 
 func (c *httpClientConfig) Put(path, payload string, headers map[string]string) (*http.Response, error) {
 	return c.exec("PUT", path, payload, headers)
+}
+
+func (c *httpClientConfig) SetHostAndPort(hostAndPort string) {
+	c.hostAndPort = hostAndPort
 }
 
 func (c *httpClientConfig) Quiet(quiet bool) {
