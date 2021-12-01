@@ -28,19 +28,6 @@
         <MERGE3 min_interval="1000" max_interval="3000" check_interval="5000" stack.combine="COMBINE"/>
         {{ end }}
     </stack>
-    <stack name="image-udp" extends="udp">
-        <UDP enable_diagnostics="{{ .JGroups.Diagnostics }}"
-             port_range="0"
-        />
-        {{ if .JGroups.DNSPing.Query }}
-        <dns.DNS_PING dns_address="{{ .JGroups.DNSPing.Address }}" dns_query="{{ .JGroups.DNSPing.Query }}"
-                      dns_record_type="{{ .JGroups.DNSPing.RecordType }}"
-                      stack.combine="REPLACE" stack.position="PING"/>
-        {{ end }}
-        {{ if .JGroups.FastMerge }}
-        <MERGE3 min_interval="1000" max_interval="3000" check_interval="5000" stack.combine="COMBINE"/>
-        {{ end }}
-    </stack>
     {{ if .XSite }} {{ if .XSite.Sites }}
     <stack name="relay-tcp" extends="tcp">
         <!-- overwrite bind address and port -->

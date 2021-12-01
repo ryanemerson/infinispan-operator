@@ -8,7 +8,8 @@ import (
 	"github.com/go-logr/logr"
 	v1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/server"
+	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/new"
+	oldConfig "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/server"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/prometheus/common/log"
 	corev1 "k8s.io/api/core/v1"
@@ -16,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -107,7 +109,7 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 		return reconcile.Result{RequeueAfter: consts.DefaultWaitOnCreateResource}, nil
 	}
 
-	var xsite *config.XSite
+	var xsite *oldConfig.XSite
 	if infinispan.HasSites() {
 		// Check x-site configuration first.
 		// Must be done before creating any Infinispan resources,
@@ -139,8 +141,151 @@ func (reconciler *ConfigReconciler) Reconcile(ctx context.Context, request recon
 	return reconcile.Result{}, nil
 }
 
+// Create a InfinispanConfiguration for normal clusters, ignoring xsite components
+func (r *configRequest) createServerConfiguration() (*config.InfinispanConfiguration, error) {
+	// name := r.infinispan.Name
+	spec := r.infinispan.Spec
+	defaultStack := r.imageTCPStack()
+	securityRealm := r.defaultSecurityRealm()
+
+	conf := &config.InfinispanConfiguration{
+		JGroups: &config.JGroups{
+			Stacks: []config.JGroupsStack{defaultStack},
+		},
+		CacheContainer: &config.CacheContainer{
+			Locks: &config.ClusteredLocks{}, // TODO remove?
+			Transport: &config.CacheContainerTransport{
+				Cluster: fmt.Sprintf("${infinispan.cluster.name:%s}", r.infinispan.Name),
+				Stack:   defaultStack.Name,
+			},
+		},
+		Server: &config.Server{
+			Interfaces: &config.ServerInterfaces{
+				Interfaces: []config.ServerInterface{
+					{
+						Name: "public",
+						InetAddress: config.InetAddress{
+							Value: "${infinispan.bind.address}",
+						},
+					},
+				},
+			},
+			SocketBindings: &config.SocketBindings{
+				DefaultInterface: "public",
+				PortOffset:       "${infinispan.socket.binding.port-offset:0}",
+				Bindings: []config.SocketBinding{
+					{
+						Name: "default",
+						Port: "${infinispan.bind.port:11222}",
+					},
+					{
+						Name: "admin",
+						Port: "11223",
+					},
+				},
+			},
+			Security: &config.ServerSecurity{
+				CredentialStores: &config.CredentialStores{
+					Stores: []config.CredentialStore{
+						{
+							Name: "credentials",
+							Path: "credentials.pfx",
+							ClearTextCredential: &config.ClearTextCredential{
+								ClearText: "secret",
+							},
+						},
+					},
+				},
+				SecurityRealms: &config.SecurityRealms{
+					Realms: []config.SecurityRealm{securityRealm},
+				},
+			},
+		},
+	}
+
+	if spec.CloudEvents != nil {
+		conf.CacheContainer.CloudEvents = &config.CloudEvents{
+			Acks:              spec.CloudEvents.Acks,
+			BootstrapServers:  spec.CloudEvents.BootstrapServers,
+			CacheEntriesTopic: spec.CloudEvents.CacheEntriesTopic,
+		}
+	}
+	fmt.Println(conf) // TODO remove
+	return conf, nil  // TODO
+}
+
+func (r *configRequest) imageTCPStack() config.JGroupsStack {
+	stack := config.JGroupsStack{
+		Name:    "image-tcp",
+		Extends: "tcp",
+		TCP: &config.JGroupsTCP{
+			BindAddr:    "${jgroups.bind.address:SITE_LOCAL}",
+			BindPort:    "${jgroups.bind.port,jgroups.tcp.port}: 7800",
+			Diagnostics: consts.JGroupsDiagnosticsFlag == "TRUE",
+			PortRange:   0,
+		},
+		DNSPing: &config.JGroupsDNSPing{
+			Query:      fmt.Sprintf("%s-ping.%s.svc.cluster.local", r.infinispan.GetStatefulSetName(), r.infinispan.Namespace),
+			RecordType: "A",
+			JGroupsStackPosition: config.JGroupsStackPosition{
+				Combine:  pointer.String("REPLACE"),
+				Position: pointer.String("MPING"),
+			},
+		},
+	}
+
+	if consts.JGroupsFastMerge {
+		stack.Merge3 = &config.JGroupsMerge3{
+			MinInterval:   1000,
+			MaxInterval:   3000,
+			CheckInterval: 5000,
+			JGroupsStackPosition: config.JGroupsStackPosition{
+				Combine: pointer.String("COMBINE"),
+			},
+		}
+	}
+	return stack
+}
+
+func (r *configRequest) defaultSecurityRealm() config.SecurityRealm {
+
+	// TODO user secret lookup required.
+	// Necessary to update signature to allow reconile.Result return value in case secret is not available
+	// Alternatively, we can make it so these methods are parameterised and all secret lookup etc occurs
+	// before the configuration is created
+	// Advantage of this approach is that controller reconcile logic is separated from config generation
+	var ssl *config.ServerIdentitySSL
+	if r.infinispan.IsEncryptionEnabled() {
+		ssl = &config.ServerIdentitySSL{
+			Keystore: []config.Keystore{
+				{
+					// TODO
+				},
+			},
+		}
+
+		if r.infinispan.IsClientCertEnabled() {
+			ssl.Truststore = []config.Truststore{
+				// TODO
+			}
+		}
+	}
+
+	return config.SecurityRealm{
+		Name: "default",
+		ServerIdentities: &config.ServerIdentities{
+			SSL: ssl,
+		},
+	}
+}
+
+func (r *configRequest) addXSiteConfiguration(config *config.InfinispanConfiguration) error {
+	// Add xsite config on top of existing configuration
+	return nil
+}
+
 // computeAndReconcileConfigMap computes, creates or updates the ConfigMap for the Infinispan
-func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*reconcile.Result, error) {
+func (r configRequest) computeAndReconcileConfigMap(xsite *oldConfig.XSite) (*reconcile.Result, error) {
 	name := r.infinispan.Name
 	namespace := r.infinispan.Namespace
 
@@ -152,67 +297,67 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 	} else {
 		roleMapper = "cluster"
 	}
-	serverConf := config.InfinispanConfiguration{
-		Infinispan: config.Infinispan{
-			Authorization: config.Authorization{
+	serverConf := oldConfig.InfinispanConfiguration{
+		Infinispan: oldConfig.Infinispan{
+			Authorization: oldConfig.Authorization{
 				Enabled:    r.infinispan.IsAuthorizationEnabled(),
 				RoleMapper: roleMapper,
 			},
 			ClusterName: name,
-			Locks: config.Locks{
+			Locks: oldConfig.Locks{
 				Owners:      -1,
 				Reliability: "consistent",
 			},
 		},
-		JGroups: config.JGroups{
+		JGroups: oldConfig.JGroups{
 			Transport:   "tcp",
 			BindPort:    7800,
 			Diagnostics: consts.JGroupsDiagnosticsFlag == "TRUE",
-			DNSPing: config.DNSPing{
+			DNSPing: oldConfig.DNSPing{
 				RecordType: "A",
 				Query:      fmt.Sprintf("%s-ping.%s.svc.cluster.local", r.infinispan.GetStatefulSetName(), namespace),
 			},
 			FastMerge: consts.JGroupsFastMerge,
 		},
-		Keystore: config.Keystore{
+		Keystore: oldConfig.Keystore{
 			Password: "password",
 			Alias:    "server",
 			Type:     "pkcs12",
 		},
-		XSite: &config.XSite{
+		XSite: &oldConfig.XSite{
 			RelayNodeCandidate: true,
 			MaxRelayNodes:      1,
 			Transport:          "tunnel",
-			Relay: config.Relay{
+			Relay: oldConfig.Relay{
 				BindPort: 0,
 			},
 		},
-		Logging: config.Logging{
-			Console: config.Console{
+		Logging: oldConfig.Logging{
+			Console: oldConfig.Console{
 				Level:   "trace",
 				Pattern: "%d{HH:mm:ss,SSS} %-5p (%t) [%c] %m%throwable%n",
 			},
-			File: config.File{
+			File: oldConfig.File{
 				Level:   "trace",
 				Pattern: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p (%t) [%c] %m%throwable%n",
 				Path:    "${sys:infinispan.server.log.path}/server.log",
 			},
 			Categories: r.infinispan.GetLogCategoriesForConfig(),
 		},
-		Endpoints: config.Endpoints{
+		Endpoints: oldConfig.Endpoints{
 			Authenticate:   r.infinispan.IsAuthenticationEnabled(),
 			ClientCert:     "none",
 			DedicatedAdmin: true,
-			Hotrod: config.Endpoint{
+			Hotrod: oldConfig.Endpoint{
 				Enabled:    true,
 				Qop:        "auth",
 				ServerName: "infinispan",
 			},
 			Enabled: true,
 		},
-		CloudEvents: &config.CloudEvents{},
-		Transport: config.Transport{
-			TLS: config.TransportTLS{
+		CloudEvents: &oldConfig.CloudEvents{},
+		Transport: oldConfig.Transport{
+			TLS: oldConfig.TransportTLS{
 				Enabled: r.infinispan.IsSiteTLSEnabled(),
 			},
 		},
@@ -221,9 +366,9 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 	// Apply settings for authentication and roles
 	specRoles := r.infinispan.GetAuthorizationRoles()
 	if len(specRoles) > 0 {
-		confRoles := make([]config.AuthorizationRole, len(specRoles))
+		confRoles := make([]oldConfig.AuthorizationRole, len(specRoles))
 		for i, role := range specRoles {
-			confRoles[i] = config.AuthorizationRole(role)
+			confRoles[i] = oldConfig.AuthorizationRole(role)
 		}
 		serverConf.Infinispan.Authorization.Roles = confRoles
 	}
@@ -271,7 +416,7 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 				return err
 			}
 		} else {
-			previousConfig, err := config.FromYaml(configMapObject.Data[consts.ServerConfigFilename])
+			previousConfig, err := oldConfig.FromYaml(configMapObject.Data[consts.ServerConfigFilename])
 			if err == nil {
 				// Protecting Logging configuration from changes
 				serverConf.Logging = previousConfig.Logging
@@ -291,17 +436,17 @@ func (r configRequest) computeAndReconcileConfigMap(xsite *config.XSite) (*recon
 	return nil, err
 }
 
-func (r configRequest) configureCloudEvent(c *config.InfinispanConfiguration) {
+func (r configRequest) configureCloudEvent(c *oldConfig.InfinispanConfiguration) {
 	spec := r.infinispan.Spec
 	if spec.CloudEvents != nil {
-		c.CloudEvents = &config.CloudEvents{}
+		c.CloudEvents = &oldConfig.CloudEvents{}
 		c.CloudEvents.Acks = spec.CloudEvents.Acks
 		c.CloudEvents.BootstrapServers = spec.CloudEvents.BootstrapServers
 		c.CloudEvents.CacheEntriesTopic = spec.CloudEvents.CacheEntriesTopic
 	}
 }
 
-func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfiguration, client client.Client, log logr.Logger,
+func ConfigureServerEncryption(i *v1.Infinispan, c *oldConfig.InfinispanConfiguration, client client.Client, log logr.Logger,
 	eventRec record.EventRecorder, ctx context.Context) (*reconcile.Result, error) {
 	if !i.IsEncryptionEnabled() {
 		return nil, nil
@@ -316,7 +461,7 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 		return true
 	}
 
-	configureNewKeystore := func(c *config.InfinispanConfiguration) {
+	configureNewKeystore := func(c *oldConfig.InfinispanConfiguration) {
 		c.Keystore.CrtPath = consts.ServerEncryptKeystoreRoot
 		c.Keystore.Path = consts.ServerOperatorSecurity + "/" + EncryptPemKeystoreName
 		c.Keystore.Password = ""
@@ -364,7 +509,7 @@ func ConfigureServerEncryption(i *v1.Infinispan, c *config.InfinispanConfigurati
 }
 
 // configureXSiteTransportTLS configures the keystore and truststore paths and password in Infinispan server for TLS cross-site communication
-func (r configRequest) configureXSiteTransportTLS(c *config.InfinispanConfiguration) (*reconcile.Result, error) {
+func (r configRequest) configureXSiteTransportTLS(c *oldConfig.InfinispanConfiguration) (*reconcile.Result, error) {
 	keyStoreSecret := &corev1.Secret{}
 	if result, err := kube.LookupResource(r.infinispan.GetSiteTransportSecretName(), r.infinispan.Namespace, keyStoreSecret, r.infinispan, r.Client, r.reqLogger, r.eventRec, r.ctx); result != nil || err != nil {
 		return result, err
@@ -379,7 +524,7 @@ func (r configRequest) configureXSiteTransportTLS(c *config.InfinispanConfigurat
 	}
 
 	log.Info("Transport TLS Configured.", "Keystore", keyStoreFileName, "Secret Name", keyStoreSecret.Name)
-	c.Transport.TLS.KeyStore = config.Keystore{
+	c.Transport.TLS.KeyStore = oldConfig.Keystore{
 		Path:     fmt.Sprintf("%s/%s", consts.SiteTransportKeyStoreRoot, keyStoreFileName),
 		Password: password,
 		Alias:    alias,
@@ -397,7 +542,7 @@ func (r configRequest) configureXSiteTransportTLS(c *config.InfinispanConfigurat
 	}
 
 	log.Info("Found Truststore.", "Truststore", trustStoreFileName, "Secret Name", trustStoreSecret.ObjectMeta.Name)
-	c.Transport.TLS.TrustStore = config.Truststore{
+	c.Transport.TLS.TrustStore = oldConfig.Truststore{
 		Path:     fmt.Sprintf("%s/%s", consts.SiteTrustStoreRoot, trustStoreFileName),
 		Password: password,
 	}
