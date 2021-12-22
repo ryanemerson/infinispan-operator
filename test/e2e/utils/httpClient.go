@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const DEBUG = false
@@ -81,6 +82,7 @@ func newClient(auth authType, username, password *string, protocol string, tlsCo
 		protocol: protocol,
 		auth:     auth,
 		Client: &http.Client{
+			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: tlsConfig,
 			},
@@ -110,9 +112,14 @@ func (c *httpClientConfig) exec(method, path, payload string, headers map[string
 	if !c.quiet {
 		fmt.Printf("%s: %s\n", method, httpURL)
 	}
-	rsp, err := c.request(httpURL, method, payload, headers)
+
+	rsp, err := withRetry(
+		func() (*http.Response, error) {
+			return c.request(httpURL, method, payload, headers)
+		},
+	)
 	if err != nil {
-		return nil, err
+		return rsp, err
 	}
 
 	if c.auth == authDigest && rsp.StatusCode == http.StatusUnauthorized {
@@ -124,9 +131,24 @@ func (c *httpClientConfig) exec(method, path, payload string, headers map[string
 		authRealm := getAuthorization(*c.username, *c.password, rsp)
 		authStr := getAuthString(authRealm, httpURL.RequestURI(), method, 0)
 		h["Authorization"] = authStr
-		rsp, err = c.request(httpURL, method, payload, h)
+		rsp, err = withRetry(
+			func() (*http.Response, error) {
+				return c.request(httpURL, method, payload, h)
+			},
+		)
 	}
 	return rsp, err
+}
+
+func withRetry(req func() (*http.Response, error)) (rsp *http.Response, err error) {
+	attempts := 10
+	for i := 0; i < attempts; i++ {
+		rsp, err = req()
+		if err == nil || !isTemporary(err) {
+			return
+		}
+	}
+	return rsp, fmt.Errorf("unable to complete http request after %d attempts: %w", attempts, err)
 }
 
 func (c *httpClientConfig) request(url *url.URL, method, payload string, headers map[string]string) (*http.Response, error) {
@@ -135,19 +157,20 @@ func (c *httpClientConfig) request(url *url.URL, method, payload string, headers
 		body = bytes.NewBuffer([]byte(payload))
 	}
 	req, err := http.NewRequest(method, url.String(), body)
+	// req.Close = true
 	ExpectNoError(err)
 	for header, value := range headers {
 		req.Header.Add(header, value)
 	}
 
-	if DEBUG {
+	if DEBUG && req != nil {
 		dump, err := httputil.DumpRequestOut(req, true)
 		ExpectNoError(err)
 		fmt.Printf("Req>>>>>>>>>>>>>>>>\n%s\n\n", string(dump))
 	}
 
 	rsp, err := c.Do(req)
-	if DEBUG {
+	if DEBUG && rsp != nil {
 		dump, err := httputil.DumpResponse(rsp, true)
 		ExpectNoError(err)
 		fmt.Printf("Rsp<<<<<<<<<<<<<<<<\n%s\n\n", string(dump))

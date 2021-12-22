@@ -43,10 +43,75 @@ import (
 var testKube = tutils.NewTestKubernetes(os.Getenv("TESTING_CONTEXT"))
 var serviceAccountKube = tutils.NewTestKubernetes("")
 
+// var testKube *tutils.TestKubernetes
+// var serviceAccountKube *tutils.TestKubernetes
+
 var log = logf.Log.WithName("main_test")
 
 func TestMain(m *testing.M) {
 	tutils.RunOperator(m, testKube)
+}
+
+func TestReproducer(t *testing.T) {
+	spec := tutils.DefaultSpec(testKube)
+	name := strcase.ToKebab(t.Name())
+	spec.Name = name
+	// Register it
+	spec.Labels = map[string]string{"test-name": t.Name()}
+	spec.Spec.Logging = &ispnv1.InfinispanLoggingSpec{
+		Categories: map[string]v1.LoggingLevelType{
+			"org.infinispan.REST_ACCESS_LOG":         ispnv1.LoggingLevelTrace,
+			"org.infinispan":                         ispnv1.LoggingLevelTrace,
+			"org.infinispan.rest.RestRequestHandler": ispnv1.LoggingLevelTrace,
+			"org.infinispan.rest.ResponseWriter":     ispnv1.LoggingLevelTrace,
+		},
+	}
+	spec.Spec.Image = pointer.String("localhost:5000/infinispan-server")
+	// spec.Spec.Image = pointer.String("quay.io/infinispan/server:12.1.10.Final")
+	spec.Spec.Security.EndpointAuthentication = pointer.BoolPtr(false)
+	testKube.CreateInfinispan(spec, tutils.Namespace)
+	// defer testKube.CleanNamespaceAndLogOnPanic(tutils.Namespace, spec.Labels)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+	testKube.WaitForInfinispanCondition(spec.Name, spec.Namespace, ispnv1.ConditionWellFormed)
+
+	hostAddr, client := tutils.HTTPClientAndHost(spec, testKube)
+
+	// hostAddr := "127.0.0.1:11222"
+	// client := tutils.NewHTTPClient("user", "pass", "http")
+	post := func(url, payload string, status int, headers map[string]string) {
+		rsp, err := client.Post(url, payload, headers)
+		tutils.ExpectNoError(err)
+		defer tutils.CloseHttpResponse(rsp)
+		if rsp.StatusCode != status {
+			panic(fmt.Sprintf("Unexpected response code %d", rsp.StatusCode))
+		}
+	}
+
+	cacheName := "someCache"
+	for i := 1; i < 10000; i++ {
+		fmt.Printf("Execution %d ------------------------------------ \n", i)
+
+		// Create Cache
+		headers := map[string]string{"Content-Type": "application/json"}
+		url := fmt.Sprintf("%s/rest/v2/caches/%s", hostAddr, cacheName)
+		config := `{"distributed-cache":{"mode":"SYNC", "encoding": {"media-type": "application/json"}, "persistence":{"file-store":{"fetch-state":true}}, "statistics":true}}`
+		post(url, config, http.StatusOK, headers)
+
+		// // Populate Cache
+		// for i := 0; i < 1000; i++ {
+		// 	url := fmt.Sprintf("%s/rest/v2/caches/%s/%d", hostAddr, cacheName, i)
+		// 	value := fmt.Sprintf("{\"value\":\"%d\"}", i)
+		// 	post(url, value, http.StatusNoContent, headers)
+		// }
+		// Delete Cache
+		rsp, err := client.Delete(url, nil)
+		tutils.ExpectNoError(err)
+		tutils.CloseHttpResponse(rsp)
+		if rsp.StatusCode != http.StatusOK {
+			panic(fmt.Sprintf("Unexpected response code %d", rsp.StatusCode))
+		}
+		fmt.Println("-------------------------------------------------")
+	}
 }
 
 func TestUpdateOperatorPassword(t *testing.T) {
