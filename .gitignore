@@ -103,3 +103,6 @@ tls.crt
 ## Ignore OLM generated bundles
 bundle/
 bundle.Dockerfile
+
+# Ignore generated CI cert files
+scripts/ci/certs/*
