@@ -18,7 +18,7 @@ func (r *Batch) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-// +kubebuilder:webhook:path=/mutate-infinispan-org-v2alpha1-batch,mutating=true,failurePolicy=fail,sideEffects=None,groups=infinispan.org,resources=batches,verbs=create;update,versions=v2alpha1,name=mbatch.kb.io,admissionReviewVersions={v1,v1beta1}
+// +kubebuilder:webhook:path=/mutate-infinispan-org-v2alpha1-batch,mutating=true,failurePolicy=fail,sideEffects=None,groups=infinispan.org,resources=batches,verbs=create;update,versions=v2alpha1,name=mbatch.kb.io,admissionReviewVersions={v1beta1}
 
 var _ webhook.Defaulter = &Batch{}
 
@@ -30,7 +30,7 @@ func (r *Batch) Default() {
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// +kubebuilder:webhook:path=/validate-infinispan-org-v2alpha1-batch,mutating=false,failurePolicy=fail,sideEffects=None,groups=infinispan.org,resources=batches,verbs=create;update,versions=v2alpha1,name=vbatch.kb.io,admissionReviewVersions={v1,v1beta1}
+// +kubebuilder:webhook:path=/validate-infinispan-org-v2alpha1-batch,mutating=false,failurePolicy=fail,sideEffects=None,groups=infinispan.org,resources=batches,verbs=create;update,versions=v2alpha1,name=vbatch.kb.io,admissionReviewVersions={v1beta1}
 
 var _ webhook.Validator = &Batch{}
 

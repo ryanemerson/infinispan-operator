@@ -139,6 +139,12 @@ func NewWithContext(ctx context.Context, p Parameters) {
 	}
 	// +kubebuilder:scaffold:builder
 
+	// Setup webhooks
+	if err = (&infinispanv2alpha1.Batch{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Batch")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("health", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

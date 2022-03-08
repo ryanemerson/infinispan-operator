@@ -105,9 +105,15 @@ install: manifests kustomize
 uninstall: manifests kustomize
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
+.PHONY: deploy-cert-manager
+## Deploy cert-manager so that webhooks can be utilised by the operator deployment
+deploy-cert-manager:
+	kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.6.0/cert-manager.yaml
+	kubectl rollout status -n cert-manager deploy/cert-manager-webhook -w --timeout=120s
+
 .PHONY: deploy
 ## Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests kustomize
+deploy: manifests kustomize deploy-cert-manager
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd config/default && $(KUSTOMIZE) edit set namespace $(DEPLOYMENT_NAMESPACE)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
