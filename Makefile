@@ -50,8 +50,7 @@ lint: golangci-lint
 .PHONY: test
 ## Execute tests
 test: manager manifests envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./api/... -coverprofile cover.out -v
-	go test ./controllers/... -v
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./api/... ./controllers/... ./pkg/... -coverprofile cover.out
 
 .PHONY: infinispan-test
 ## Execute end to end (e2e) tests for Infinispan CRs

@@ -2,12 +2,11 @@ package kubernetes
 
 import (
 	"context"
-	"reflect"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -138,4 +137,27 @@ func GetOperatorPodOwnerRef(ns string, client crclient.Client, ctx context.Conte
 
 	// Default to returning Pod as the Owner
 	return podOwnerRefs, nil
+}
+
+// FilterPodsByOwnerUID Remove pods from podList not owned by the provided UID
+func FilterPodsByOwnerUID(podList *corev1.PodList, ownerId types.UID) {
+	pos := 0
+	for _, item := range podList.Items {
+		for _, reference := range item.GetOwnerReferences() {
+			if reference.UID == ownerId {
+				podList.Items[pos] = item
+				pos++
+			}
+		}
+	}
+	podList.Items = podList.Items[:pos]
+}
+
+func GetContainer(name string, spec *corev1.PodSpec) *corev1.Container {
+	for i, c := range spec.Containers {
+		if c.Name == name {
+			return &spec.Containers[i]
+		}
+	}
+	return nil
 }
