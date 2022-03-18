@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"fmt"
+	"github.com/infinispan/infinispan-operator/controllers"
 	"os"
 	"strings"
 
@@ -22,7 +23,6 @@ import (
 
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	infinispanv2alpha1 "github.com/infinispan/infinispan-operator/api/v2alpha1"
-	"github.com/infinispan/infinispan-operator/controllers"
 	grafanav1alpha1 "github.com/infinispan/infinispan-operator/pkg/apis/integreatly/v1alpha1"
 	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	routev1 "github.com/openshift/api/route/v1"
@@ -92,51 +92,56 @@ func NewWithContext(ctx context.Context, p Parameters) {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.InfinispanReconciler{}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.IspnReconciler{}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Infinispan")
 		os.Exit(1)
 	}
-	if err = (&controllers.BackupReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Backup")
-		os.Exit(1)
-	}
-	if err = (&controllers.RestoreReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Restore")
-		os.Exit(1)
-	}
-	if err = (&controllers.BatchReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Batch")
-		os.Exit(1)
-	}
-	if err = (&controllers.CacheReconciler{}).SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Cache")
-		os.Exit(1)
-	}
 
-	if err = (&controllers.SecretReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Secret")
-		os.Exit(1)
-	}
-
-	if err = (&controllers.ServiceReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Service")
-		os.Exit(1)
-	}
-
-	if err = (&controllers.ConfigReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Config")
-		os.Exit(1)
-	}
-
-	if err = (&controllers.ReconcileOperatorConfig{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OperatorConfig")
-		os.Exit(1)
-	}
-
-	if err = (&controllers.HotRodRollingUpgradeReconciler{}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "HotRodRollingUpgrade")
-		os.Exit(1)
-	}
+	//if err = (&controllers.InfinispanReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Infinispan")
+	//	os.Exit(1)
+	//}
+	//if err = (&controllers.BackupReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Backup")
+	//	os.Exit(1)
+	//}
+	//if err = (&controllers.RestoreReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Restore")
+	//	os.Exit(1)
+	//}
+	//if err = (&controllers.BatchReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Batch")
+	//	os.Exit(1)
+	//}
+	//if err = (&controllers.CacheReconciler{}).SetupWithManager(ctx, mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Cache")
+	//	os.Exit(1)
+	//}
+	//
+	//if err = (&controllers.SecretReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Secret")
+	//	os.Exit(1)
+	//}
+	//
+	//if err = (&controllers.ServiceReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Service")
+	//	os.Exit(1)
+	//}
+	//
+	//if err = (&controllers.ConfigReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Config")
+	//	os.Exit(1)
+	//}
+	//
+	//if err = (&controllers.ReconcileOperatorConfig{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "OperatorConfig")
+	//	os.Exit(1)
+	//}
+	//
+	//if err = (&controllers.HotRodRollingUpgradeReconciler{}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "HotRodRollingUpgrade")
+	//	os.Exit(1)
+	//}
 	// +kubebuilder:scaffold:builder
 
 	// Setup webhooks if enabled

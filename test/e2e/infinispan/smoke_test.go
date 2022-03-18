@@ -3,6 +3,8 @@ package infinispan
 import (
 	"context"
 	"fmt"
+	"github.com/iancoleman/strcase"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
@@ -15,6 +17,24 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+func TestPipeline(t *testing.T) {
+	defer testKube.CleanNamespaceAndLogOnPanic(t, tutils.Namespace)
+
+	// Create ConfigMap
+	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: strcase.ToKebab(t.Name()),
+		Namespace: tutils.Namespace},
+		Data: map[string]string{"key": "value"},
+	}
+	testKube.Create(cm)
+	defer testKube.DeleteConfigMap(cm)
+
+	spec := tutils.DefaultSpec(t, testKube, func(i *v1.Infinispan) {
+		i.Spec.ConfigMapName = cm.Name
+	})
+	testKube.CreateInfinispan(spec, tutils.Namespace)
+	testKube.WaitForInfinispanPods(1, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
+}
 
 // Test if single node working correctly
 func TestBaseFunctionality(t *testing.T) {
