@@ -118,7 +118,7 @@ func (r *infinispanRequest) ReconcileConfigListener() error {
 	}
 
 	// The deployment doesn't exist, create it
-	labels := ConfigListenerPodLabels(r.infinispan.Name)
+	labels := r.infinispan.Labels("infinispan-config-listener-pod")
 	deployment = &appsv1.Deployment{
 		ObjectMeta: objectMeta,
 		Spec: appsv1.DeploymentSpec{
