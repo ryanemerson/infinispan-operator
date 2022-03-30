@@ -84,6 +84,7 @@ const (
 	ServerConfigFilename        = "infinispan.xml"
 	ServerIdentitiesFilename    = "identities.yaml"
 	CliPropertiesFilename       = "cli.properties"
+	// TODO rename to ServerIdentitiesBatchFilename
 	ServerIdentitiesCliFilename = "identities.cli"
 	ServerAdminIdentitiesRoot   = ServerSecurityRoot + "/admin"
 	ServerUserIdentitiesRoot    = ServerSecurityRoot + "/user"

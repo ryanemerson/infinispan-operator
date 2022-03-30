@@ -30,20 +30,21 @@ func AdminSecret(ctx pipeline.Context) {
 	i := ctx.Instance()
 
 	secrets := ctx.Resources().Secrets()
-	adminSecret := secrets.Get(i.GetAdminSecretName())
-	if adminSecret == nil {
+	secretName := i.GetSecretName()
+	secret := secrets.Get(secretName)
+	if secret == nil {
 		// AdminSecret doesn't exist, so define one
-		adminSecret = newSecret(i.GetAdminSecretName(), i.Namespace)
-		adminSecret.Labels = i.Labels("infinispan-secret-admin-identities")
+		secret = newSecret(secretName, i.Namespace)
+		secret.Labels = i.Labels("infinispan-secret-admin-identities")
 
-		if err := ctx.SetControllerReference(adminSecret); err != nil {
+		if err := ctx.SetControllerReference(secret); err != nil {
 			ctx.RetryProcessing(err)
 			return
 		}
-		secrets.Define(adminSecret)
+		secrets.Define(secret)
 	}
 	configFiles := ctx.ConfigFiles()
-	adminSecret.Data = map[string][]byte{
+	secret.Data = map[string][]byte{
 		consts.AdminUsernameKey:         []byte(configFiles.AdminIdentities.Username),
 		consts.AdminPasswordKey:         []byte(configFiles.AdminIdentities.Password),
 		consts.CliPropertiesFilename:    []byte(configFiles.AdminIdentities.CliProperties),
@@ -54,10 +55,11 @@ func AdminSecret(ctx pipeline.Context) {
 func InfinispanSecuritySecret(ctx pipeline.Context) {
 	i := ctx.Instance()
 	secret := newSecret(i.GetInfinispanSecuritySecretName(), i.Namespace)
-	// TODO add labels
-	// TODO define real data
-	// ServerIdentitiesCLIFileName
-	// EncryptPemKeystoreName
+	secret.Labels = i.Labels("infinispan-secret-server-security")
+	secret.Data = map[string][]byte{
+		consts.ServerIdentitiesCliFilename: []byte(ctx.ConfigFiles().IdentitiesBatch),
+		// TODO add keystore.pem EncryptPemKeystoreName
+	}
 	if err := ctx.SetControllerReference(secret); err != nil {
 		ctx.RetryProcessing(err)
 		return

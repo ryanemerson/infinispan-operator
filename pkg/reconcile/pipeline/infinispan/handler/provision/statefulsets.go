@@ -47,6 +47,7 @@ func AddChmodInitContainer(ctx pipeline.Context) {
 
 func ClusterStatefulSet(ctx pipeline.Context) {
 	i := ctx.Instance()
+	configFiles := ctx.ConfigFiles()
 
 	labelsForPod := i.PodLabels()
 	labelsForPod[consts.StatefulSetPodLabel] = i.Name
@@ -85,13 +86,13 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 					Affinity: i.Spec.Affinity,
 					Containers: []corev1.Container{{
 						Image: i.ImageName(),
-						Args:  buildStartupArgs("", false),
+						Args:  buildStartupArgs(configFiles.UserConfig.ServerConfigEncoding, configFiles.UserConfig.Log4j != ""),
 						Name:  InfinispanContainer,
-						//Env: PodEnv(i, &[]corev1.EnvVar{
-						//	{Name: "CONFIG_HASH", Value: hash.HashString(configMap.Data[consts.ServerConfigFilename])},
-						//	{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(adminSecret.Data[consts.ServerIdentitiesFilename])},
-						//	{Name: "IDENTITIES_BATCH", Value: consts.ServerOperatorSecurity + "/" + consts.ServerIdentitiesCliFilename},
-						//}),
+						Env: PodEnv(i, &[]corev1.EnvVar{
+							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},
+							{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)},
+							{Name: "IDENTITIES_BATCH", Value: consts.ServerOperatorSecurity + "/" + consts.ServerIdentitiesCliFilename},
+						}),
 						LivenessProbe:  PodLivenessProbe(),
 						Ports:          PodPortsWithXsite(i),
 						ReadinessProbe: PodReadinessProbe(),
@@ -129,23 +130,6 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		},
 	}
 
-	// Only append IDENTITIES_HASH and secret volume if authentication is enabled
-	//spec := &statefulset.Spec.Template.Spec
-	//ispnContainer := GetContainer(InfinispanContainer, spec)
-	//if AddVolumeForUserAuthentication(i, spec) {
-	//	ispnContainer.Env = append(ispnContainer.Env,
-	//		corev1.EnvVar{
-	//			Name:  "IDENTITIES_HASH",
-	//			Value: hash.HashByte(userSecret.Data[consts.ServerIdentitiesFilename]),
-	//		})
-	//}
-	//if overlayConfigMapKey != "" {
-	//	statefulset.Annotations = make(map[string]string)
-	//	statefulset.Annotations["checksum/overlayConfig"] = hash.HashString(overlayConfigMap.Data[overlayConfigMapKey])
-	//}
-
-	addUserAuthentication(ctx, i, statefulset)
-
 	if err := addDataMountVolume(ctx, i, statefulset); err != nil {
 		ctx.RetryProcessing(err)
 		return
@@ -156,7 +140,8 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		return
 	}
 
-	addUserConfig(ctx, i, statefulset)
+	addUserIdentities(ctx, i, statefulset)
+	addUserConfigVolumes(ctx, i, statefulset)
 	addTLS(ctx, i, statefulset)
 	addXSiteTLS(ctx, i, statefulset)
 
@@ -167,7 +152,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 	ctx.Resources().StatefulSets().Define(statefulset)
 }
 
-func addUserAuthentication(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
+func addUserIdentities(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
 	// Only append IDENTITIES_HASH and secret volume if authentication is enabled
 	spec := &statefulset.Spec.Template.Spec
 	ispnContainer := GetContainer(InfinispanContainer, spec)
@@ -235,7 +220,7 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 	return nil
 }
 
-func addUserConfig(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
+func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
 	if !i.UserConfigDefined() {
 		return
 	}
@@ -258,7 +243,6 @@ func addUserConfig(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *apps
 		Name:      UserConfVolumeName,
 		MountPath: OverlayConfigMountPath,
 	})
-	container.Args = buildStartupArgs(userConfig.ServerConfigEncoding, userConfig.Log4j != "")
 }
 
 func buildStartupArgs(overlayConfigMapKey string, overlayLog4jConfig bool) []string {
