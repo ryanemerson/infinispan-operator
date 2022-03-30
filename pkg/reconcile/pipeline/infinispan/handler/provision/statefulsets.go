@@ -47,7 +47,6 @@ func AddChmodInitContainer(ctx pipeline.Context) {
 
 func ClusterStatefulSet(ctx pipeline.Context) {
 	i := ctx.Instance()
-	configFiles := ctx.ConfigFiles()
 
 	labelsForPod := i.PodLabels()
 	labelsForPod[consts.StatefulSetPodLabel] = i.Name
@@ -57,6 +56,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 
 	// We can ignore the err here as the validating webhook ensures that the resources are valid
 	podResources, _ := PodResources(i.Spec.Container)
+	configFiles := ctx.ConfigFiles()
 	statefulset := &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",

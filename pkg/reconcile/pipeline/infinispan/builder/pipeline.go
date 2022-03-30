@@ -9,6 +9,7 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/collect"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/configure"
+	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/manage"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/provision"
 	"os"
 )
@@ -98,6 +99,7 @@ func (b *builder) Build() pipeline.Pipeline {
 		collect.UserConfigMap,
 		collect.UserDefinedStorageClass,
 		collect.AdminSecret,
+		collect.ClusterStatefulSet,
 	)
 
 	// Configuration Handlers
@@ -116,6 +118,14 @@ func (b *builder) Build() pipeline.Pipeline {
 		provision.InfinispanSecuritySecret,
 		provision.InfinispanConfigMap,
 		provision.ClusterStatefulSet,
+	)
+
+	// Manage Handlers
+	handlers.Add(
+		manage.PrelimChecksCondition,
+		manage.UpgradeConditionTrue,
+		manage.WellFormedCondition,
+		manage.ScheduleUpgrade,
 	)
 	handlers.AddEnvSpecific("MAKE_DATADIR_WRITABLE", "true", provision.AddChmodInitContainer)
 

@@ -143,8 +143,12 @@ func (s statefulsets) Get(name string) *appsv1.StatefulSet {
 }
 
 func (s statefulsets) Define(statefulset *appsv1.StatefulSet) {
-	s.statefulSet[statefulset.Name] = &statefulsetResource{
-		resource: statefulset,
+	if ss, exists := s.statefulSet[statefulset.Name]; exists {
+		ss.resource = statefulset
+	} else {
+		s.statefulSet[statefulset.Name] = &statefulsetResource{
+			resource: statefulset,
+		}
 	}
 }
 
