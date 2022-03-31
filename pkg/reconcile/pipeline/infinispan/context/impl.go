@@ -42,15 +42,13 @@ type provider struct {
 
 func (p *provider) Get(ctx context.Context, logger logr.Logger, infinispan *ispnv1.Infinispan) (pipeline.Context, error) {
 	return &impl{
-		provider:    p,
-		flowCtrl:    &flowCtrl{},
-		ctx:         ctx,
-		logger:      logger,
-		instance:    infinispan,
-		ispnConfig:  &pipeline.ConfigFiles{},
-		secrets:     make(map[string]*secretResource),
-		configmaps:  make(map[string]*configmapResource),
-		statefulSet: make(map[string]*statefulsetResource),
+		provider:   p,
+		flowCtrl:   &flowCtrl{},
+		ctx:        ctx,
+		logger:     logger,
+		instance:   infinispan,
+		ispnConfig: &pipeline.ConfigFiles{},
+		resources:  make(map[string]*resource),
 	}, nil
 }
 
@@ -58,13 +56,11 @@ func (p *provider) Get(ctx context.Context, logger logr.Logger, infinispan *ispn
 type impl struct {
 	*flowCtrl
 	*provider
-	ctx         context.Context
-	logger      logr.Logger
-	instance    *ispnv1.Infinispan
-	ispnConfig  *pipeline.ConfigFiles
-	secrets     map[string]*secretResource
-	configmaps  map[string]*configmapResource
-	statefulSet map[string]*statefulsetResource
+	ctx        context.Context
+	logger     logr.Logger
+	instance   *ispnv1.Infinispan
+	ispnConfig *pipeline.ConfigFiles
+	resources  map[string]*resource
 }
 
 func (i impl) Instance() *ispnv1.Infinispan {
@@ -131,18 +127,11 @@ func (i impl) Close() error {
 		// Only persist Infinispan to update CR
 		return nil
 	}
-	if err := i.persistSecrets(); err != nil {
-		// TODO add condition to describe persist resource errors?
+
+	if err := i.persistResources(); err != nil {
+		// TODO add condition to describe persist resource error?
 		// Update status only
 		return err
-	}
-
-	if err := i.persistConfigMaps(); err != nil {
-		return err
-	}
-
-	if err := i.persistStatefulSets(); err != nil {
-		// TODO Only persist Infinispan Status on error?
 	}
 
 	// TODO compare initial spec with new one to see if update required?
@@ -191,56 +180,16 @@ func (i impl) createOrUpdate(obj client.Object) error {
 	return i.Update(i.ctx, obj)
 }
 
-func (i impl) persistResource(pr pipeline.PersistableResource) error {
-	if !pr.IsUpdated() {
-		return nil
-	}
-
-	obj := pr.Object()
-	if pr.IsUserCreated() {
-		// If a secret was provided by the user then we can only update the resource
-		if err := i.Update(i.ctx, obj); err != nil {
-			if errors.IsNotFound(err) {
-				return fmt.Errorf("unable to persist changes to '%s' %s: %w", obj.GetName(), obj.GetObjectKind(), err)
-			}
+func (i impl) persistResources() error {
+	for _, pr := range i.resources {
+		if !pr.IsUpdated() {
+			continue
 		}
-	} else {
+
+		obj := pr.Object()
 		if err := i.createOrUpdate(obj); err != nil {
 			return fmt.Errorf("unable to persist changes to '%s' %s: %w", obj.GetName(), obj.GetObjectKind(), err)
 		}
 	}
-	return nil
-}
-
-func (i impl) persistSecrets() error {
-	for _, secret := range i.secrets {
-		if err := i.persistResource(secret); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (i impl) persistConfigMaps() error {
-	for _, configmap := range i.configmaps {
-		if err := i.persistResource(configmap); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (i impl) persistStatefulSets() error {
-	for _, statefulset := range i.statefulSet {
-		if err := i.persistResource(statefulset); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (i impl) persistInfinispan() error {
-	// Only persist Infinispan Status?
-	// CR spec updates should be handled by user and webhooks
 	return nil
 }

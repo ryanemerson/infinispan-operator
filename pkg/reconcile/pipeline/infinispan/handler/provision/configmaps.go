@@ -25,5 +25,5 @@ func InfinispanConfigMap(ctx pipeline.Context) {
 		ctx.RetryProcessing(err)
 		return
 	}
-	ctx.Resources().ConfigMaps().Define(configmap)
+	ctx.Resources().Define(configmap)
 }

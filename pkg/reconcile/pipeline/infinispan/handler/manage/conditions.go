@@ -5,6 +5,7 @@ import (
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
@@ -21,8 +22,8 @@ func PrelimChecksCondition(ctx pipeline.Context) {
 
 func WellFormedCondition(ctx pipeline.Context) {
 	i := ctx.Instance()
-	statefulSet := ctx.Resources().StatefulSets().Get(i.GetStatefulSetName())
-	if statefulSet == nil {
+	statefulSet := &appsv1.StatefulSet{}
+	if !ctx.Resources().Get(i.GetStatefulSetName(), statefulSet) {
 		// StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
 		ctx.RetryProcessing(nil)
 		return

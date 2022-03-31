@@ -5,8 +5,6 @@ import (
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -119,48 +117,15 @@ type Keystore struct {
 }
 
 type Resources interface {
-	Secrets() Secrets
-	ConfigMaps() ConfigMaps
-	StatefulSets() StatefulSets
-}
-
-type Secrets interface {
-	Get(name string) *corev1.Secret
-	Define(secret *corev1.Secret)
-	Load(name string) (*corev1.Secret, error)
-}
-
-type ConfigMaps interface {
-	Get(name string) *corev1.ConfigMap
-	Define(configmap *corev1.ConfigMap)
-	Load(name string) (*corev1.ConfigMap, error)
-}
-
-type StatefulSets interface {
-	Get(name string) *appsv1.StatefulSet
-	Define(statefulset *appsv1.StatefulSet)
-	Load(name string) (*appsv1.StatefulSet, error)
+	Get(name string, object client.Object) bool
+	Define(object client.Object)
+	Load(name string, object client.Object) error
+	List(set map[string]string, list client.ObjectList) error
 }
 
 type PersistableResource interface {
 	Object() client.Object
 	IsUpdated() bool
-	IsUserCreated() bool
-}
-
-type Secret interface {
-	PersistableResource
-	Definition() *corev1.Secret
-}
-
-type ConfigMap interface {
-	PersistableResource
-	Definition() *corev1.ConfigMap
-}
-
-type StatefulSet interface {
-	PersistableResource
-	Definition() *appsv1.StatefulSet
 }
 
 // TODO add StatefulSet interface?

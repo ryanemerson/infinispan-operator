@@ -23,16 +23,16 @@ func UserAuthenticationSecret(ctx pipeline.Context) {
 	secret := newSecret(i.GetSecretName(), i.Namespace)
 	secret.Type = corev1.SecretTypeOpaque // TODO is this explicit definition required?
 	secret.Data = map[string][]byte{consts.ServerIdentitiesFilename: identities}
-	ctx.Resources().Secrets().Define(secret)
+	ctx.Resources().Define(secret)
 }
 
 func AdminSecret(ctx pipeline.Context) {
 	i := ctx.Instance()
 
-	secrets := ctx.Resources().Secrets()
+	resources := ctx.Resources()
 	secretName := i.GetSecretName()
-	secret := secrets.Get(secretName)
-	if secret == nil {
+	secret := &corev1.Secret{}
+	if !resources.Get(secretName, secret) {
 		// AdminSecret doesn't exist, so define one
 		secret = newSecret(secretName, i.Namespace)
 		secret.Labels = i.Labels("infinispan-secret-admin-identities")
@@ -41,7 +41,7 @@ func AdminSecret(ctx pipeline.Context) {
 			ctx.RetryProcessing(err)
 			return
 		}
-		secrets.Define(secret)
+		resources.Define(secret)
 	}
 	configFiles := ctx.ConfigFiles()
 	secret.Data = map[string][]byte{
@@ -64,7 +64,7 @@ func InfinispanSecuritySecret(ctx pipeline.Context) {
 		ctx.RetryProcessing(err)
 		return
 	}
-	ctx.Resources().Secrets().Define(secret)
+	ctx.Resources().Define(secret)
 }
 
 func newSecret(name, namespace string) *corev1.Secret {

@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"fmt"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/hash"
@@ -40,9 +41,12 @@ const (
 
 func AddChmodInitContainer(ctx pipeline.Context) {
 	i := ctx.Instance()
-	statefulset := ctx.Resources().StatefulSets().Get(i.GetStatefulSetName())
-	c := &statefulset.Spec.Template.Spec.InitContainers
-	*c = append(*c, ChmodInitContainer("data-chmod-pv", DataMountVolume, DataMountPath))
+	statefulSet := &appsv1.StatefulSet{}
+	if ctx.Resources().Get(i.GetStatefulSetName(), statefulSet) {
+		c := &statefulSet.Spec.Template.Spec.InitContainers
+		*c = append(*c, ChmodInitContainer("data-chmod-pv", DataMountVolume, DataMountPath))
+	}
+	ctx.Error(fmt.Errorf("unable to add InitContainer. StatefulSet '%s' doesn't exist", i.GetStatefulSetName()))
 }
 
 func ClusterStatefulSet(ctx pipeline.Context) {
@@ -149,7 +153,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		ctx.RetryProcessing(err)
 		return
 	}
-	ctx.Resources().StatefulSets().Define(statefulset)
+	ctx.Resources().Define(statefulset)
 }
 
 func addUserIdentities(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
