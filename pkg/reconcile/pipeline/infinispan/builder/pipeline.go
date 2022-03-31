@@ -1,5 +1,6 @@
 package builder
 
+// TODO rename package to pipeline
 import (
 	"context"
 	"fmt"
@@ -36,18 +37,9 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 		return false, err
 	}
 
-	invokeHandler := func(h pipeline.Handler) {
-		defer func() {
-			if err := recover(); err != nil {
-				ispnContext.RetryProcessing(fmt.Errorf("panic occurred: %v", err))
-			}
-		}()
-		h.Handle(ispnContext)
-	}
-
 	var status pipeline.FlowStatus
 	for _, h := range i.handlers {
-		invokeHandler(h)
+		invokeHandler(h, ispnContext)
 		status = ispnContext.FlowStatus()
 		if status.Stop {
 			break
@@ -58,6 +50,15 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 		return true, err
 	}
 	return status.Retry, status.Err
+}
+
+func invokeHandler(h pipeline.Handler, ctx pipeline.Context) {
+	defer func() {
+		if err := recover(); err != nil {
+			ctx.RetryProcessing(fmt.Errorf("panic occurred: %v", err))
+		}
+	}()
+	h.Handle(ctx)
 }
 
 type builder impl

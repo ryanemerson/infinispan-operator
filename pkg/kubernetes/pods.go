@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	appsv1 "k8s.io/api/apps/v1"
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
@@ -138,4 +139,19 @@ func GetOperatorPodOwnerRef(ns string, client crclient.Client, ctx context.Conte
 
 	// Default to returning Pod as the Owner
 	return podOwnerRefs, nil
+}
+
+// FilterByStatefulSetUUID Remove pods from podList not owned by the provided statefulSet
+func FilterByStatefulSetUUID(podList *corev1.PodList, statefulSet *appsv1.StatefulSet) {
+	ownerId := statefulSet.GetUID()
+	pos := 0
+	for _, item := range podList.Items {
+		for _, reference := range item.GetOwnerReferences() {
+			if reference.UID == ownerId {
+				podList.Items[pos] = item
+				pos++
+			}
+		}
+	}
+	podList.Items = podList.Items[:pos]
 }

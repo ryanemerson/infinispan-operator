@@ -45,10 +45,13 @@ type Context interface {
 	// InfinispanClient operand specific client for Infinispan servers
 	InfinispanClient() ispnApi.Infinispan
 
+	InfinispanClientForPod(podName string) ispnApi.Infinispan
+
 	ConfigFiles() *ConfigFiles
 
 	Resources() Resources
 
+	// TODO remove?
 	// Return true if StatefulSet doesn't exist yet
 	NewCluster() bool
 
@@ -58,6 +61,8 @@ type Context interface {
 
 	// Load a generic resource from the cluster namespace
 	LoadResource(name string, obj client.Object) error
+
+	ListResources(set map[string]string, list client.ObjectList) error
 
 	// Set the controller reference of the passed object to the Infinispan CR being reconciled
 	SetControllerReference(controlled metav1.Object) error

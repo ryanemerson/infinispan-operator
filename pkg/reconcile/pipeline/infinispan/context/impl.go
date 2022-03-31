@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
+	"github.com/infinispan/infinispan-operator/pkg/http/curl"
+	ispnClient "github.com/infinispan/infinispan-operator/pkg/infinispan/client"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -69,7 +73,29 @@ func (i impl) Instance() *ispnv1.Infinispan {
 
 func (i impl) InfinispanClient() api.Infinispan {
 	//TODO implement me
+	// TODO lookup podList and create new curl
+	// TODO cache created client to prevent pod list lookup everytime?
 	panic("implement me")
+}
+
+func (i impl) InfinispanClientForPod(podName string) api.Infinispan {
+	curlClient := i.curlClient(podName)
+	return ispnClient.New(curlClient)
+}
+
+func (i impl) curlClient(podName string) *curl.Client {
+	return curl.New(curl.Config{
+		Credentials: &curl.Credentials{
+			Username: i.ispnConfig.AdminIdentities.Username,
+			Password: i.ispnConfig.AdminIdentities.Password,
+		},
+		// TODO use constant
+		Container: "infinispan",
+		Podname:   podName,
+		Namespace: i.instance.Namespace,
+		Protocol:  "http",
+		Port:      consts.InfinispanAdminPort,
+	}, i.kubernetes)
 }
 
 func (i impl) ConfigFiles() *pipeline.ConfigFiles {
@@ -105,25 +131,43 @@ func (i impl) Close() error {
 		// Only persist Infinispan to update CR
 		return nil
 	}
-	//TODO implement me
 	if err := i.persistSecrets(); err != nil {
-		// TODO Only persist Infinispan Status on error?
-
+		// TODO add condition to describe persist resource errors?
+		// Update status only
+		return err
 	}
 
 	if err := i.persistConfigMaps(); err != nil {
-		// TODO Only persist Infinispan Status on error?
+		return err
 	}
 
 	if err := i.persistStatefulSets(); err != nil {
 		// TODO Only persist Infinispan Status on error?
 	}
-	return nil
+
+	// TODO compare initial spec with new one to see if update required?
+	// Update any changes to the Infinispan CR
+	if err := i.Update(i.ctx, i.instance); err != nil {
+		return err
+	}
+	// Only update the status if a CR update succeeds
+	return i.updateStatus()
+}
+
+// TODO just execute inline?
+func (i impl) updateStatus() error {
+	return i.Status().Update(i.ctx, i.Instance())
 }
 
 func (i impl) LoadResource(name string, obj client.Object) error {
 	key := types.NamespacedName{Namespace: i.instance.Namespace, Name: name}
 	return i.Client.Get(i.ctx, key, obj)
+}
+
+func (i impl) ListResources(set map[string]string, list client.ObjectList) error {
+	labelSelector := labels.SelectorFromSet(set)
+	listOps := &client.ListOptions{Namespace: i.instance.Namespace, LabelSelector: labelSelector}
+	return i.Client.List(i.ctx, list, listOps)
 }
 
 func (i impl) createOrUpdate(obj client.Object) error {
