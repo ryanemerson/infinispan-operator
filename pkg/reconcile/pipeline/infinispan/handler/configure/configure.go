@@ -108,9 +108,15 @@ func AdminIdentities(ctx pipeline.Context) {
 			return
 		}
 
+		password, err := security.FindPassword(user, identities)
+		if err != nil {
+			ctx.RetryProcessing(err)
+			return
+		}
+
 		configFiles.AdminIdentities = &pipeline.AdminIdentities{
 			Username:       user,
-			Password:       "TODO",
+			Password:       password,
 			IdentitiesFile: identities,
 		}
 	} else {

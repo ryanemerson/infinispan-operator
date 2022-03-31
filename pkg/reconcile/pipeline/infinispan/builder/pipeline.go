@@ -93,6 +93,7 @@ func (b *builder) Build() pipeline.Pipeline {
 	handlers := handlerBuilder{
 		handlers: make([]pipeline.HandlerFunc, 0),
 	}
+
 	// Collect Handlers
 	handlers.Add(
 		collect.UserAuthenticationSecret,
@@ -100,7 +101,6 @@ func (b *builder) Build() pipeline.Pipeline {
 		collect.UserConfigMap,
 		collect.UserDefinedStorageClass,
 		collect.AdminSecret,
-		collect.ClusterStatefulSet,
 	)
 
 	// Configuration Handlers
@@ -118,6 +118,10 @@ func (b *builder) Build() pipeline.Pipeline {
 		provision.AdminSecret,
 		provision.InfinispanSecuritySecret,
 		provision.InfinispanConfigMap,
+		provision.PingService,
+		provision.AdminService,
+		provision.ClusterService,
+		provision.ExternalService,
 		provision.ClusterStatefulSet,
 	)
 

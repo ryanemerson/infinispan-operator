@@ -5,6 +5,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,9 +31,13 @@ func AdminSecret(ctx pipeline.Context) {
 	i := ctx.Instance()
 
 	resources := ctx.Resources()
-	secretName := i.GetSecretName()
+	secretName := i.GetAdminSecretName()
 	secret := &corev1.Secret{}
-	if !resources.Get(secretName, secret) {
+	if err := resources.Load(secretName, secret); err != nil {
+		if !errors.IsNotFound(err) {
+			ctx.RetryProcessing(err)
+			return
+		}
 		// AdminSecret doesn't exist, so define one
 		secret = newSecret(secretName, i.Namespace)
 		secret.Labels = i.Labels("infinispan-secret-admin-identities")

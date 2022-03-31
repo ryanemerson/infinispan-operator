@@ -42,11 +42,11 @@ const (
 func AddChmodInitContainer(ctx pipeline.Context) {
 	i := ctx.Instance()
 	statefulSet := &appsv1.StatefulSet{}
-	if ctx.Resources().Get(i.GetStatefulSetName(), statefulSet) {
-		c := &statefulSet.Spec.Template.Spec.InitContainers
-		*c = append(*c, ChmodInitContainer("data-chmod-pv", DataMountVolume, DataMountPath))
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
+		ctx.Error(fmt.Errorf("unable to add InitContainer: %w", err))
 	}
-	ctx.Error(fmt.Errorf("unable to add InitContainer. StatefulSet '%s' doesn't exist", i.GetStatefulSetName()))
+	c := &statefulSet.Spec.Template.Spec.InitContainers
+	*c = append(*c, ChmodInitContainer("data-chmod-pv", DataMountVolume, DataMountPath))
 }
 
 func ClusterStatefulSet(ctx pipeline.Context) {

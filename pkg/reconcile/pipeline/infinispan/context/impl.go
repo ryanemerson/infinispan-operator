@@ -13,9 +13,8 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +47,7 @@ func (p *provider) Get(ctx context.Context, logger logr.Logger, infinispan *ispn
 		logger:     logger,
 		instance:   infinispan,
 		ispnConfig: &pipeline.ConfigFiles{},
-		resources:  make(map[string]*resource),
+		resources:  make(map[string]client.Object),
 	}, nil
 }
 
@@ -60,7 +59,7 @@ type impl struct {
 	logger     logr.Logger
 	instance   *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
-	resources  map[string]*resource
+	resources  map[string]client.Object
 }
 
 func (i impl) Instance() *ispnv1.Infinispan {
@@ -122,44 +121,47 @@ func (i impl) SetCondition(condition *metav1.Condition) {
 
 func (i impl) Close() error {
 	if i.err != nil {
-		// TODO handle error
-		// Introduce new condition?
-		// Only persist Infinispan to update CR
-		return nil
+		//	// Only persist Infinispan Status to persist any errors represented in status.Conditions
+		return i.updateStatus()
 	}
 
-	if err := i.persistResources(); err != nil {
-		// TODO add condition to describe persist resource error?
-		// Update status only
-		return err
+	for _, resource := range i.resources {
+		if err := i.createOrPatch(resource); err != nil {
+			// TODO add condition to describe persist resource error?
+			return fmt.Errorf("unable to persist changes to '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)
+		}
 	}
-
-	// TODO compare initial spec with new one to see if update required?
-	// Update any changes to the Infinispan CR
-	if err := i.Update(i.ctx, i.instance); err != nil {
-		return err
-	}
-	// Only update the status if a CR update succeeds
-	return i.updateStatus()
+	return i.updateAll()
 }
 
-// TODO just execute inline?
 func (i impl) updateStatus() error {
-	return i.Status().Update(i.ctx, i.Instance())
+	return i.update(func(ispn *ispnv1.Infinispan) {
+		ispn.Status = i.instance.Status
+	})
 }
 
-func (i impl) LoadResource(name string, obj client.Object) error {
-	key := types.NamespacedName{Namespace: i.instance.Namespace, Name: name}
-	return i.Client.Get(i.ctx, key, obj)
+func (i impl) updateAll() error {
+	return i.update(func(ispn *ispnv1.Infinispan) {
+		ispn.ObjectMeta.Annotations = i.instance.ObjectMeta.Annotations
+		ispn.ObjectMeta.Labels = i.instance.ObjectMeta.Labels
+		ispn.Spec = i.instance.Spec
+		ispn.Status = i.instance.Status
+	})
 }
 
-func (i impl) ListResources(set map[string]string, list client.ObjectList) error {
-	labelSelector := labels.SelectorFromSet(set)
-	listOps := &client.ListOptions{Namespace: i.instance.Namespace, LabelSelector: labelSelector}
-	return i.Client.List(i.ctx, list, listOps)
+func (i impl) update(update func(ispn *ispnv1.Infinispan)) error {
+	loadedInstance := i.instance.DeepCopy()
+	_, err := kube.CreateOrPatch(i.ctx, i.Client, loadedInstance, func() error {
+		if loadedInstance.CreationTimestamp.IsZero() || loadedInstance.GetDeletionTimestamp() != nil {
+			return errors.NewNotFound(schema.ParseGroupResource("infinispan.infinispan.org"), loadedInstance.Name)
+		}
+		update(loadedInstance)
+		return nil
+	})
+	return err
 }
 
-func (i impl) createOrUpdate(obj client.Object) error {
+func (i impl) createOrPatch(obj client.Object) error {
 	key := client.ObjectKeyFromObject(obj)
 
 	// Create an empty instance of the provided client.Object for retrieval so the passed object's definition is not overwritten
@@ -167,28 +169,32 @@ func (i impl) createOrUpdate(obj client.Object) error {
 	if val.Kind() == reflect.Ptr {
 		val = reflect.Indirect(val)
 	}
-	empty := reflect.New(val.Type()).Interface().(client.Object)
+	existing := reflect.New(val.Type()).Interface().(client.Object)
 
-	if err := i.Client.Get(i.ctx, key, empty); err != nil {
+	if err := i.Client.Get(i.ctx, key, existing); err != nil {
 		if errors.IsNotFound(err) {
 			// The resource does not exist, so we create it
 			return i.Create(i.ctx, obj)
 		}
 		return err
 	}
-	// Resource already exists, so update
-	return i.Update(i.ctx, obj)
-}
 
-func (i impl) persistResources() error {
-	for _, pr := range i.resources {
-		if !pr.IsUpdated() {
-			continue
-		}
+	objPatch := client.MergeFrom(obj.DeepCopyObject())
 
-		obj := pr.Object()
-		if err := i.createOrUpdate(obj); err != nil {
-			return fmt.Errorf("unable to persist changes to '%s' %s: %w", obj.GetName(), obj.GetObjectKind(), err)
+	existingUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existing.DeepCopyObject())
+	if err != nil {
+		return err
+	}
+
+	objUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
+	if err != nil {
+		return err
+	}
+
+	if !reflect.DeepEqual(existingUnstr, objUnstr) {
+		// Only issue a Patch if the before and after resources (minus status) differ
+		if err := i.Patch(i.ctx, obj, objPatch); err != nil {
+			return err
 		}
 	}
 	return nil

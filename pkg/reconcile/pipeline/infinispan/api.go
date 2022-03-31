@@ -2,6 +2,7 @@ package infinispan
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
@@ -36,6 +37,10 @@ type FlowStatus struct {
 	Err   error
 }
 
+func (f *FlowStatus) String() string {
+	return fmt.Sprintf("Retry=%t, Stop=%t, Err=%s", f.Retry, f.Stop, f.Err.Error())
+}
+
 // Pipeline context passed to each handler
 type Context interface {
 	Instance() *ispnv1.Infinispan
@@ -57,11 +62,7 @@ type Context interface {
 
 	EventRecorder() record.EventRecorder
 
-	// Load a generic resource from the cluster namespace
-	LoadResource(name string, obj client.Object) error
-
-	ListResources(set map[string]string, list client.ObjectList) error
-
+	// TODO move to Resources?
 	// Set the controller reference of the passed object to the Infinispan CR being reconciled
 	SetControllerReference(controlled metav1.Object) error
 
@@ -117,15 +118,9 @@ type Keystore struct {
 }
 
 type Resources interface {
-	Get(name string, object client.Object) bool
-	Define(object client.Object)
-	Load(name string, object client.Object) error
+	Define(obj client.Object)
+	Load(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
-}
-
-type PersistableResource interface {
-	Object() client.Object
-	IsUpdated() bool
 }
 
 // TODO add StatefulSet interface?

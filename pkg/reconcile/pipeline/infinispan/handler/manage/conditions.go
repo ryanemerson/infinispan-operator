@@ -7,6 +7,7 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
 	"strings"
@@ -23,13 +24,16 @@ func PrelimChecksCondition(ctx pipeline.Context) {
 func WellFormedCondition(ctx pipeline.Context) {
 	i := ctx.Instance()
 	statefulSet := &appsv1.StatefulSet{}
-	if !ctx.Resources().Get(i.GetStatefulSetName(), statefulSet) {
-		// StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
-		ctx.RetryProcessing(nil)
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
+		if errors.IsNotFound(err) {
+			// StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
+			err = nil
+		}
+		ctx.RetryProcessing(err)
 		return
 	}
 	podList := &corev1.PodList{}
-	if err := ctx.ListResources(i.PodLabels(), podList); err != nil {
+	if err := ctx.Resources().List(i.PodLabels(), podList); err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to list pods when checking if cluster WellFormed: %w", err))
 		return
 	}
@@ -44,10 +48,6 @@ func WellFormedCondition(ctx pipeline.Context) {
 		ctx.RetryProcessing(nil)
 		return
 	}
-
-	// TODO retrieve JGroups view etc and set conditions
-	ispnClient := ctx.InfinispanClientForPod(podList.Items[0].Name)
-	ispnClient.Container().Members()
 
 	clusterViews := make(map[string]bool)
 	numPods := int32(len(podList.Items))
