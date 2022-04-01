@@ -155,3 +155,12 @@ func FilterByStatefulSetUUID(podList *corev1.PodList, statefulSet *appsv1.Statef
 	}
 	podList.Items = podList.Items[:pos]
 }
+
+func GetContainer(name string, spec *corev1.PodSpec) *corev1.Container {
+	for i, c := range spec.Containers {
+		if c.Name == name {
+			return &spec.Containers[i]
+		}
+	}
+	return nil
+}

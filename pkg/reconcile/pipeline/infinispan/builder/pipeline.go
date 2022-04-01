@@ -127,6 +127,14 @@ func (b *builder) Build() pipeline.Pipeline {
 		collect.AdminSecret,
 	)
 
+	// Upgrade handlers
+	if b.Instance.Spec.Upgrades.Type == ispnv1.UpgradeTypeShutdown {
+		handlers.Add(
+			manage.ScheduleGracefulShutdownUpgrade,
+			manage.ExecuteGracefulShutdownUpgrade,
+		)
+	}
+
 	// Configuration Handlers
 	handlers.Add(
 		configure.InfinispanServer,
@@ -149,12 +157,10 @@ func (b *builder) Build() pipeline.Pipeline {
 		provision.ClusterStatefulSet,
 	)
 
-	// Manage Handlers
 	handlers.Add(
-		manage.UpgradeConditionTrue,
 		manage.WellFormedCondition,
-		manage.ScheduleUpgrade,
 	)
+
 	handlers.AddEnvSpecific("MAKE_DATADIR_WRITABLE", "true", provision.AddChmodInitContainer)
 
 	// Runtime Handlers
