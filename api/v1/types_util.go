@@ -592,7 +592,14 @@ func (ispn *Infinispan) ServiceSelectorLabels() map[string]string {
 }
 
 func (ispn *Infinispan) ExternalServiceLabels() map[string]string {
-	return ispn.ServiceLabels("infinispan-service-external")
+	labels := ispn.ExternalServiceSelector()
+	addLabelsFor(ispn, OperatorTargetLabels, labels)
+	addLabelsFor(ispn, TargetLabels, labels)
+	return labels
+}
+
+func (ispn *Infinispan) ExternalServiceSelector() map[string]string {
+	return ispn.Labels("infinispan-service-external")
 }
 
 func (ispn *Infinispan) PodLabels() map[string]string {

@@ -8,6 +8,7 @@ import (
 	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	corev1 "k8s.io/api/core/v1"
 	ingressv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -127,6 +128,7 @@ type Resources interface {
 	Define(obj client.Object)
 	Load(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
+	MarkForDeletion(obj client.Object)
 }
 
 type ContextProvider interface {
@@ -142,6 +144,8 @@ type ContextProviderConfig struct {
 }
 
 var (
+	ServiceTypes      = []schema.GroupVersionKind{ServiceGVK, RouteGVK, IngressGVK}
+	ServiceGVK        = corev1.SchemeGroupVersion.WithKind("Service")
 	RouteGVK          = routev1.SchemeGroupVersion.WithKind("Route")
 	IngressGVK        = ingressv1.SchemeGroupVersion.WithKind("Ingress")
 	ServiceMonitorGVK = monitoringv1.SchemeGroupVersion.WithKind("ServiceMonitor")

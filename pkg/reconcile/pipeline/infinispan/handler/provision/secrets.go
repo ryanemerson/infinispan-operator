@@ -2,7 +2,6 @@ package provision
 
 import (
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
-	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -15,15 +14,9 @@ func UserAuthenticationSecret(ctx pipeline.Context) {
 		return
 	}
 
-	identities, err := security.GetUserCredentials()
-	if err != nil {
-		ctx.RetryProcessing(err)
-		return
-	}
-
 	secret := newSecret(i.GetSecretName(), i.Namespace)
 	secret.Type = corev1.SecretTypeOpaque // TODO is this explicit definition required?
-	secret.Data = map[string][]byte{consts.ServerIdentitiesFilename: identities}
+	secret.Data = map[string][]byte{consts.ServerIdentitiesFilename: ctx.ConfigFiles().UserIdentities}
 	ctx.Resources().Define(secret)
 }
 

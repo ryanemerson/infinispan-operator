@@ -47,7 +47,7 @@ func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConf
 		instance:              config.Instance, // TODO remove and just use value from config directly
 		ctx:                   ctx,
 		ispnConfig:            &pipeline.ConfigFiles{},
-		resources:             make(map[string]client.Object),
+		resources:             make(map[string]resource),
 	}, nil
 }
 
@@ -59,7 +59,7 @@ type impl struct {
 	ctx        context.Context
 	instance   *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
-	resources  map[string]client.Object
+	resources  map[string]resource
 }
 
 func (i impl) Instance() *ispnv1.Infinispan {
@@ -134,7 +134,16 @@ func (i impl) Close() error {
 	}
 
 	for _, resource := range i.resources {
-		if err := i.createOrPatch(resource); err != nil {
+		if resource.delete {
+			if err := i.Delete(i.ctx, resource.Object); err != nil {
+				if !errors.IsNotFound(err) {
+					return fmt.Errorf("unable to delete '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)
+				}
+			}
+			continue
+		}
+
+		if err := i.createOrPatch(resource.Object); err != nil {
 			// TODO add condition to describe persist resource error?
 			return fmt.Errorf("unable to persist changes to '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)
 		}

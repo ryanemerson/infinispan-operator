@@ -151,12 +151,15 @@ func UserIdentities(ctx pipeline.Context) {
 		return
 	}
 
-	identities, err := security.GetUserCredentials()
-	if err != nil {
-		ctx.RetryProcessing(err)
-		return
+	configFiles := ctx.ConfigFiles()
+	if configFiles.UserIdentities == nil {
+		identities, err := security.GetUserCredentials()
+		if err != nil {
+			ctx.RetryProcessing(err)
+			return
+		}
+		configFiles.UserIdentities = identities
 	}
-	ctx.ConfigFiles().UserIdentities = identities
 }
 
 func IdentitiesBatch(ctx pipeline.Context) {

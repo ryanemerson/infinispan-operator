@@ -12,20 +12,23 @@ import (
 
 func UserAuthenticationSecret(ctx pipeline.Context) {
 	i := ctx.Instance()
-	if i.IsAuthenticationEnabled() && !i.IsGeneratedSecret() {
-		secret := &corev1.Secret{}
-		if err := ctx.Resources().Load(i.GetSecretName(), secret); err != nil {
-			ctx.RetryProcessing(fmt.Errorf("unable to load user credential secret: %w", err))
-			return
-		}
-
-		userIdentities, ok := secret.Data[consts.ServerIdentitiesFilename]
-		if !ok {
-			ctx.RetryProcessing(fmt.Errorf("authentiation secret '%s' missing required file '%s'", secret.Name, consts.ServerIdentitiesCliFilename))
-			return
-		}
-		ctx.ConfigFiles().UserIdentities = userIdentities
+	if !i.IsAuthenticationEnabled() {
+		return
 	}
+	secret := &corev1.Secret{}
+	if err := ctx.Resources().Load(i.GetSecretName(), secret); err != nil {
+		if !i.IsGeneratedSecret() {
+			ctx.RetryProcessing(fmt.Errorf("unable to load user credential secret: %w", err))
+		}
+		return
+	}
+
+	userIdentities, ok := secret.Data[consts.ServerIdentitiesFilename]
+	if !ok {
+		ctx.RetryProcessing(fmt.Errorf("authentiation secret '%s' missing required file '%s'", secret.Name, consts.ServerIdentitiesCliFilename))
+		return
+	}
+	ctx.ConfigFiles().UserIdentities = userIdentities
 }
 
 func UserEncryptionSecrets(ctx pipeline.Context) {

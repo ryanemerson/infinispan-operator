@@ -13,6 +13,11 @@ type resources struct {
 	*impl
 }
 
+type resource struct {
+	client.Object
+	delete bool
+}
+
 func resourceKey(name string, gvk schema.GroupVersionKind) string {
 	return fmt.Sprintf("%s.%s", name, gvk)
 }
@@ -23,20 +28,25 @@ func (i *impl) Resources() pipeline.Resources {
 
 func (r resources) Define(obj client.Object) {
 	key := resourceKey(obj.GetName(), obj.GetObjectKind().GroupVersionKind())
-	r.resources[key] = obj
+	r.resources[key] = resource{
+		Object: obj,
+	}
 }
 
 func (r resources) Load(name string, obj client.Object) error {
 	key := resourceKey(name, obj.GetObjectKind().GroupVersionKind())
 	if storedObj, ok := r.resources[key]; ok {
 		obj = storedObj
+		return nil
 	}
 	obj.SetName(name)
 	obj.SetNamespace(r.instance.Namespace)
 	if err := r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj); err != nil {
 		return err
 	}
-	r.resources[key] = obj
+	r.resources[key] = resource{
+		Object: obj,
+	}
 	return nil
 }
 
@@ -44,4 +54,16 @@ func (r resources) List(set map[string]string, list client.ObjectList) error {
 	labelSelector := labels.SelectorFromSet(set)
 	listOps := &client.ListOptions{Namespace: r.instance.Namespace, LabelSelector: labelSelector}
 	return r.Client.List(r.ctx, list, listOps)
+}
+
+func (r resources) MarkForDeletion(obj client.Object) {
+	key := resourceKey(obj.GetName(), obj.GetObjectKind().GroupVersionKind())
+	if storedObj, ok := r.resources[key]; ok {
+		storedObj.delete = true
+		return
+	}
+	r.resources[key] = resource{
+		Object: obj,
+		delete: true,
+	}
 }
