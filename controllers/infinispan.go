@@ -5,35 +5,60 @@ import (
 	"fmt"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
-	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipelineBuilder "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/builder"
 	pipelineContext "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/context"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // TODO rename once InfinispanReconciler removed
 // IspnReconciler reconciles a Infinispan object
 type IspnReconciler struct {
 	client.Client
-	log             logr.Logger
-	contextProvider infinispan.ContextProvider
+	log                logr.Logger
+	contextProvider    infinispan.ContextProvider
+	defaultLabels      map[string]string
+	defaultAnnotations map[string]string
+	supportedTypes     map[schema.GroupVersionKind]struct{}
 }
 
 func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Client = mgr.GetClient()
 	r.log = ctrl.Log.WithName("controllers").WithName("Infinispan")
-	// TODO how to pass Per request logger to provider? Probably only required for trace/debug logging
+	kube := kubernetes.NewKubernetesFromController(mgr)
 	r.contextProvider = pipelineContext.Provider(
 		r.Client,
 		mgr.GetScheme(),
-		kube.NewKubernetesFromController(mgr),
+		kube,
 		mgr.GetEventRecorderFor("controller-infinispan"),
 	)
+	// Initialize default operator labels and annotations
+	var err error
+	if defaultLabels, defaultAnnotations, err = infinispanv1.LoadDefaultLabelsAndAnnotations(); err != nil {
+		return err
+	}
+	r.defaultLabels = defaultLabels
+	r.defaultAnnotations = defaultAnnotations
+	r.log.Info("Defaults:", "Annotations", defaultAnnotations, "Labels", defaultLabels)
+
+	r.supportedTypes = make(map[schema.GroupVersionKind]struct{}, 3)
+	for _, gvk := range []schema.GroupVersionKind{infinispan.IngressGVK, infinispan.RouteGVK, infinispan.ServiceMonitorGVK} {
+		// Validate that GroupVersionKind is supported on runtime platform
+		ok, err := kube.IsGroupVersionKindSupported(gvk)
+		if err != nil {
+			r.log.Error(err, fmt.Sprintf("failed to check if GVK '%s' is supported", gvk))
+			continue
+		}
+		if ok {
+			r.supportedTypes[gvk] = struct{}{}
+		}
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infinispanv1.Infinispan{}).
@@ -63,13 +88,13 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=core,resources=nodes;serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions;customresourcedefinitions/status,verbs=get;list;watch
-func (reconciler *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request) (ctrl.Result, error) {
-	reqLogger := reconciler.log.WithValues("infinispan", ctrlRequest.NamespacedName)
+func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request) (ctrl.Result, error) {
+	reqLogger := r.log.WithValues("infinispan", ctrlRequest.NamespacedName)
 	// Fetch the Infinispan instance
 	instance := &infinispanv1.Infinispan{}
-	if err := reconciler.Get(ctx, ctrlRequest.NamespacedName, instance); err != nil {
+	if err := r.Get(ctx, ctrlRequest.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
-			reconciler.log.Info("Infinispan CR not found")
+			r.log.Info("Infinispan CR not found")
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -84,8 +109,11 @@ func (reconciler *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctr
 
 	// TODO construct pipeline with target and source operand version
 	pipeline := pipelineBuilder.Builder().
+		WithAnnotations(r.defaultAnnotations).
+		WithContextProvider(r.contextProvider).
+		WithLabels(r.defaultLabels).
 		WithLogger(reqLogger).
-		WithContextProvider(reconciler.contextProvider).
+		WithSupportedTypes(r.supportedTypes).
 		Build()
 
 	retry, err := pipeline.Process(ctx, instance)

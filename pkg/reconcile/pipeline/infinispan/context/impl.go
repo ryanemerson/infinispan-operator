@@ -39,15 +39,15 @@ type provider struct {
 	eventRec   record.EventRecorder
 }
 
-func (p *provider) Get(ctx context.Context, logger logr.Logger, infinispan *ispnv1.Infinispan) (pipeline.Context, error) {
+func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConfig) (pipeline.Context, error) {
 	return &impl{
-		provider:   p,
-		flowCtrl:   &flowCtrl{},
-		ctx:        ctx,
-		logger:     logger,
-		instance:   infinispan,
-		ispnConfig: &pipeline.ConfigFiles{},
-		resources:  make(map[string]client.Object),
+		provider:              p,
+		flowCtrl:              &flowCtrl{},
+		ContextProviderConfig: config,
+		instance:              config.Instance, // TODO remove and just use value from config directly
+		ctx:                   ctx,
+		ispnConfig:            &pipeline.ConfigFiles{},
+		resources:             make(map[string]client.Object),
 	}, nil
 }
 
@@ -55,8 +55,8 @@ func (p *provider) Get(ctx context.Context, logger logr.Logger, infinispan *ispn
 type impl struct {
 	*flowCtrl
 	*provider
+	*pipeline.ContextProviderConfig
 	ctx        context.Context
-	logger     logr.Logger
 	instance   *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
 	resources  map[string]client.Object
@@ -103,20 +103,28 @@ func (i impl) NewCluster() bool {
 }
 
 func (i impl) Log() logr.Logger {
-	return i.logger
+	return i.Logger
 }
 
 func (i impl) EventRecorder() record.EventRecorder {
 	return i.eventRec
 }
 
-func (i impl) SetControllerReference(controlled metav1.Object) error {
-	return k8sctrlutil.SetControllerReference(i.instance, controlled, i.scheme)
+func (i impl) DefaultAnnotations() map[string]string {
+	return i.ContextProviderConfig.DefaultAnnotations
 }
 
-func (i impl) SetCondition(condition *metav1.Condition) {
-	//TODO implement me
-	panic("implement me")
+func (i impl) DefaultLabels() map[string]string {
+	return i.ContextProviderConfig.DefaultLabels
+}
+
+func (i impl) IsTypeSupported(gvk schema.GroupVersionKind) bool {
+	_, ok := i.SupportedTypes[gvk]
+	return ok
+}
+
+func (i impl) SetControllerReference(controlled metav1.Object) error {
+	return k8sctrlutil.SetControllerReference(i.instance, controlled, i.scheme)
 }
 
 func (i impl) Close() error {

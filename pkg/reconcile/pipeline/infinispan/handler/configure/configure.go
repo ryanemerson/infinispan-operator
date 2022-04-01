@@ -15,7 +15,7 @@ import (
 // TODO how to reuse server generation during HotRod rolling upgrade?
 // Collect xsite resources before configuration called, make it so that all that is required to generate
 // server config is statefulset name, xsite backups
-func Infinispan(ctx pipeline.Context) {
+func InfinispanServer(ctx pipeline.Context) {
 	i := ctx.Instance()
 	serverConf, err := generateServer(i.GetStatefulSetName(), i, nil)
 	if err != nil {

@@ -16,6 +16,11 @@ import (
 func PrelimChecksCondition(ctx pipeline.Context) {
 	i := ctx.Instance()
 	if i.GetCondition(ispnv1.ConditionPrelimChecksPassed).Status == metav1.ConditionFalse {
+		i.ApplyOperatorMeta(ctx.DefaultLabels(), ctx.DefaultAnnotations())
+
+		if ctx.IsTypeSupported(pipeline.ServiceMonitorGVK) {
+			i.ApplyMonitoringAnnotation()
+		}
 		i.SetCondition(ispnv1.ConditionPrelimChecksPassed, metav1.ConditionTrue, "")
 		ctx.RetryProcessing(nil)
 	}
@@ -52,10 +57,10 @@ func WellFormedCondition(ctx pipeline.Context) {
 	clusterViews := make(map[string]bool)
 	numPods := int32(len(podList.Items))
 	var conditions []ispnv1.InfinispanCondition
-	var errors []string
+	var podErrors []string
 	// Avoid contacting the server(s) if we're still waiting for pods
 	if numPods < i.Spec.Replicas {
-		errors = append(errors, fmt.Sprintf("Running %d pods. Needed %d", numPods, i.Spec.Replicas))
+		podErrors = append(podErrors, fmt.Sprintf("Running %d pods. Needed %d", numPods, i.Spec.Replicas))
 	} else {
 		for _, pod := range podList.Items {
 			if kube.IsPodReady(pod) {
@@ -64,17 +69,17 @@ func WellFormedCondition(ctx pipeline.Context) {
 					clusterView := strings.Join(members, ",")
 					clusterViews[clusterView] = true
 				} else {
-					errors = append(errors, pod.Name+": "+err.Error())
+					podErrors = append(podErrors, pod.Name+": "+err.Error())
 				}
 			} else {
 				// Pod not ready, no need to query
-				errors = append(errors, pod.Name+": pod not ready")
+				podErrors = append(podErrors, pod.Name+": pod not ready")
 			}
 		}
 	}
 
 	// Evaluating WellFormed condition
-	wellformed := ispnv1.InfinispanCondition{Type: ispnv1.ConditionWellFormed}
+	wellFormed := ispnv1.InfinispanCondition{Type: ispnv1.ConditionWellFormed}
 	views := make([]string, len(clusterViews))
 	index := 0
 	for k := range clusterViews {
@@ -82,19 +87,19 @@ func WellFormedCondition(ctx pipeline.Context) {
 		index++
 	}
 	sort.Strings(views)
-	if len(errors) == 0 {
+	if len(podErrors) == 0 {
 		if len(views) == 1 {
-			wellformed.Status = metav1.ConditionTrue
-			wellformed.Message = "View: " + views[0]
+			wellFormed.Status = metav1.ConditionTrue
+			wellFormed.Message = "View: " + views[0]
 		} else {
-			wellformed.Status = metav1.ConditionFalse
-			wellformed.Message = "Views: " + strings.Join(views, ",")
+			wellFormed.Status = metav1.ConditionFalse
+			wellFormed.Message = "Views: " + strings.Join(views, ",")
 		}
 	} else {
-		wellformed.Status = metav1.ConditionUnknown
-		wellformed.Message = "Errors: " + strings.Join(errors, ",") + " Views: " + strings.Join(views, ",")
+		wellFormed.Status = metav1.ConditionUnknown
+		wellFormed.Message = "Errors: " + strings.Join(podErrors, ",") + " Views: " + strings.Join(views, ",")
 	}
-	conditions = append(conditions, wellformed)
+	conditions = append(conditions, wellFormed)
 	i.SetConditions(conditions)
 
 	if i.NotClusterFormed(len(podList.Items), int(i.Spec.Replicas)) {

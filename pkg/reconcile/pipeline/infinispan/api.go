@@ -6,7 +6,11 @@ import (
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
+	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	ingressv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -62,13 +66,15 @@ type Context interface {
 
 	EventRecorder() record.EventRecorder
 
+	DefaultAnnotations() map[string]string
+
+	DefaultLabels() map[string]string
+
+	IsTypeSupported(gvk schema.GroupVersionKind) bool
+
 	// TODO move to Resources?
 	// Set the controller reference of the passed object to the Infinispan CR being reconciled
 	SetControllerReference(controlled metav1.Object) error
-
-	// Sets context condition
-	// TODO add condition to show reconcile errors
-	SetCondition(condition *metav1.Condition)
 
 	// Indicates that the cluster should be retried at some later time
 	// The current processing stops and context gets closed
@@ -123,16 +129,20 @@ type Resources interface {
 	List(set map[string]string, list client.ObjectList) error
 }
 
-// TODO add StatefulSet interface?
-// Could add additional methods to determine if Rolling update is possible?
-// Is there a need for the Hashes anymore? Can we just use Secret/ConfigMap isUpdated?
-// IsUpdated won't work if partial reconciliation where Secret/ConfigMap updates, but StatefulSet hasn't yet
-
-// TODO is this necessary or do
-// Provides context for a given Infinispan
 type ContextProvider interface {
-	Get(ctx context.Context, logger logr.Logger, infinispan *ispnv1.Infinispan) (Context, error)
+	Get(ctx context.Context, config *ContextProviderConfig) (Context, error)
 }
 
-// Pipeline
-// 1. User resources
+type ContextProviderConfig struct {
+	DefaultAnnotations map[string]string
+	DefaultLabels      map[string]string
+	Instance           *ispnv1.Infinispan
+	Logger             logr.Logger
+	SupportedTypes     map[schema.GroupVersionKind]struct{} // We only care about keys, so use struct{} as it requires 0 bytes
+}
+
+var (
+	RouteGVK          = routev1.SchemeGroupVersion.WithKind("Route")
+	IngressGVK        = ingressv1.SchemeGroupVersion.WithKind("Ingress")
+	ServiceMonitorGVK = monitoringv1.SchemeGroupVersion.WithKind("ServiceMonitor")
+)

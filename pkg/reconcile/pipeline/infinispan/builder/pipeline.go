@@ -12,13 +12,14 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/configure"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/manage"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/provision"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"os"
 )
 
 var _ pipeline.Pipeline = &impl{}
 
 type impl struct {
-	logger          logr.Logger
+	*pipeline.ContextProviderConfig
 	ctxProvider     pipeline.ContextProvider
 	handlers        []pipeline.Handler
 	deployedVersion *version.Version
@@ -32,7 +33,8 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 			err = fmt.Errorf("panic occurred: %v", perr)
 		}
 	}()
-	ispnContext, err := i.ctxProvider.Get(ctx, i.logger, infinispan)
+	i.ContextProviderConfig.Instance = infinispan
+	ispnContext, err := i.ctxProvider.Get(ctx, i.ContextProviderConfig)
 	if err != nil {
 		return false, err
 	}
@@ -63,8 +65,10 @@ func invokeHandler(h pipeline.Handler, ctx pipeline.Context) {
 
 type builder impl
 
-func (b *builder) WithLogger(logger logr.Logger) *builder {
-	b.logger = logger
+func (b *builder) WithAnnotations(annotations map[string]string) *builder {
+	if len(annotations) > 0 {
+		b.DefaultAnnotations = annotations
+	}
 	return b
 }
 
@@ -75,6 +79,23 @@ func (b *builder) WithContextProvider(ctxProvider pipeline.ContextProvider) *bui
 
 func (b *builder) WithDeployedVersion(v *version.Version) *builder {
 	b.deployedVersion = v
+	return b
+}
+
+func (b *builder) WithLabels(labels map[string]string) *builder {
+	if len(labels) > 0 {
+		b.DefaultLabels = labels
+	}
+	return b
+}
+
+func (b *builder) WithLogger(logger logr.Logger) *builder {
+	b.Logger = logger
+	return b
+}
+
+func (b *builder) WithSupportedTypes(types map[schema.GroupVersionKind]struct{}) *builder {
+	b.SupportedTypes = types
 	return b
 }
 
@@ -94,6 +115,9 @@ func (b *builder) Build() pipeline.Pipeline {
 		handlers: make([]pipeline.HandlerFunc, 0),
 	}
 
+	// Apply default meta before doing anything else
+	handlers.Add(manage.PrelimChecksCondition)
+
 	// Collect Handlers
 	handlers.Add(
 		collect.UserAuthenticationSecret,
@@ -105,7 +129,7 @@ func (b *builder) Build() pipeline.Pipeline {
 
 	// Configuration Handlers
 	handlers.Add(
-		configure.Infinispan,
+		configure.InfinispanServer,
 		configure.Logging,
 		configure.AdminIdentities,
 		configure.UserIdentities,
@@ -127,7 +151,6 @@ func (b *builder) Build() pipeline.Pipeline {
 
 	// Manage Handlers
 	handlers.Add(
-		manage.PrelimChecksCondition,
 		manage.UpgradeConditionTrue,
 		manage.WellFormedCondition,
 		manage.ScheduleUpgrade,
@@ -143,7 +166,9 @@ func (b *builder) Build() pipeline.Pipeline {
 }
 
 func Builder() *builder {
-	return &builder{}
+	return &builder{
+		ContextProviderConfig: &pipeline.ContextProviderConfig{},
+	}
 }
 
 type handlerBuilder struct {

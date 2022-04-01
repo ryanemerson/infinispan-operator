@@ -179,6 +179,7 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 			},
 		}
 		*volumes = append(*volumes, ephemeralVolume)
+		// TODO move warning to validating webhook
 		errMsg := "Ephemeral storage configured. All data will be lost on cluster shutdown and restart."
 		ctx.EventRecorder().Event(i, corev1.EventTypeWarning, EventReasonEphemeralStorage, errMsg)
 		ctx.Log().Info(errMsg)
