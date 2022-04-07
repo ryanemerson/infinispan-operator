@@ -128,12 +128,11 @@ func (b *builder) Build() pipeline.Pipeline {
 	)
 
 	// Upgrade handlers
-	if b.Instance.Spec.Upgrades.Type == ispnv1.UpgradeTypeShutdown {
-		handlers.Add(
-			manage.ScheduleGracefulShutdownUpgrade,
-			manage.ExecuteGracefulShutdownUpgrade,
-		)
-	}
+	// TODO disable if Rolling Upgrades configured
+	handlers.Add(
+		manage.ScheduleGracefulShutdownUpgrade,
+		manage.ExecuteGracefulShutdownUpgrade,
+	)
 
 	// Configuration Handlers
 	handlers.Add(

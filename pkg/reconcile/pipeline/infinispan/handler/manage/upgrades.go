@@ -67,6 +67,11 @@ func ScheduleGracefulShutdownUpgrade(ctx pipeline.Context) {
 		return
 	}
 
+	// We can't upgrade pods that don't exist
+	if len(podList.Items) == 0 {
+		return
+	}
+
 	// Get default Infinispan image for a running Infinispan pod
 	// TODO use constant for container name
 	podDefaultImage := kube.GetPodDefaultImage(*kube.GetContainer("infinispan", &podList.Items[0].Spec))
