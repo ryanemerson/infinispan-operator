@@ -101,6 +101,8 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 		return reconcile.Result{}, fmt.Errorf("unable to fetch Infinispan CR %w", err)
 	}
 
+	fmt.Println(instance.Spec.Container.Memory)
+
 	// Don't reconcile Infinispan CRs marked for deletion
 	if instance.GetDeletionTimestamp() != nil {
 		reqLogger.Info(fmt.Sprintf("Ignoring Infinispan CR '%s:%s' marked for deletion", instance.Namespace, instance.Name))

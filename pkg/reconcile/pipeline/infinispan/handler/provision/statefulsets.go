@@ -8,6 +8,7 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
@@ -58,10 +59,19 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 	annotationsForPod := i.PodAnnotations()
 	annotationsForPod["updateDate"] = time.Now().String()
 
+	// Attempt to load any existing StatefulSet definitions so that we can copy the UUID
+	statefulSet := &appsv1.StatefulSet{}
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
+		if !errors.IsNotFound(err) {
+			ctx.RetryProcessing(err)
+			return
+		}
+	}
+
 	// We can ignore the err here as the validating webhook ensures that the resources are valid
 	podResources, _ := PodResources(i.Spec.Container)
 	configFiles := ctx.ConfigFiles()
-	statefulset := &appsv1.StatefulSet{
+	statefulSet = &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "StatefulSet",
@@ -74,6 +84,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 				"openshift.io/documentation-url": "http://infinispan.org/documentation/",
 			},
 			Labels: map[string]string{},
+			UID:    statefulSet.ObjectMeta.UID,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{Type: appsv1.RollingUpdateStatefulSetStrategyType},
@@ -134,26 +145,26 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		},
 	}
 
-	if err := addDataMountVolume(ctx, i, statefulset); err != nil {
+	if err := addDataMountVolume(ctx, i, statefulSet); err != nil {
 		ctx.RetryProcessing(err)
 		return
 	}
 
-	if _, err := applyExternalArtifactsDownload(i, &statefulset.Spec.Template.Spec); err != nil {
+	if _, err := applyExternalArtifactsDownload(i, &statefulSet.Spec.Template.Spec); err != nil {
 		ctx.RetryProcessing(err)
 		return
 	}
 
-	addUserIdentities(ctx, i, statefulset)
-	addUserConfigVolumes(ctx, i, statefulset)
-	addTLS(ctx, i, statefulset)
-	addXSiteTLS(ctx, i, statefulset)
+	addUserIdentities(ctx, i, statefulSet)
+	addUserConfigVolumes(ctx, i, statefulSet)
+	addTLS(ctx, i, statefulSet)
+	addXSiteTLS(ctx, i, statefulSet)
 
-	if err := ctx.SetControllerReference(statefulset); err != nil {
+	if err := ctx.SetControllerReference(statefulSet); err != nil {
 		ctx.RetryProcessing(err)
 		return
 	}
-	ctx.Resources().Define(statefulset)
+	ctx.Resources().Define(statefulSet)
 }
 
 func addUserIdentities(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {

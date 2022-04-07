@@ -157,6 +157,7 @@ func (b *builder) Build() pipeline.Pipeline {
 	)
 
 	handlers.Add(
+		manage.StatefulSetRollingUpgrade,
 		manage.WellFormedCondition,
 	)
 

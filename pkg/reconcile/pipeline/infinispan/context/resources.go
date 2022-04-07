@@ -4,9 +4,10 @@ import (
 	"fmt"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 type resources struct {
@@ -18,7 +19,13 @@ type resource struct {
 	delete bool
 }
 
-func resourceKey(name string, gvk schema.GroupVersionKind) string {
+func (r resources) resourceKey(name string, obj client.Object) string {
+	gvk, err := apiutil.GVKForObject(obj, r.scheme)
+	if err != nil {
+		// Panic so that we don't have to handle errors for all Resources methods
+		// Panic is caught by the pipeline handler and logged, so the Operator won't terminate
+		panic(err)
+	}
 	return fmt.Sprintf("%s.%s", name, gvk)
 }
 
@@ -27,16 +34,17 @@ func (i *impl) Resources() pipeline.Resources {
 }
 
 func (r resources) Define(obj client.Object) {
-	key := resourceKey(obj.GetName(), obj.GetObjectKind().GroupVersionKind())
+	key := r.resourceKey(obj.GetName(), obj)
 	r.resources[key] = resource{
 		Object: obj,
 	}
 }
 
 func (r resources) Load(name string, obj client.Object) error {
-	key := resourceKey(name, obj.GetObjectKind().GroupVersionKind())
+	key := r.resourceKey(name, obj)
 	if storedObj, ok := r.resources[key]; ok {
-		obj = storedObj
+		// Reflection trickery so that the passed obj reference is updated to the stored pointer
+		reflect.ValueOf(obj).Elem().Set(reflect.ValueOf(storedObj.Object).Elem())
 		return nil
 	}
 	if err := r.LoadWithNoCaching(name, obj); err != nil {
@@ -61,7 +69,7 @@ func (r resources) List(set map[string]string, list client.ObjectList) error {
 }
 
 func (r resources) MarkForDeletion(obj client.Object) {
-	key := resourceKey(obj.GetName(), obj.GetObjectKind().GroupVersionKind())
+	key := r.resourceKey(obj.GetName(), obj)
 	if storedObj, ok := r.resources[key]; ok {
 		storedObj.delete = true
 		return

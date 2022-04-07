@@ -29,7 +29,7 @@ func PrelimChecksCondition(ctx pipeline.Context) {
 func WellFormedCondition(ctx pipeline.Context) {
 	i := ctx.Instance()
 	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
+	if err := ctx.Resources().LoadWithNoCaching(i.GetStatefulSetName(), statefulSet); err != nil {
 		if errors.IsNotFound(err) {
 			// StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
 			err = nil
