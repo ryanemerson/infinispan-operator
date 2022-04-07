@@ -127,6 +127,7 @@ type Keystore struct {
 type Resources interface {
 	Define(obj client.Object)
 	Load(name string, obj client.Object) error
+	LoadWithNoCaching(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
 	MarkForDeletion(obj client.Object)
 }

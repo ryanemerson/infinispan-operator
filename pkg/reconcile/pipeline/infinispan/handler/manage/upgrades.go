@@ -6,8 +6,10 @@ import (
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	routev1 "github.com/openshift/api/route/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	ingressv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 )
@@ -52,20 +54,6 @@ import (
 //  Requeue until required #pods exists
 //  [ConditionWellFormed]
 
-// New Design
-// 1. ScheduleUpgrade [ConditionUpgrade, ConditionWellFormed]
-// 2. InitiateGracefulShutdown. [ConditionUpgrade, ConditionStopping]. Requeue
-// 3. WaitForGracefulShutdownToComplete. Requeue until complete. [ConditionUpgrade, ConditionGracefulShutdown]
-// 4. DestroyOldResources. [ConditionGracefulShutdown] Requeue
-// 5. spec.Replicas = Status.ReplicasWantedAtRestart,  Status.ReplicasWantedAtRestart = 0, []. Requeue
-// 6. Proceed with pipeline
-
-// Steps 2-5 as a single Pipeline stage
-
-// ScheduleUpgrade IsUpgradeRequired is the upgrade entry point. Upgrades should be scheduled if:
-// 1. spec.Image is different to default image
-// 2. spec.Version is different to spec.Status.Version
-// 3. All existing Pod IPs are Ready ... After ConditionWellFormed?
 func ScheduleGracefulShutdownUpgrade(ctx pipeline.Context) {
 	i := ctx.Instance()
 
@@ -75,7 +63,7 @@ func ScheduleGracefulShutdownUpgrade(ctx pipeline.Context) {
 
 	podList := &corev1.PodList{}
 	if err := ctx.Resources().List(i.PodLabels(), podList); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to list pods when checking if upgrade required: %w", err))
+		ctx.RetryProcessing(fmt.Errorf("unable to list pods in ScheduleGracefulShutdownUpgrade: %w", err))
 		return
 	}
 
@@ -89,6 +77,9 @@ func ScheduleGracefulShutdownUpgrade(ctx pipeline.Context) {
 		ctx.Log().Info("schedule an Infinispan cluster upgrade", "pod default image", podDefaultImage, "desired image", consts.DefaultImageName)
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionTrue, "")
 		i.Spec.Replicas = 0
+		// Retry in order to persist the Status updates
+		ctx.RetryProcessing(nil)
+		return
 	}
 }
 
@@ -100,9 +91,17 @@ func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
 		return
 	}
 
-	// TODO load actual
 	podList := &corev1.PodList{}
+	if err := ctx.Resources().List(i.PodLabels(), podList); err != nil {
+		ctx.RetryProcessing(fmt.Errorf("unable to list pods in ExecuteGracefulShutdownUpgrade: %w", err))
+		return
+	}
+
 	statefulSet := &appsv1.StatefulSet{}
+	if err := ctx.Resources().LoadWithNoCaching(i.GetStatefulSetName(), statefulSet); err != nil {
+		ctx.RetryProcessing(fmt.Errorf("unable to retrieve StatefulSet in ExecuteGracefulShutdownUpgrade: %w", err))
+		return
+	}
 
 	// Initiate the GracefulShutdown if it's not already in progress
 	if i.IsUpgradeCondition() && !i.HasCondition(ispnv1.ConditionGracefulShutdown) && i.Spec.Replicas == 0 {
@@ -164,7 +163,7 @@ func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
 
 	if i.IsUpgradeCondition() && i.HasCondition(ispnv1.ConditionGracefulShutdown) {
 		logger.Info("GracefulShutdown complete, continuing upgrade process")
-		// TODO Destroy resources. How?
+		markAllResourcesForDeletion(ctx, i)
 
 		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
@@ -183,5 +182,30 @@ func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
 		// Retry in order to persist the Status updates
 		ctx.RetryProcessing(nil)
 		return
+	}
+}
+
+func markAllResourcesForDeletion(ctx pipeline.Context, i *ispnv1.Infinispan) {
+	meta := func(name string) metav1.ObjectMeta {
+		return metav1.ObjectMeta{
+			Name:      name,
+			Namespace: i.Namespace,
+		}
+	}
+
+	r := ctx.Resources()
+	r.MarkForDeletion(&appsv1.StatefulSet{ObjectMeta: meta(i.GetStatefulSetName())})
+	r.MarkForDeletion(&appsv1.Deployment{ObjectMeta: meta(i.GetGossipRouterDeploymentName())})
+	r.MarkForDeletion(&corev1.ConfigMap{ObjectMeta: meta(i.GetConfigName())})
+	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.Name)})
+	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetPingServiceName())})
+	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetAdminServiceName())})
+	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetServiceExternalName())})
+	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetSiteServiceName())})
+
+	if ctx.IsTypeSupported(pipeline.RouteGVK) {
+		r.MarkForDeletion(&routev1.Route{ObjectMeta: meta(i.GetServiceExternalName())})
+	} else if ctx.IsTypeSupported(pipeline.IngressGVK) {
+		r.MarkForDeletion(&ingressv1.Ingress{ObjectMeta: meta(i.GetServiceExternalName())})
 	}
 }

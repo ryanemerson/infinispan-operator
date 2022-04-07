@@ -39,15 +39,19 @@ func (r resources) Load(name string, obj client.Object) error {
 		obj = storedObj
 		return nil
 	}
-	obj.SetName(name)
-	obj.SetNamespace(r.instance.Namespace)
-	if err := r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj); err != nil {
+	if err := r.LoadWithNoCaching(name, obj); err != nil {
 		return err
 	}
 	r.resources[key] = resource{
 		Object: obj,
 	}
 	return nil
+}
+
+func (r resources) LoadWithNoCaching(name string, obj client.Object) error {
+	obj.SetName(name)
+	obj.SetNamespace(r.instance.Namespace)
+	return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj)
 }
 
 func (r resources) List(set map[string]string, list client.ObjectList) error {
