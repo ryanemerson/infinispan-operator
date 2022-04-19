@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	"github.com/imdario/mergo"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/http/curl"
@@ -11,6 +12,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	"github.com/r3labs/diff/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +21,7 @@ import (
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strings"
 )
 
 var _ pipeline.Context = &impl{}
@@ -186,7 +189,8 @@ func (i impl) createOrPatch(obj client.Object) error {
 	if val.Kind() == reflect.Ptr {
 		val = reflect.Indirect(val)
 	}
-	existing := reflect.New(val.Type()).Interface().(client.Object)
+	objType := val.Type()
+	existing := reflect.New(objType).Interface().(client.Object)
 
 	if err := i.Client.Get(i.ctx, key, existing); err != nil {
 		if errors.IsNotFound(err) {
@@ -196,8 +200,7 @@ func (i impl) createOrPatch(obj client.Object) error {
 		return err
 	}
 
-	objPatch := client.MergeFrom(obj.DeepCopyObject())
-
+	// Convert both the existing and new resource to unstructured so that we can merge the two maps
 	existingUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existing.DeepCopyObject())
 	if err != nil {
 		return err
@@ -208,9 +211,27 @@ func (i impl) createOrPatch(obj client.Object) error {
 		return err
 	}
 
-	if !reflect.DeepEqual(existingUnstr, objUnstr) {
-		// Only issue a Patch if the before and after resources (minus status) differ
-		if err := i.Patch(i.ctx, obj, objPatch); err != nil {
+	// Merge the latest changes into the existing k8s resource object so that the newly defined fields always win
+	if err := mergo.Merge(&existingUnstr, objUnstr, mergo.WithSliceDeepCopy); err != nil {
+		return err
+	}
+
+	latest := reflect.New(objType).Interface().(client.Object)
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(existingUnstr, latest); err != nil {
+		return err
+	}
+
+	// Get the diff of the existing and latest resource definition
+	changeLog, err := diff.Diff(existing, latest)
+	if err != nil {
+		return err
+	}
+
+	// Only update the k8s resource if there's changes in the diff that we require
+	changeLog = changeLog.FilterOut(strings.Fields("Status"))
+	changeLog = changeLog.FilterOut(strings.Fields("ObjectMeta CreationTimestamp Time"))
+	if len(changeLog) > 0 {
+		if err := i.Client.Update(i.ctx, latest); err != nil {
 			return err
 		}
 	}

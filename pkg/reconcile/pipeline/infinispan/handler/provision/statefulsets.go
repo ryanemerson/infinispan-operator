@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 	"strings"
-	"time"
 )
 
 const (
@@ -56,9 +55,6 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 	labelsForPod := i.PodLabels()
 	labelsForPod[consts.StatefulSetPodLabel] = i.Name
 
-	annotationsForPod := i.PodAnnotations()
-	annotationsForPod["updateDate"] = time.Now().String()
-
 	// Attempt to load any existing StatefulSet definitions so that we can copy the UUID
 	statefulSet := &appsv1.StatefulSet{}
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
@@ -95,7 +91,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labelsForPod,
-					Annotations: annotationsForPod,
+					Annotations: i.PodAnnotations(),
 				},
 				Spec: corev1.PodSpec{
 					Affinity: i.Spec.Affinity,

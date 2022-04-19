@@ -29,8 +29,9 @@ func PingService(ctx pipeline.Context) {
 		Selector:  i.ServiceSelectorLabels(),
 		Ports: []corev1.ServicePort{
 			{
-				Name: consts.InfinispanPingPortName,
-				Port: consts.InfinispanPingPort,
+				Name:       consts.InfinispanPingPortName,
+				Port:       consts.InfinispanPingPort,
+				TargetPort: intstr.FromInt(consts.InfinispanPingPort),
 			},
 		},
 	}
@@ -52,8 +53,9 @@ func ClusterService(ctx pipeline.Context) {
 		Selector: i.ServiceSelectorLabels(),
 		Ports: []corev1.ServicePort{
 			{
-				Name: consts.InfinispanUserPortName,
-				Port: consts.InfinispanUserPort,
+				Name:       consts.InfinispanUserPortName,
+				Port:       consts.InfinispanUserPort,
+				TargetPort: intstr.FromInt(consts.InfinispanPingPort),
 			},
 		},
 	}
@@ -84,8 +86,9 @@ func AdminService(ctx pipeline.Context) {
 		Selector:  i.ServiceSelectorLabels(),
 		Ports: []corev1.ServicePort{
 			{
-				Name: consts.InfinispanAdminPortName,
-				Port: consts.InfinispanAdminPort,
+				Name:       consts.InfinispanAdminPortName,
+				Port:       consts.InfinispanAdminPort,
+				TargetPort: intstr.FromInt(consts.InfinispanPingPort),
 			},
 		},
 	}

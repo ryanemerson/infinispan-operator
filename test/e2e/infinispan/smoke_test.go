@@ -21,7 +21,7 @@ func TestBaseFunctionality(t *testing.T) {
 	defer testKube.CleanNamespaceAndLogOnPanic(t, tutils.Namespace)
 
 	// Infinispan cluster defintion with extra labels to be propagated to the service and pods
-	replicas := 2
+	replicas := 1
 	spec := tutils.DefaultSpec(t, testKube, func(i *ispnv1.Infinispan) {
 		// Ensure that cluster creation using the limit:request format works on initial creation
 		i.Spec.Container.Memory = fmt.Sprintf("%s:%s", tutils.Memory, tutils.Memory)

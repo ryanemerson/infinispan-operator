@@ -776,11 +776,11 @@ func RunOperator(m *testing.M, k *TestKubernetes) {
 	if RunLocalOperator == "TRUE" {
 		if RunSaOperator != "TRUE" {
 			k.DeleteNamespace(namespace)
-			k.DeleteCRD("infinispans.infinispan.org")
-			k.DeleteCRD("caches.infinispan.org")
-			k.DeleteCRD("backup.infinispan.org")
-			k.DeleteCRD("restore.infinispan.org")
-			k.DeleteCRD("batch.infinispan.org")
+			//k.DeleteCRD("infinispans.infinispan.org")
+			//k.DeleteCRD("caches.infinispan.org")
+			//k.DeleteCRD("backup.infinispan.org")
+			//k.DeleteCRD("restore.infinispan.org")
+			//k.DeleteCRD("batch.infinispan.org")
 			k.NewNamespace(namespace)
 		}
 		stopOperator := k.RunOperator(namespace, "../../../config/crd/bases/")
