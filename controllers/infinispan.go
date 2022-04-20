@@ -3,18 +3,21 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
-	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
+	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	pipelineBuilder "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/builder"
 	pipelineContext "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/context"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // TODO rename once InfinispanReconciler removed
@@ -40,7 +43,7 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	)
 	// Initialize default operator labels and annotations
 	var err error
-	if defaultLabels, defaultAnnotations, err = infinispanv1.LoadDefaultLabelsAndAnnotations(); err != nil {
+	if defaultLabels, defaultAnnotations, err = ispnv1.LoadDefaultLabelsAndAnnotations(); err != nil {
 		return err
 	}
 	r.defaultLabels = defaultLabels
@@ -61,7 +64,24 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&infinispanv1.Infinispan{}).
+		For(&ispnv1.Infinispan{}).
+		Owns(&corev1.Secret{}).
+		WithEventFilter(predicate.Funcs{
+			CreateFunc: func(e event.CreateEvent) bool {
+				switch e.Object.(type) {
+				case *corev1.Secret:
+					return false
+				}
+				return true
+			},
+			DeleteFunc: func(e event.DeleteEvent) bool {
+				switch e.Object.(type) {
+				case *ispnv1.Infinispan:
+					return false
+				}
+				return true
+			},
+		}).
 		Complete(r)
 }
 
@@ -91,7 +111,7 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request) (ctrl.Result, error) {
 	reqLogger := r.log.WithValues("infinispan", ctrlRequest.NamespacedName)
 	// Fetch the Infinispan instance
-	instance := &infinispanv1.Infinispan{}
+	instance := &ispnv1.Infinispan{}
 	if err := r.Get(ctx, ctrlRequest.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			r.log.Info("Infinispan CR not found")
@@ -100,8 +120,6 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, fmt.Errorf("unable to fetch Infinispan CR %w", err)
 	}
-
-	fmt.Println(instance.Spec.Container.Memory)
 
 	// Don't reconcile Infinispan CRs marked for deletion
 	if instance.GetDeletionTimestamp() != nil {
