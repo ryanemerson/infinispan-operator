@@ -8,8 +8,14 @@ import (
 	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/server"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/security"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	corev1 "k8s.io/api/core/v1"
 	"net/url"
 	"strings"
+)
+
+const (
+	EncryptPkcs12KeystoreName = "keystore.p12"
+	EncryptPemKeystoreName    = "keystore.pem"
 )
 
 // TODO how to reuse server generation during HotRod rolling upgrade?
@@ -17,15 +23,7 @@ import (
 // server config is statefulset name, xsite backups
 func InfinispanServer(ctx pipeline.Context) {
 	i := ctx.Instance()
-	serverConf, err := generateServer(i.GetStatefulSetName(), i, nil)
-	if err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to generate infinispan.xml: %w", err))
-		return
-	}
-	ctx.ConfigFiles().ServerConfig = serverConf
-}
 
-func generateServer(statefulSet string, i *v1.Infinispan, xsite interface{}) (string, error) {
 	var roleMapper string
 	if i.IsClientCertEnabled() && i.Spec.Security.EndpointEncryption.ClientCert == v1.ClientCertAuthenticate {
 		roleMapper = "commonName"
@@ -36,7 +34,7 @@ func generateServer(statefulSet string, i *v1.Infinispan, xsite interface{}) (st
 	configSpec := &config.Spec{
 		ClusterName:     i.Name,
 		Namespace:       i.Namespace,
-		StatefulSetName: statefulSet,
+		StatefulSetName: i.GetStatefulSetName(),
 		Infinispan: config.Infinispan{
 			Authorization: &config.Authorization{
 				Enabled:    i.IsAuthorizationEnabled(),
@@ -74,10 +72,28 @@ func generateServer(statefulSet string, i *v1.Infinispan, xsite interface{}) (st
 			CacheEntriesTopic: i.Spec.CloudEvents.CacheEntriesTopic,
 		}
 	}
-	// TODO Add TLS
+	if i.IsEncryptionEnabled() {
+		ks := ctx.ConfigFiles().Keystore
+		configSpec.Keystore = config.Keystore{
+			Alias: ks.Alias,
+			// Actual value is not used by template, but required to show that a credential ref is required
+			Password: ks.Password,
+			Path:     ks.Path,
+		}
+
+		if i.IsClientCertEnabled() {
+			configSpec.Endpoints.ClientCert = string(i.Spec.Security.EndpointEncryption.ClientCert)
+			configSpec.Truststore.Path = fmt.Sprintf("%s/%s", consts.ServerEncryptTruststoreRoot, consts.EncryptTruststoreKey)
+		}
+	}
 
 	// TODO utilise a version specific configurator once server/operator versions decoupled
-	return config.Generate(nil, configSpec)
+	serverConf, err := config.Generate(nil, configSpec)
+	if err != nil {
+		ctx.RetryProcessing(fmt.Errorf("unable to generate infinispan.xml: %w", err))
+		return
+	}
+	ctx.ConfigFiles().ServerConfig = serverConf
 }
 
 func Logging(ctx pipeline.Context) {
@@ -182,6 +198,114 @@ func IdentitiesBatch(ctx pipeline.Context) {
 		}
 		batch += usersCliBatch
 	}
-	// TODO add TLS batch commands
+
+	if i.IsEncryptionEnabled() {
+		configFiles := ctx.ConfigFiles()
+
+		// Add the keystore credential if the user has provided their own keystore
+		if configFiles.Keystore.Password != "" {
+			batch += fmt.Sprintf("credentials add keystore -c \"%s\" -p secret\n", configFiles.Keystore.Password)
+		}
+
+		if i.IsClientCertEnabled() {
+			batch += fmt.Sprintf("credentials add truststore -c \"%s\" -p secret\n", configFiles.Truststore.Password)
+		}
+	}
+
 	configFiles.IdentitiesBatch = batch
+}
+
+func Keystore(ctx pipeline.Context) {
+	i := ctx.Instance()
+
+	if !i.IsEncryptionEnabled() {
+		return
+	}
+
+	keystoreSecret := &corev1.Secret{}
+	if err := ctx.Resources().Load(i.GetKeystoreSecretName(), keystoreSecret); err != nil {
+		ctx.RetryProcessing(fmt.Errorf("unable to load user keystore secret: %w", err))
+		return
+	}
+
+	keystore := &pipeline.Keystore{}
+	if i.IsEncryptionCertFromService() {
+		if strings.Contains(i.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
+			keystore.Path = consts.ServerOperatorSecurity + "/" + EncryptPemKeystoreName
+		}
+	} else {
+		if userKeystore, exists := keystoreSecret.Data[EncryptPkcs12KeystoreName]; exists {
+			// If the user provides a keystore in secret then use it ...
+			keystore.Path = fmt.Sprintf("%s/%s", consts.ServerEncryptKeystoreRoot, EncryptPkcs12KeystoreName)
+			keystore.Alias = string(keystoreSecret.Data["alias"])
+			keystore.Password = string(keystoreSecret.Data["password"])
+			keystore.File = userKeystore
+		} else if IsUserProvidedPrivateKey(keystoreSecret) {
+			keystore.Path = consts.ServerOperatorSecurity + "/" + EncryptPemKeystoreName
+			keystore.PemFile = append(keystoreSecret.Data["tls.key"], keystoreSecret.Data["tls.crt"]...)
+		}
+	}
+	ctx.ConfigFiles().Keystore = keystore
+}
+
+func Truststore(ctx pipeline.Context) {
+	i := ctx.Instance()
+
+	if !i.IsClientCertEnabled() {
+		return
+	}
+
+	trustSecret := &corev1.Secret{}
+	if err := ctx.Resources().Load(i.GetTruststoreSecretName(), trustSecret); err != nil {
+		ctx.RetryProcessing(fmt.Errorf("unable to load user truststore secret: %w", err))
+		return
+	}
+
+	passwordBytes, passwordProvided := trustSecret.Data[consts.EncryptTruststorePasswordKey]
+	password := string(passwordBytes)
+
+	// If Truststore and password already exist, nothing to do
+	if truststore, exists := trustSecret.Data[consts.EncryptTruststoreKey]; exists {
+		if !passwordProvided {
+			ctx.RetryProcessing(fmt.Errorf("the '%s' key must be provided when configuring an existing Truststore", consts.EncryptTruststorePasswordKey))
+			return
+		}
+		ctx.ConfigFiles().Truststore = &pipeline.Truststore{
+			File:     truststore,
+			Password: password,
+		}
+		return
+	}
+
+	if !passwordProvided {
+		password = "password"
+	}
+
+	// Generate Truststore from provided ca and cert files
+	caPem := trustSecret.Data["trust.ca"]
+	certs := [][]byte{caPem}
+
+	for certKey := range trustSecret.Data {
+		if strings.HasPrefix(certKey, "trust.cert.") {
+			certs = append(certs, trustSecret.Data[certKey])
+		}
+	}
+	truststore, err := security.GenerateTruststore(certs, password)
+	if err != nil {
+		ctx.RetryProcessing(err)
+		return
+	}
+	ctx.ConfigFiles().Truststore = &pipeline.Truststore{
+		File:     truststore,
+		Password: password,
+	}
+}
+
+func IsUserProvidedPrivateKey(secret *corev1.Secret) bool {
+	for _, k := range []string{corev1.TLSPrivateKeyKey, corev1.TLSCertKey} {
+		if _, ok := secret.Data[k]; !ok {
+			return false
+		}
+	}
+	return true
 }

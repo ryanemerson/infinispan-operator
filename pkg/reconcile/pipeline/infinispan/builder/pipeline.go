@@ -136,6 +136,8 @@ func (b *builder) Build() pipeline.Pipeline {
 
 	// Configuration Handlers
 	handlers.Add(
+		configure.Keystore,
+		configure.Truststore,
 		configure.InfinispanServer,
 		configure.Logging,
 		configure.AdminIdentities,
@@ -148,6 +150,7 @@ func (b *builder) Build() pipeline.Pipeline {
 		provision.UserAuthenticationSecret,
 		provision.AdminSecret,
 		provision.InfinispanSecuritySecret,
+		provision.TruststoreSecret,
 		provision.InfinispanConfigMap,
 		provision.PingService,
 		provision.AdminService,
@@ -183,6 +186,13 @@ type handlerBuilder struct {
 
 func (h *handlerBuilder) Add(handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
 	h.handlers = append(h.handlers, handlerFunc...)
+	return h
+}
+
+func (h *handlerBuilder) AddFeatureSpecific(predicate bool, handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
+	if predicate {
+		return h.Add(handlerFunc...)
+	}
 	return h
 }
 

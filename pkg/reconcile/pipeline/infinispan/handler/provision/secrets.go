@@ -52,15 +52,37 @@ func AdminSecret(ctx pipeline.Context) {
 
 func InfinispanSecuritySecret(ctx pipeline.Context) {
 	i := ctx.Instance()
+	configFiles := ctx.ConfigFiles()
+
 	secret := newSecret(i.GetInfinispanSecuritySecretName(), i.Namespace)
 	secret.Labels = i.Labels("infinispan-secret-server-security")
 	secret.Data = map[string][]byte{
-		consts.ServerIdentitiesCliFilename: []byte(ctx.ConfigFiles().IdentitiesBatch),
-		// TODO add keystore.pem EncryptPemKeystoreName
+		consts.ServerIdentitiesCliFilename: []byte(configFiles.IdentitiesBatch),
 	}
+
+	if i.IsEncryptionEnabled() && len(configFiles.Keystore.PemFile) > 0 {
+		secret.Data["keystore.pem"] = configFiles.Keystore.PemFile
+	}
+
 	if err := ctx.SetControllerReference(secret); err != nil {
 		ctx.RetryProcessing(err)
 		return
+	}
+	ctx.Resources().Define(secret)
+}
+
+func TruststoreSecret(ctx pipeline.Context) {
+	i := ctx.Instance()
+
+	if !i.IsClientCertEnabled() {
+		return
+	}
+
+	truststore := ctx.ConfigFiles().Truststore
+	secret := newSecret(i.GetTruststoreSecretName(), i.Namespace)
+	secret.Data = map[string][]byte{
+		consts.EncryptTruststoreKey:         truststore.File,
+		consts.EncryptTruststorePasswordKey: []byte(truststore.Password),
 	}
 	ctx.Resources().Define(secret)
 }

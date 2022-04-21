@@ -16,6 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// TODO add constants file for common logic
+
 // Pipeline for Infinispan reconciliation
 type Pipeline interface {
 	// Process given Infinispan CR
@@ -102,7 +104,7 @@ type ConfigFiles struct {
 	IdentitiesBatch string
 	UserConfig      UserConfig
 	Keystore        *Keystore
-	Truststore      *Keystore
+	Truststore      *Truststore
 }
 
 type UserConfig struct {
@@ -119,13 +121,24 @@ type AdminIdentities struct {
 }
 
 type Keystore struct {
-	File     []byte
 	Alias    string
+	File     []byte
+	PemFile  []byte
+	Password string
+	Path     string
+}
+
+type Truststore struct {
+	File     []byte
 	Password string
 }
 
 type Resources interface {
 	Define(obj client.Object)
+	// TODO add Get. Like Load, except that no error is returned and a panic is thrown if the resource does not exist
+	// Use for actions in a pipeline that have a hard requirement on a resource that should already have been loaded by a prior step?
+	// OR just call LOAD as required and remove collect stage entirely?
+	// The collection and configure packages can be merged into one?
 	Load(name string, obj client.Object) error
 	LoadWithNoCaching(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error

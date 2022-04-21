@@ -282,24 +282,26 @@ func buildStartupArgs(overlayConfigMapKey string, overlayLog4jConfig bool) []str
 	return strings.Fields(args.String())
 }
 
-func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
-	//applyExternalDependenciesVolume(i, &statefulset.Spec.Template.Spec)
-	//if i.IsEncryptionEnabled() {
-	//	AddVolumesForEncryption(i, &statefulset.Spec.Template.Spec)
-	//	ispnContainer.Env = append(ispnContainer.Env,
-	//		corev1.EnvVar{
-	//			Name:  "KEYSTORE_HASH",
-	//			Value: hash.HashMap(keystoreSecret.Data),
-	//		})
-	//
-	//	if i.IsClientCertEnabled() {
-	//		ispnContainer.Env = append(ispnContainer.Env,
-	//			corev1.EnvVar{
-	//				Name:  "TRUSTSTORE_HASH",
-	//				Value: hash.HashMap(trustSecret.Data),
-	//			})
-	//	}
-	//}
+func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet) {
+	if i.IsEncryptionEnabled() {
+		AddVolumesForEncryption(i, &statefulSet.Spec.Template.Spec)
+		configFiles := ctx.ConfigFiles()
+		ispnContainer := GetContainer(InfinispanContainer, &statefulSet.Spec.Template.Spec)
+		ispnContainer.Env = append(ispnContainer.Env,
+			corev1.EnvVar{
+				Name: "KEYSTORE_HASH",
+				// Compute the hash using both the Pem and P12 file for simplicity. Only one field should be set at anyone time
+				Value: hash.HashByte(configFiles.Keystore.PemFile) + hash.HashByte(configFiles.Keystore.File),
+			})
+
+		if i.IsClientCertEnabled() {
+			ispnContainer.Env = append(ispnContainer.Env,
+				corev1.EnvVar{
+					Name:  "TRUSTSTORE_HASH",
+					Value: hash.HashByte(configFiles.Truststore.File),
+				})
+		}
+	}
 }
 
 func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {

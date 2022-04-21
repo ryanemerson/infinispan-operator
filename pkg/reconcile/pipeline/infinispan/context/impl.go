@@ -212,12 +212,12 @@ func (i impl) createOrPatch(obj client.Object) error {
 	}
 
 	// Merge the latest changes into the existing k8s resource object so that the newly defined fields always win
-	if err := mergo.Merge(&existingUnstr, objUnstr, mergo.WithSliceDeepCopy); err != nil {
+	if err = mergo.Merge(&existingUnstr, objUnstr, mergo.WithSliceDeepCopy); err != nil {
 		return err
 	}
 
 	latest := reflect.New(objType).Interface().(client.Object)
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(existingUnstr, latest); err != nil {
+	if err = runtime.DefaultUnstructuredConverter.FromUnstructured(existingUnstr, latest); err != nil {
 		return err
 	}
 
@@ -231,7 +231,7 @@ func (i impl) createOrPatch(obj client.Object) error {
 	changeLog = changeLog.FilterOut(strings.Fields("Status"))
 	changeLog = changeLog.FilterOut(strings.Fields("ObjectMeta CreationTimestamp Time"))
 	if len(changeLog) > 0 {
-		if err := i.Client.Update(i.ctx, latest); err != nil {
+		if err = i.Client.Update(i.ctx, latest); err != nil {
 			return err
 		}
 	}

@@ -3,10 +3,15 @@ package controllers
 import (
 	"context"
 	"fmt"
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/go-logr/logr"
-	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
-	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
+	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	pipelineBuilder "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/builder"
 	pipelineContext "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/context"
@@ -32,28 +37,46 @@ type IspnReconciler struct {
 }
 
 func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	kubernetes := kube.NewKubernetesFromController(mgr)
+
 	r.Client = mgr.GetClient()
 	r.log = ctrl.Log.WithName("controllers").WithName("Infinispan")
-	kube := kubernetes.NewKubernetesFromController(mgr)
 	r.contextProvider = pipelineContext.Provider(
 		r.Client,
 		mgr.GetScheme(),
-		kube,
+		kubernetes,
 		mgr.GetEventRecorderFor("controller-infinispan"),
 	)
-	// Initialize default operator labels and annotations
+
+	ctx := context.TODO()
 	var err error
-	if defaultLabels, defaultAnnotations, err = ispnv1.LoadDefaultLabelsAndAnnotations(); err != nil {
+	// Add Secret name fields to the index for caching
+	if err = mgr.GetFieldIndexer().IndexField(ctx, &infinispanv1.Infinispan{}, "spec.security.endpointSecretName", func(obj client.Object) []string {
+		return []string{obj.(*infinispanv1.Infinispan).GetSecretName()}
+	}); err != nil {
 		return err
 	}
-	r.defaultLabels = defaultLabels
-	r.defaultAnnotations = defaultAnnotations
-	r.log.Info("Defaults:", "Annotations", defaultAnnotations, "Labels", defaultLabels)
+	if err = mgr.GetFieldIndexer().IndexField(ctx, &infinispanv1.Infinispan{}, "spec.security.endpointEncryption.certSecretName", func(obj client.Object) []string {
+		return []string{obj.(*infinispanv1.Infinispan).GetKeystoreSecretName()}
+	}); err != nil {
+		return err
+	}
+	if err = mgr.GetFieldIndexer().IndexField(ctx, &infinispanv1.Infinispan{}, "spec.security.endpointEncryption.clientCertSecretName", func(obj client.Object) []string {
+		return []string{obj.(*infinispanv1.Infinispan).GetTruststoreSecretName()}
+	}); err != nil {
+		return err
+	}
+
+	if err = mgr.GetFieldIndexer().IndexField(ctx, &infinispanv1.Infinispan{}, "spec.configMapName", func(obj client.Object) []string {
+		return []string{obj.(*infinispanv1.Infinispan).Spec.ConfigMapName}
+	}); err != nil {
+		return err
+	}
 
 	r.supportedTypes = make(map[schema.GroupVersionKind]struct{}, 3)
 	for _, gvk := range []schema.GroupVersionKind{infinispan.IngressGVK, infinispan.RouteGVK, infinispan.ServiceMonitorGVK} {
 		// Validate that GroupVersionKind is supported on runtime platform
-		ok, err := kube.IsGroupVersionKindSupported(gvk)
+		ok, err := kubernetes.IsGroupVersionKindSupported(gvk)
 		if err != nil {
 			r.log.Error(err, fmt.Sprintf("failed to check if GVK '%s' is supported", gvk))
 			continue
@@ -63,25 +86,86 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 	}
 
+	// Initialize default operator labels and annotations
+	if defaultLabels, defaultAnnotations, err = infinispanv1.LoadDefaultLabelsAndAnnotations(); err != nil {
+		return err
+	}
+	r.defaultLabels = defaultLabels
+	r.defaultAnnotations = defaultAnnotations
+	r.log.Info("Defaults:", "Annotations", defaultAnnotations, "Labels", defaultLabels)
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ispnv1.Infinispan{}).
+		For(&infinispanv1.Infinispan{}).
+		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&appsv1.StatefulSet{}).
 		WithEventFilter(predicate.Funcs{
 			CreateFunc: func(e event.CreateEvent) bool {
 				switch e.Object.(type) {
+				case *corev1.ConfigMap:
+					return false
 				case *corev1.Secret:
+					return false
+				case *appsv1.StatefulSet:
 					return false
 				}
 				return true
 			},
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				switch e.Object.(type) {
-				case *ispnv1.Infinispan:
+				case *corev1.ConfigMap:
+					return false
+				case *infinispanv1.Infinispan:
 					return false
 				}
 				return true
 			},
 		}).
+		Watches(
+			&source.Kind{Type: &corev1.Secret{}},
+			handler.EnqueueRequestsFromMapFunc(
+				func(a client.Object) []reconcile.Request {
+					var requests []reconcile.Request
+					// Lookup only Secrets not controlled by Infinispan CR GVK. This means it's a custom defined Secret
+					if !kube.IsControlledByGVK(a.GetOwnerReferences(), infinispanv1.SchemeBuilder.GroupVersion.WithKind(reflect.TypeOf(infinispanv1.Infinispan{}).Name())) {
+						for _, field := range []string{"spec.security.endpointSecretName", "spec.security.endpointEncryption.certSecretName", "spec.security.endpointEncryption.clientCertSecretName"} {
+							ispnList := &infinispanv1.InfinispanList{}
+							if err := kubernetes.ResourcesListByField(a.GetNamespace(), field, a.GetName(), ispnList, ctx); err != nil {
+								r.log.Error(err, "failed to list Infinispan CR")
+							}
+							for _, item := range ispnList.Items {
+								requests = append(requests, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: item.GetNamespace(), Name: item.GetName()}})
+							}
+							if len(requests) > 0 {
+								return requests
+							}
+						}
+					}
+					return nil
+				}),
+		).
+		Watches(
+			&source.Kind{Type: &corev1.ConfigMap{}},
+			handler.EnqueueRequestsFromMapFunc(
+				func(a client.Object) []reconcile.Request {
+					var requests []reconcile.Request
+					// Lookup only ConfigMap not controlled by Infinispan CR GVK. This means it's a custom defined ConfigMap
+					if !kube.IsControlledByGVK(a.GetOwnerReferences(), infinispanv1.SchemeBuilder.GroupVersion.WithKind(reflect.TypeOf(infinispanv1.Infinispan{}).Name())) {
+						ispnList := &infinispanv1.InfinispanList{}
+						if err := kubernetes.ResourcesListByField(a.GetNamespace(), "spec.configMapName", a.GetName(), ispnList, ctx); err != nil {
+							r.log.Error(err, "failed to list Infinispan CR")
+						}
+						for _, item := range ispnList.Items {
+							requests = append(requests, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: item.GetNamespace(), Name: item.GetName()}})
+						}
+						if len(requests) > 0 {
+							return requests
+						}
+					}
+					return nil
+				}),
+		).
 		Complete(r)
 }
 
@@ -111,7 +195,7 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request) (ctrl.Result, error) {
 	reqLogger := r.log.WithValues("infinispan", ctrlRequest.NamespacedName)
 	// Fetch the Infinispan instance
-	instance := &ispnv1.Infinispan{}
+	instance := &infinispanv1.Infinispan{}
 	if err := r.Get(ctx, ctrlRequest.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {
 			r.log.Info("Infinispan CR not found")
