@@ -7,7 +7,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"strings"
 )
 
 func UserAuthenticationSecret(ctx pipeline.Context) {
@@ -72,6 +71,7 @@ func UserConfigMap(ctx pipeline.Context) {
 			break
 		}
 	}
+
 	// Check if the user added a custom log4j.xml config
 	userLog4j, overlayLog4jConfig := overlayConfigMap.Data["log4j.xml"]
 
@@ -84,7 +84,7 @@ func UserConfigMap(ctx pipeline.Context) {
 	configFiles.UserConfig = pipeline.UserConfig{
 		Log4j:                userLog4j,
 		ServerConfig:         overlayConfigMap.Data[overlayConfigMapKey],
-		ServerConfigEncoding: strings.Split(overlayConfigMapKey, ".")[1],
+		ServerConfigFileName: overlayConfigMapKey,
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	diff "github.com/r3labs/diff/v2"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"strings"
 	"time"
 )
 
@@ -37,17 +38,21 @@ func StatefulSetRollingUpgrade(ctx pipeline.Context) {
 		return
 	}
 
-	// Compare the existing StatefulSet spec to the one defined on this reconciliation
-	changeLog, err := diff.Diff(existingSS.Spec, mergedSS.Spec)
+	// Compare the existing StatefulSet to the one defined on this reconciliation
+	changeLog, err := diff.Diff(existingSS, mergedSS)
 	if err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to determine if StatefulSet upgrade is required: %w", err))
 		return
 	}
 
+	// Ignore irrelevant fields
+	changeLog = changeLog.FilterOut(strings.Fields("Status"))
+	changeLog = changeLog.FilterOut(strings.Fields("ObjectMeta CreationTimestamp Time"))
+
 	numChanges := len(changeLog)
 	if numChanges > 0 {
 		// Upgrade required
-		withoutReplicas := changeLog.FilterOut([]string{"Replicas"})
+		withoutReplicas := changeLog.FilterOut([]string{"Spec Replicas"})
 		if len(withoutReplicas) < numChanges {
 			ctx.Log().Info("replicas changed, update infinispan", "replicas", mergedSS.Spec.Replicas, "previous replicas", existingSS.Spec.Replicas)
 

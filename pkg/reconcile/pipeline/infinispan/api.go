@@ -105,7 +105,7 @@ type ConfigFiles struct {
 
 type UserConfig struct {
 	ServerConfig         string
-	ServerConfigEncoding string
+	ServerConfigFileName string
 	Log4j                string
 }
 

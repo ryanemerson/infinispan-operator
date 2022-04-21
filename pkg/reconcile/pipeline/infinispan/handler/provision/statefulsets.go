@@ -97,7 +97,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 					Affinity: i.Spec.Affinity,
 					Containers: []corev1.Container{{
 						Image: i.ImageName(),
-						Args:  buildStartupArgs(configFiles.UserConfig.ServerConfigEncoding, configFiles.UserConfig.Log4j != ""),
+						Args:  buildStartupArgs(configFiles.UserConfig),
 						Name:  InfinispanContainer,
 						Env: PodEnv(i, &[]corev1.EnvVar{
 							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},
@@ -232,10 +232,8 @@ func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulse
 	if !i.UserConfigDefined() {
 		return
 	}
-	userConfig := &ctx.ConfigFiles().UserConfig
-	customConfig := userConfig.ServerConfig
-	statefulset.Annotations["checksum/overlayConfig"] = hash.HashString(customConfig)
 
+	statefulset.Annotations["checksum/overlayConfig"] = hash.HashString(ctx.ConfigFiles().UserConfig.ServerConfig)
 	volumes := &statefulset.Spec.Template.Spec.Volumes
 	*volumes = append(*volumes, corev1.Volume{
 		Name: UserConfVolumeName,
@@ -253,7 +251,7 @@ func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulse
 	})
 }
 
-func buildStartupArgs(overlayConfigMapKey string, overlayLog4jConfig bool) []string {
+func buildStartupArgs(userConfig pipeline.UserConfig) []string {
 	var args strings.Builder
 
 	// Preallocate a buffer to speed up string building (saves code from growing the memory dynamically)
@@ -261,7 +259,7 @@ func buildStartupArgs(overlayConfigMapKey string, overlayLog4jConfig bool) []str
 
 	// Check if the user defined a custom log4j config
 	args.WriteString(" -l ")
-	if overlayLog4jConfig {
+	if userConfig.Log4j != "" {
 		args.WriteString("user/log4j.xml")
 	} else {
 		args.WriteString(OperatorConfMountPath)
@@ -269,9 +267,9 @@ func buildStartupArgs(overlayConfigMapKey string, overlayLog4jConfig bool) []str
 	}
 
 	// Check if the user defined an overlay operator config
-	if overlayConfigMapKey != "" {
+	if userConfig.ServerConfig != "" {
 		args.WriteString(" -c user/")
-		args.WriteString(overlayConfigMapKey)
+		args.WriteString(userConfig.ServerConfigFileName)
 	}
 	args.WriteString(" -c operator/infinispan.xml")
 
