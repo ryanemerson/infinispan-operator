@@ -7,7 +7,7 @@ import (
 	"text/template"
 
 	rice "github.com/GeertJohan/go.rice"
-	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
+	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -21,7 +21,7 @@ const (
 	ExternalArtifactsHashValidationCommand = "echo %s %s | %ssum -c"
 )
 
-func applyExternalDependenciesVolume(ispn *infinispanv1.Infinispan, spec *corev1.PodSpec) (updated bool) {
+func applyExternalDependenciesVolume(ispn *ispnv1.Infinispan, spec *corev1.PodSpec) (updated bool) {
 	ispnContainer := GetContainer(InfinispanContainer, spec)
 	volumes := &spec.Volumes
 	volumeMounts := &ispnContainer.VolumeMounts
@@ -39,7 +39,7 @@ func applyExternalDependenciesVolume(ispn *infinispanv1.Infinispan, spec *corev1
 	return
 }
 
-func applyExternalArtifactsDownload(ispn *infinispanv1.Infinispan, spec *corev1.PodSpec) (updated bool, retErr error) {
+func applyExternalArtifactsDownload(ispn *ispnv1.Infinispan, spec *corev1.PodSpec) (updated bool, retErr error) {
 	initContainers := &spec.InitContainers
 	ispnContainer := GetContainer(InfinispanContainer, spec)
 	volumes := &spec.Volumes
@@ -82,7 +82,7 @@ func applyExternalArtifactsDownload(ispn *infinispanv1.Infinispan, spec *corev1.
 	return
 }
 
-func externalArtifactsExtractCommand(ispn *infinispanv1.Infinispan) (string, error) {
+func externalArtifactsExtractCommand(ispn *ispnv1.Infinispan) (string, error) {
 	box, err := rice.FindBox("resources")
 	if err != nil {
 		return "", err
@@ -93,7 +93,7 @@ func externalArtifactsExtractCommand(ispn *infinispanv1.Infinispan) (string, err
 	}
 
 	tmpl, err := template.New("init-container").Funcs(template.FuncMap{
-		"hashCmd": func(artifact infinispanv1.InfinispanExternalArtifacts, fileName string) (string, error) {
+		"hashCmd": func(artifact ispnv1.InfinispanExternalArtifacts, fileName string) (string, error) {
 			if artifact.Hash == "" {
 				return "", nil
 			}
@@ -113,7 +113,7 @@ func externalArtifactsExtractCommand(ispn *infinispanv1.Infinispan) (string, err
 	var tpl bytes.Buffer
 	err = tmpl.Execute(&tpl, struct {
 		MountPath string
-		Artifacts []infinispanv1.InfinispanExternalArtifacts
+		Artifacts []ispnv1.InfinispanExternalArtifacts
 	}{
 		MountPath: ExternalArtifactsMountPath,
 		Artifacts: ispn.Spec.Dependencies.Artifacts,

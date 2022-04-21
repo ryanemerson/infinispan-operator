@@ -156,11 +156,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 	addTLS(ctx, i, statefulSet)
 	addXSiteTLS(ctx, i, statefulSet)
 
-	if err := ctx.SetControllerReference(statefulSet); err != nil {
-		ctx.RetryProcessing(err)
-		return
-	}
-	ctx.Resources().Define(statefulSet)
+	ctx.Resources().Define(statefulSet, true)
 }
 
 func addUserIdentities(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
@@ -220,7 +216,7 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 			},
 		},
 	}
-	if err := ctx.SetControllerReference(pvc); err != nil {
+	if err := ctx.Resources().SetControllerReference(pvc); err != nil {
 		return err
 	}
 	pvc.OwnerReferences[0].BlockOwnerDeletion = pointer.BoolPtr(false)

@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	ingressv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 )
@@ -207,6 +208,13 @@ func markAllResourcesForDeletion(ctx pipeline.Context, i *ispnv1.Infinispan) {
 	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetAdminServiceName())})
 	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetServiceExternalName())})
 	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetSiteServiceName())})
+
+	// ConfigListener
+	configListenerName := i.GetConfigListenerName()
+	r.MarkForDeletion(&appsv1.Deployment{ObjectMeta: meta(configListenerName)})
+	r.MarkForDeletion(&rbacv1.RoleBinding{ObjectMeta: meta(configListenerName)})
+	r.MarkForDeletion(&rbacv1.Role{ObjectMeta: meta(configListenerName)})
+	r.MarkForDeletion(&corev1.ServiceAccount{ObjectMeta: meta(configListenerName)})
 
 	if ctx.IsTypeSupported(pipeline.RouteGVK) {
 		r.MarkForDeletion(&routev1.Route{ObjectMeta: meta(i.GetServiceExternalName())})

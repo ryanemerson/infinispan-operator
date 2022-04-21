@@ -35,7 +35,7 @@ func PingService(ctx pipeline.Context) {
 			},
 		},
 	}
-	ctx.Resources().Define(service)
+	ctx.Resources().Define(service, true)
 }
 
 func ClusterService(ctx pipeline.Context) {
@@ -67,7 +67,7 @@ func ClusterService(ctx pipeline.Context) {
 			service.Annotations[i.Spec.Security.EndpointEncryption.CertServiceName+"/serving-cert-secret-name"] = secretName
 		}
 	}
-	ctx.Resources().Define(service)
+	ctx.Resources().Define(service, true)
 }
 
 func AdminService(ctx pipeline.Context) {
@@ -92,7 +92,7 @@ func AdminService(ctx pipeline.Context) {
 			},
 		},
 	}
-	ctx.Resources().Define(service)
+	ctx.Resources().Define(service, true)
 }
 
 func ExternalService(ctx pipeline.Context) {
@@ -181,7 +181,7 @@ func defineExternalService(ctx pipeline.Context, i *ispnv1.Infinispan) {
 		exposeSpec.Ports[0].Port = exposeConf.Port
 	}
 	service.Spec = exposeSpec
-	ctx.Resources().Define(service)
+	ctx.Resources().Define(service, true)
 }
 
 func defineExternalRoute(ctx pipeline.Context, i *ispnv1.Infinispan) {
@@ -210,7 +210,7 @@ func defineExternalRoute(ctx pipeline.Context, i *ispnv1.Infinispan) {
 	if i.IsEncryptionEnabled() {
 		route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
 	}
-	ctx.Resources().Define(route)
+	ctx.Resources().Define(route, true)
 }
 
 func defineExternalIngress(ctx pipeline.Context, i *ispnv1.Infinispan) {
@@ -251,7 +251,7 @@ func defineExternalIngress(ctx pipeline.Context, i *ispnv1.Infinispan) {
 			},
 		}
 	}
-	ctx.Resources().Define(ingress)
+	ctx.Resources().Define(ingress, true)
 }
 
 func newService(name, namespace string, labels, annotations map[string]string) *corev1.Service {

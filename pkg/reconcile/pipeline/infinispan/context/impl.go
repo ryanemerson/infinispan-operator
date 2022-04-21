@@ -14,13 +14,11 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"github.com/r3labs/diff/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"strings"
 )
 
@@ -126,10 +124,6 @@ func (i impl) IsTypeSupported(gvk schema.GroupVersionKind) bool {
 	return ok
 }
 
-func (i impl) SetControllerReference(controlled metav1.Object) error {
-	return k8sctrlutil.SetControllerReference(i.instance, controlled, i.scheme)
-}
-
 func (i impl) Close() error {
 	if i.err != nil {
 		//	// Only persist Infinispan Status to persist any errors represented in status.Conditions
@@ -138,6 +132,7 @@ func (i impl) Close() error {
 
 	for _, resource := range i.resources {
 		if resource.delete {
+			fmt.Printf("Delete Kind=%s Name=%s\n", resource.Object.GetObjectKind().GroupVersionKind().Kind, resource.Object.GetName())
 			if err := i.Delete(i.ctx, resource.Object); err != nil {
 				if !errors.IsNotFound(err) {
 					return fmt.Errorf("unable to delete '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)

@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
+	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"os"
 )
 
-func PodPortsWithXsite(i *infinispanv1.Infinispan) []corev1.ContainerPort {
+func PodPortsWithXsite(i *ispnv1.Infinispan) []corev1.ContainerPort {
 	ports := []corev1.ContainerPort{
 		{ContainerPort: consts.InfinispanAdminPort, Name: consts.InfinispanAdminPortName, Protocol: corev1.ProtocolTCP},
 		{ContainerPort: consts.InfinispanPingPort, Name: consts.InfinispanPingPortName, Protocol: corev1.ProtocolTCP},
@@ -80,7 +80,7 @@ func TcpProbe(port, failureThreshold, initialDelay, period, successThreshold, ti
 	}
 }
 
-func PodResources(spec infinispanv1.InfinispanContainerSpec) (*corev1.ResourceRequirements, error) {
+func PodResources(spec ispnv1.InfinispanContainerSpec) (*corev1.ResourceRequirements, error) {
 	memRequests, memLimits, err := spec.GetMemoryResources()
 	if err != nil {
 		return nil, err
@@ -106,7 +106,7 @@ func PodResources(spec infinispanv1.InfinispanContainerSpec) (*corev1.ResourceRe
 	return req, nil
 }
 
-func PodEnv(i *infinispanv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.EnvVar {
+func PodEnv(i *ispnv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.EnvVar {
 	envVars := []corev1.EnvVar{
 		// Prevent the image from generating a user if authentication disabled
 		{Name: "MANAGED_ENV", Value: "TRUE"},
@@ -138,7 +138,7 @@ func PodEnv(i *infinispanv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.Env
 }
 
 // AddVolumeForUserAuthentication returns true if the volume has been added
-func AddVolumeForUserAuthentication(i *infinispanv1.Infinispan, spec *corev1.PodSpec) bool {
+func AddVolumeForUserAuthentication(i *ispnv1.Infinispan, spec *corev1.PodSpec) bool {
 	if _, index := findSecretInVolume(spec, IdentitiesVolumeName); !i.IsAuthenticationEnabled() || index >= 0 {
 		return false
 	}
@@ -173,7 +173,7 @@ func ChmodInitContainer(containerName, volumeName, mountPath string) corev1.Cont
 	}
 }
 
-func AddVolumesForEncryption(i *infinispanv1.Infinispan, spec *corev1.PodSpec) {
+func AddVolumesForEncryption(i *ispnv1.Infinispan, spec *corev1.PodSpec) {
 	AddSecretVolume(i.GetKeystoreSecretName(), EncryptKeystoreVolumeName, consts.ServerEncryptKeystoreRoot, spec, InfinispanContainer)
 
 	if i.IsClientCertEnabled() {

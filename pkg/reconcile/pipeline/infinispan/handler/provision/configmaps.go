@@ -21,9 +21,5 @@ func InfinispanConfigMap(ctx pipeline.Context) {
 			"log4j.xml":      config.Log4j,
 		},
 	}
-	if err := ctx.SetControllerReference(configmap); err != nil {
-		ctx.RetryProcessing(err)
-		return
-	}
-	ctx.Resources().Define(configmap)
+	ctx.Resources().Define(configmap, true)
 }

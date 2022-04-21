@@ -75,10 +75,6 @@ type Context interface {
 
 	IsTypeSupported(gvk schema.GroupVersionKind) bool
 
-	// TODO move to Resources?
-	// Set the controller reference of the passed object to the Infinispan CR being reconciled
-	SetControllerReference(controlled metav1.Object) error
-
 	// Indicates that the cluster should be retried at some later time
 	// The current processing stops and context gets closed
 	RetryProcessing(reason error)
@@ -134,7 +130,7 @@ type Truststore struct {
 }
 
 type Resources interface {
-	Define(obj client.Object)
+	Define(obj client.Object, setControllerRef bool)
 	// TODO add Get. Like Load, except that no error is returned and a panic is thrown if the resource does not exist
 	// Use for actions in a pipeline that have a hard requirement on a resource that should already have been loaded by a prior step?
 	// OR just call LOAD as required and remove collect stage entirely?
@@ -143,6 +139,8 @@ type Resources interface {
 	LoadWithNoCaching(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
 	MarkForDeletion(obj client.Object)
+	// Set the controller reference of the passed object to the Infinispan CR being reconciled
+	SetControllerReference(controlled metav1.Object) error
 }
 
 type ContextProvider interface {

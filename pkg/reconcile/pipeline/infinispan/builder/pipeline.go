@@ -164,6 +164,10 @@ func (b *builder) Build() pipeline.Pipeline {
 		manage.WellFormedCondition,
 	)
 
+	handlers.Add(
+		provision.ConfigListener,
+	)
+
 	handlers.AddEnvSpecific("MAKE_DATADIR_WRITABLE", "true", provision.AddChmodInitContainer)
 
 	// Runtime Handlers

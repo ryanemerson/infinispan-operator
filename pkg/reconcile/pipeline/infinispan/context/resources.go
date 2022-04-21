@@ -3,11 +3,13 @@ package context
 import (
 	"fmt"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type resources struct {
@@ -33,7 +35,15 @@ func (i *impl) Resources() pipeline.Resources {
 	return &resources{i}
 }
 
-func (r resources) Define(obj client.Object) {
+func (r resources) Define(obj client.Object, setControllerRef bool) {
+	if setControllerRef {
+		if err := r.SetControllerReference(obj); err != nil {
+			// Panic so that we don't have to handle errors for all Resources methods
+			// Panic is caught by the pipeline handler and logged, so the Operator won't terminate
+			panic(err)
+		}
+	}
+
 	key := r.resourceKey(obj.GetName(), obj)
 	r.resources[key] = resource{
 		Object: obj,
@@ -78,4 +88,8 @@ func (r resources) MarkForDeletion(obj client.Object) {
 		Object: obj,
 		delete: true,
 	}
+}
+
+func (r resources) SetControllerReference(controlled metav1.Object) error {
+	return k8sctrlutil.SetControllerReference(r.instance, controlled, r.scheme)
 }

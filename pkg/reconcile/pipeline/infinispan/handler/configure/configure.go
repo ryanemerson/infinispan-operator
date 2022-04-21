@@ -2,7 +2,7 @@ package configure
 
 import (
 	"fmt"
-	v1 "github.com/infinispan/infinispan-operator/api/v1"
+	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/logging"
 	config "github.com/infinispan/infinispan-operator/pkg/infinispan/configuration/server"
@@ -25,7 +25,7 @@ func InfinispanServer(ctx pipeline.Context) {
 	i := ctx.Instance()
 
 	var roleMapper string
-	if i.IsClientCertEnabled() && i.Spec.Security.EndpointEncryption.ClientCert == v1.ClientCertAuthenticate {
+	if i.IsClientCertEnabled() && i.Spec.Security.EndpointEncryption.ClientCert == ispnv1.ClientCertAuthenticate {
 		roleMapper = "commonName"
 	} else {
 		roleMapper = "cluster"
@@ -47,7 +47,7 @@ func InfinispanServer(ctx pipeline.Context) {
 		},
 		Endpoints: config.Endpoints{
 			Authenticate: i.IsAuthenticationEnabled(),
-			ClientCert:   string(v1.ClientCertNone),
+			ClientCert:   string(ispnv1.ClientCertNone),
 		},
 		//XSite: xsite,
 	}

@@ -17,7 +17,7 @@ func UserAuthenticationSecret(ctx pipeline.Context) {
 	secret := newSecret(i.GetSecretName(), i.Namespace)
 	secret.Type = corev1.SecretTypeOpaque // TODO is this explicit definition required?
 	secret.Data = map[string][]byte{consts.ServerIdentitiesFilename: ctx.ConfigFiles().UserIdentities}
-	ctx.Resources().Define(secret)
+	ctx.Resources().Define(secret, true)
 }
 
 func AdminSecret(ctx pipeline.Context) {
@@ -34,12 +34,7 @@ func AdminSecret(ctx pipeline.Context) {
 		// AdminSecret doesn't exist, so define one
 		secret = newSecret(secretName, i.Namespace)
 		secret.Labels = i.Labels("infinispan-secret-admin-identities")
-
-		if err := ctx.SetControllerReference(secret); err != nil {
-			ctx.RetryProcessing(err)
-			return
-		}
-		resources.Define(secret)
+		resources.Define(secret, true)
 	}
 	configFiles := ctx.ConfigFiles()
 	secret.Data = map[string][]byte{
@@ -63,12 +58,7 @@ func InfinispanSecuritySecret(ctx pipeline.Context) {
 	if i.IsEncryptionEnabled() && len(configFiles.Keystore.PemFile) > 0 {
 		secret.Data["keystore.pem"] = configFiles.Keystore.PemFile
 	}
-
-	if err := ctx.SetControllerReference(secret); err != nil {
-		ctx.RetryProcessing(err)
-		return
-	}
-	ctx.Resources().Define(secret)
+	ctx.Resources().Define(secret, true)
 }
 
 func TruststoreSecret(ctx pipeline.Context) {
@@ -84,7 +74,7 @@ func TruststoreSecret(ctx pipeline.Context) {
 		consts.EncryptTruststoreKey:         truststore.File,
 		consts.EncryptTruststorePasswordKey: []byte(truststore.Password),
 	}
-	ctx.Resources().Define(secret)
+	ctx.Resources().Define(secret, false)
 }
 
 func newSecret(name, namespace string) *corev1.Secret {
