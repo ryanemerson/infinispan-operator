@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
-	"github.com/imdario/mergo"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/http/curl"
@@ -132,7 +131,6 @@ func (i impl) Close() error {
 
 	for _, resource := range i.resources {
 		if resource.delete {
-			fmt.Printf("Delete Kind=%s Name=%s\n", resource.Object.GetObjectKind().GroupVersionKind().Kind, resource.Object.GetName())
 			if err := i.Delete(i.ctx, resource.Object); err != nil {
 				if !errors.IsNotFound(err) {
 					return fmt.Errorf("unable to delete '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)
@@ -176,6 +174,129 @@ func (i impl) update(update func(ispn *ispnv1.Infinispan)) error {
 	return err
 }
 
+func (i impl) persist(obj client.Object) error {
+	key := client.ObjectKeyFromObject(obj)
+
+	// Create an empty instance of the provided client.Object for retrieval so the passed object's definition is not overwritten
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Ptr {
+		val = reflect.Indirect(val)
+	}
+	objType := val.Type()
+	existing := reflect.New(objType).Interface().(client.Object)
+
+	if err := i.Client.Get(i.ctx, key, existing); err != nil {
+		if errors.IsNotFound(err) {
+			// The resource does not exist, so we create it
+			return i.Create(i.ctx, obj)
+		}
+		return err
+	}
+	return i.Client.Update(i.ctx, obj)
+}
+
+//func (i impl) createOrPatch(obj client.Object) error {
+//	key := client.ObjectKeyFromObject(obj)
+//
+//	// Create an empty instance of the provided client.Object for retrieval so the passed object's definition is not overwritten
+//	val := reflect.ValueOf(obj)
+//	if val.Kind() == reflect.Ptr {
+//		val = reflect.Indirect(val)
+//	}
+//	objType := val.Type()
+//	existing := reflect.New(objType).Interface().(client.Object)
+//
+//	if err := i.Client.Get(i.ctx, key, existing); err != nil {
+//		if errors.IsNotFound(err) {
+//			// The resource does not exist, so we create it
+//			return i.Create(i.ctx, obj)
+//		}
+//		return err
+//	}
+//
+//	existingCopy := existing.DeepCopyObject().(client.Object)
+//	objCopy := obj.DeepCopyObject().(client.Object)
+//
+//	objCopy.SetCreationTimestamp(existingCopy.GetCreationTimestamp())
+//	objCopy.SetGeneration(existingCopy.GetGeneration())
+//	objCopy.SetManagedFields(existingCopy.GetManagedFields())
+//	objCopy.SetResourceVersion(existingCopy.GetResourceVersion())
+//	objCopy.SetUID(existingCopy.GetUID())
+//
+//	//// Convert both the existing and new resource to unstructured so that we can merge the two maps
+//	//existingUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existing.DeepCopyObject())
+//	//if err != nil {
+//	//	return err
+//	//}
+//	//
+//	//objUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
+//	//if err != nil {
+//	//	return err
+//	//}
+//	//
+//	//// Merge the latest changes into the existing k8s resource object so that the newly defined fields always win
+//	//if err = mergo.Merge(&existingUnstr, objUnstr, mergo.WithSliceDeepCopy); err != nil {
+//	//	return err
+//	//}
+//
+//	print := func(header string, bytes []byte) {
+//		fmt.Println(header)
+//		fmt.Println(string(bytes))
+//		fmt.Printf("\n\n\n")
+//	}
+//
+//	existingJson, _ := json.MarshalIndent(existingCopy, "", "    ")
+//	objJson, _ := json.MarshalIndent(objCopy, "", "    ")
+//	patch, err := jsonpatch.CreateMergePatch(existingJson, objJson)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	objExistingPatch, err := jsonpatch.CreateMergePatch(objJson, existingJson)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	print("Existing", existingJson)
+//	print("Obj", objJson)
+//	print("Existing -> Obj Patch", patch)
+//	print("Obj -> Existing Patch", objExistingPatch)
+//
+//	newJson, err := jsonpatch.MergePatch(existingJson, patch)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	existingUnstr := map[string]interface{}{}
+//	if err = json.Unmarshal(newJson, &existingUnstr); err != nil {
+//		panic(err)
+//	}
+//
+//	newPretty, _ := json.MarshalIndent(existingUnstr, "", "    ")
+//	print("Result", newPretty)
+//
+//	latest := reflect.New(objType).Interface().(client.Object)
+//	if err = runtime.DefaultUnstructuredConverter.FromUnstructured(existingUnstr, latest); err != nil {
+//		return err
+//	}
+//
+//	// Get the diff of the existing and latest resource definition
+//	changeLog, err := diff.Diff(existing, latest)
+//	if err != nil {
+//		return err
+//	}
+//
+//	// Only update the k8s resource if there's changes in the diff that we require
+//	changeLog = changeLog.FilterOut(strings.Fields("Status"))
+//	changeLog = changeLog.FilterOut(strings.Fields("ObjectMeta CreationTimestamp Time"))
+//	if len(changeLog) > 0 {
+//		if err = i.Client.Update(i.ctx, latest); err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
+
 func (i impl) createOrPatch(obj client.Object) error {
 	key := client.ObjectKeyFromObject(obj)
 
@@ -195,31 +316,15 @@ func (i impl) createOrPatch(obj client.Object) error {
 		return err
 	}
 
-	// Convert both the existing and new resource to unstructured so that we can merge the two maps
-	existingUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existing.DeepCopyObject())
-	if err != nil {
-		return err
-	}
-
-	objUnstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj.DeepCopyObject())
-	if err != nil {
-		return err
-	}
-
-	// Merge the latest changes into the existing k8s resource object so that the newly defined fields always win
-	if err = mergo.Merge(&existingUnstr, objUnstr, mergo.WithSliceDeepCopy); err != nil {
-		return err
-	}
-
 	latest := reflect.New(objType).Interface().(client.Object)
-	if err = runtime.DefaultUnstructuredConverter.FromUnstructured(existingUnstr, latest); err != nil {
-		return err
+	if err := kube.Merge(latest, existing, obj); err != nil {
+		return fmt.Errorf("unable to merge existing and new resource: %w", err)
 	}
 
 	// Get the diff of the existing and latest resource definition
 	changeLog, err := diff.Diff(existing, latest)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to merge existing and new resource: %w", err)
 	}
 
 	// Only update the k8s resource if there's changes in the diff that we require

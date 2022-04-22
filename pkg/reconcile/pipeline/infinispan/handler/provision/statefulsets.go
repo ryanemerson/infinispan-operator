@@ -97,7 +97,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 					Affinity: i.Spec.Affinity,
 					Containers: []corev1.Container{{
 						Image: i.ImageName(),
-						Args:  buildStartupArgs(configFiles.UserConfig),
+						Args:  buildStartupArgs(ctx.ConfigFiles().UserConfig),
 						Name:  InfinispanContainer,
 						Env: PodEnv(i, &[]corev1.EnvVar{
 							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},

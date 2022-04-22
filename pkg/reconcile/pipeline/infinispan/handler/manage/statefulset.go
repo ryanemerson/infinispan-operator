@@ -2,9 +2,9 @@ package manage
 
 import (
 	"fmt"
-	"github.com/imdario/mergo"
+	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
-	diff "github.com/r3labs/diff/v2"
+	"github.com/r3labs/diff/v2"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"strings"
@@ -31,10 +31,9 @@ func StatefulSetRollingUpgrade(ctx pipeline.Context) {
 		return
 	}
 
-	// Merge the latest changes into the existing k8s resource object so that the newly defined fields always win
-	mergedSS := existingSS.DeepCopy()
-	if err := mergo.Merge(mergedSS, newSS, mergo.WithSliceDeepCopy); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to merge the existing and new StatefulSet spec: %w", err))
+	mergedSS := &appsv1.StatefulSet{}
+	if err := kube.Merge(mergedSS, existingSS, newSS); err != nil {
+		ctx.RetryProcessing(fmt.Errorf("unable to merge the existing and new StatefulSet: %w", err))
 		return
 	}
 
