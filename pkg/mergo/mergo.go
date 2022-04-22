@@ -248,7 +248,7 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 						srcLen := srcSlice.Len()
 						dstLen := dstSlice.Len()
 
-						if srcLen <= dstLen {
+						if srcLen == dstLen {
 							for ; i < srcLen && i < dstLen; i++ {
 								srcElement := srcSlice.Index(i)
 								dstElement := dstSlice.Index(i)

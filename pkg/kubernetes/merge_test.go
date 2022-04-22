@@ -35,6 +35,14 @@ var _ = Describe("Merge", func() {
 										corev1.ResourceMemory: memLimits,
 									},
 								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name: "vm-1",
+									},
+									{
+										Name: "vm-2",
+									},
+								},
 							}},
 						},
 					},
@@ -58,6 +66,11 @@ var _ = Describe("Merge", func() {
 										corev1.ResourceMemory: memLimits,
 									},
 								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name: "vm-1",
+									},
+								},
 							}},
 						},
 					},
@@ -72,6 +85,7 @@ var _ = Describe("Merge", func() {
 			Expect(container.Args).To(Equal(latest.Spec.Template.Spec.Containers[0].Args))
 			Expect(container.Resources.Requests.Memory().String()).To(Equal("256Mi"))
 			Expect(container.Resources.Limits.Memory().String()).To(Equal("512Mi"))
+			Expect(container.VolumeMounts).To(Equal([]corev1.VolumeMount{{Name: "vm-1"}}))
 		})
 	})
 })
