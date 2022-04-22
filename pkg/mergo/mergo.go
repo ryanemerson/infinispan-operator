@@ -6,6 +6,9 @@
 // Based on src/pkg/reflect/deepequal.go from official
 // golang's stdlib.
 
+// Modified version of the https://github.com/imdario/mergo library that updates the behaviour of WithSliceDeepCopy
+// to better suit our needs
+
 package mergo
 
 import (
@@ -239,10 +242,9 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 						dstSlice = reflect.AppendSlice(dstSlice, srcSlice)
 					} else if sliceDeepCopy {
 						i := 0
-						// TODO if the src and dst slice different lengths, how to handle?
-						// Merge src -> dst when indexes are the same
-						// append src when len > dst
-						// Keep behaviour the same when src < len
+						// Modified behaviour of the original Mergo project
+						// Keep the merge behaviour when src and dst slice length is the same, or src < dst
+						// Always merge the full src array if it's greater than the dst
 						srcLen := srcSlice.Len()
 						dstLen := dstSlice.Len()
 
@@ -454,5 +456,3 @@ func isReflectNil(v reflect.Value) bool {
 		return false
 	}
 }
-
-// TODO remove redundant options
