@@ -123,7 +123,6 @@ func (b *builder) Build() pipeline.Pipeline {
 		collect.UserAuthenticationSecret,
 		collect.UserEncryptionSecrets,
 		collect.UserConfigMap,
-		collect.UserDefinedStorageClass,
 		collect.AdminSecret,
 	)
 

@@ -51,13 +51,21 @@ func (r resources) Define(obj client.Object, setControllerRef bool) {
 }
 
 func (r resources) Load(name string, obj client.Object) error {
+	return r.loadAndCache(name, obj, r.LoadWithNoCaching)
+}
+
+func (r resources) LoadGlobal(name string, obj client.Object) error {
+	return r.loadAndCache(name, obj, r.LoadGlobalWithNoCaching)
+}
+
+func (r resources) loadAndCache(name string, obj client.Object, load func(string, client.Object) error) error {
 	key := r.resourceKey(name, obj)
 	if storedObj, ok := r.resources[key]; ok {
 		// Reflection trickery so that the passed obj reference is updated to the stored pointer
 		reflect.ValueOf(obj).Elem().Set(reflect.ValueOf(storedObj.Object).Elem())
 		return nil
 	}
-	if err := r.LoadWithNoCaching(name, obj); err != nil {
+	if err := load(name, obj); err != nil {
 		return err
 	}
 	r.resources[key] = resource{
@@ -67,9 +75,14 @@ func (r resources) Load(name string, obj client.Object) error {
 }
 
 func (r resources) LoadWithNoCaching(name string, obj client.Object) error {
+	// TODO are these necessary?
 	obj.SetName(name)
 	obj.SetNamespace(r.instance.Namespace)
 	return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj)
+}
+
+func (r resources) LoadGlobalWithNoCaching(name string, obj client.Object) error {
+	return r.Client.Get(r.ctx, types.NamespacedName{Name: name}, obj)
 }
 
 func (r resources) List(set map[string]string, list client.ObjectList) error {

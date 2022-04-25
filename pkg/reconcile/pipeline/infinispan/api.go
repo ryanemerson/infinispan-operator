@@ -135,7 +135,11 @@ type Resources interface {
 	// Use for actions in a pipeline that have a hard requirement on a resource that should already have been loaded by a prior step?
 	// OR just call LOAD as required and remove collect stage entirely?
 	// The collection and configure packages can be merged into one?
+	// Loads a resource from the Infinispan namespace
 	Load(name string, obj client.Object) error
+	// Loads a globally scoped resource
+	LoadGlobal(name string, obj client.Object) error
+	LoadGlobalWithNoCaching(name string, obj client.Object) error
 	LoadWithNoCaching(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
 	MarkForDeletion(obj client.Object)

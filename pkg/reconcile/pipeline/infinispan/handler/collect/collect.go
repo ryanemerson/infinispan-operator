@@ -5,7 +5,6 @@ import (
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -85,18 +84,6 @@ func UserConfigMap(ctx pipeline.Context) {
 		Log4j:                userLog4j,
 		ServerConfig:         overlayConfigMap.Data[overlayConfigMapKey],
 		ServerConfigFileName: overlayConfigMapKey,
-	}
-}
-
-func UserDefinedStorageClass(ctx pipeline.Context) {
-	i := ctx.Instance()
-	storageClassName := i.StorageClassName()
-	if i.IsEphemeralStorage() || storageClassName == "" {
-		return
-	}
-
-	if err := ctx.Resources().Load(storageClassName, &storagev1.StorageClass{}); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to load StorageClass '%s': %w", storageClassName, err))
 	}
 }
 

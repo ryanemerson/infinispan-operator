@@ -8,6 +8,7 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -201,10 +202,11 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 		}
 	}
 
-	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
-		Name:      DataMountVolume,
-		Namespace: i.Namespace,
-	},
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      DataMountVolume,
+			Namespace: i.Namespace,
+		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
@@ -220,8 +222,11 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 		return err
 	}
 	pvc.OwnerReferences[0].BlockOwnerDeletion = pointer.BoolPtr(false)
-	// Set a storage class if it specified
+	// Set a storage class if specified
 	if storageClassName := i.StorageClassName(); storageClassName != "" {
+		if err := ctx.Resources().LoadGlobal(storageClassName, &storagev1.StorageClass{}); err != nil {
+			return fmt.Errorf("unable to load StorageClass %s: %v", storageClassName, err)
+		}
 		pvc.Spec.StorageClassName = &storageClassName
 	}
 	statefulset.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{*pvc}
