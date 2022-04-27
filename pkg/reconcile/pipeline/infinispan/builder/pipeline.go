@@ -14,6 +14,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/provision"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"os"
+	"runtime/debug"
 )
 
 var _ pipeline.Pipeline = &impl{}
@@ -57,7 +58,9 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 func invokeHandler(h pipeline.Handler, ctx pipeline.Context) {
 	defer func() {
 		if err := recover(); err != nil {
-			ctx.RetryProcessing(fmt.Errorf("panic occurred: %v", err))
+			e := fmt.Errorf("panic occurred: %v", err)
+			ctx.Log().Error(e, string(debug.Stack()))
+			ctx.RetryProcessing(e)
 		}
 	}()
 	h.Handle(ctx)

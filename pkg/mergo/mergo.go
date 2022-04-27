@@ -70,6 +70,7 @@ func resolveValues(dst, src interface{}) (vDst, vSrc reflect.Value, err error) {
 	}
 	vDst = reflect.ValueOf(dst).Elem()
 	if vDst.Kind() != reflect.Struct && vDst.Kind() != reflect.Map {
+		fmt.Println(vDst.Kind())
 		err = ErrNotSupported
 		return
 	}
@@ -117,7 +118,7 @@ type Config struct {
 }
 
 type Transformers interface {
-	Transformer(reflect.Type) func(dst, src reflect.Value) error
+	Transformer(dst, src reflect.Value) (bool, error)
 }
 
 // Traverses recursively both values, assigning src's fields values to dst.
@@ -130,9 +131,16 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 	overwriteSliceWithEmptySrc := config.overwriteSliceWithEmptyValue
 	sliceDeepCopy := config.sliceDeepCopy
 
+	//if src.IsNil() {
+	//	fmt.Printf("SrcElement=Nil\n")
+	//} else {
+	//	fmt.Printf("SrcElement=%s | SrcInterface=%s\n", src.Kind(), reflect.TypeOf(src.Interface()).Kind())
+	//}
+
 	if !src.IsValid() {
 		return
 	}
+
 	if dst.CanAddr() {
 		addr := dst.UnsafeAddr()
 		h := 17 * addr
@@ -147,12 +155,13 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 		visited[h] = &visit{addr, typ, seen}
 	}
 
-	if config.Transformers != nil && !isEmptyValue(dst) {
-		if fn := config.Transformers.Transformer(dst.Type()); fn != nil {
-			err = fn(dst, src)
-			return
-		}
-	}
+	//if config.Transformers != nil && !isEmptyValue(dst) {
+	//	var transformed bool
+	//	transformed, err = config.Transformers.Transformer(dst, src)
+	//	if transformed {
+	//		return
+	//	}
+	//}
 
 	switch dst.Kind() {
 	case reflect.Struct:
@@ -186,6 +195,11 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 
 		for _, key := range src.MapKeys() {
 			srcElement := src.MapIndex(key)
+			//if srcElement.IsNil() {
+			//	fmt.Printf("Key=%s | SrcElement=Nil\n", key)
+			//} else {
+			//	fmt.Printf("Key=%s | SrcElement=%s | SrcInterface=%s\n", key, srcElement.Kind(), reflect.TypeOf(srcElement.Interface()).Kind())
+			//}
 			if !srcElement.IsValid() {
 				continue
 			}
@@ -241,7 +255,6 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 						}
 						dstSlice = reflect.AppendSlice(dstSlice, srcSlice)
 					} else if sliceDeepCopy {
-						i := 0
 						// Modified behaviour of the original Mergo project
 						// Keep the merge behaviour when src and dst slice length is the same, or src < dst
 						// Always merge the full src array if it's greater than the dst
@@ -249,7 +262,7 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 						dstLen := dstSlice.Len()
 
 						if srcLen == dstLen {
-							for ; i < srcLen && i < dstLen; i++ {
+							for i := 0; i < srcLen && i < dstLen; i++ {
 								srcElement := srcSlice.Index(i)
 								dstElement := dstSlice.Index(i)
 
@@ -260,6 +273,21 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 									dstElement = reflect.ValueOf(dstElement.Interface())
 								}
 
+								srcVal, e := srcElement.Interface().(string)
+								if e {
+									fmt.Printf("Slice:=%s|err=%v\n", srcVal, e)
+									dstVal, e := dstElement.Interface().(string)
+									fmt.Printf("Slice:=%s|err=%v\n", dstVal, e)
+								}
+
+								switch reflect.TypeOf(srcElement.Interface()).Kind() {
+								case reflect.String:
+									// The dst element is not addressable so overwriting of individual elements in the
+									// slice won't work, therefore we always use the src slice in full
+									dstSlice = srcSlice
+									break
+								}
+
 								if err = deepMerge(dstElement, srcElement, visited, depth+1, config); err != nil {
 									return
 								}
@@ -267,7 +295,6 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 						} else {
 							dstSlice = srcSlice
 						}
-
 					}
 					dst.SetMapIndex(key, dstSlice)
 				}
@@ -295,19 +322,48 @@ func deepMerge(dst, src reflect.Value, visited map[uintptr]*visit, depth int, co
 			}
 			dst.Set(reflect.AppendSlice(dst, src))
 		} else if sliceDeepCopy {
-			for i := 0; i < src.Len() && i < dst.Len(); i++ {
-				srcElement := src.Index(i)
-				dstElement := dst.Index(i)
-				if srcElement.CanInterface() {
-					srcElement = reflect.ValueOf(srcElement.Interface())
-				}
-				if dstElement.CanInterface() {
-					dstElement = reflect.ValueOf(dstElement.Interface())
-				}
+			// Modified behaviour of the original Mergo project
+			// Keep the merge behaviour when src and dst slice length is the same, or src < dst
+			// Always merge the full src array if it's greater than the dst
+			srcLen := src.Len()
+			dstLen := dst.Len()
 
-				if err = deepMerge(dstElement, srcElement, visited, depth+1, config); err != nil {
-					return
+			if srcLen == dstLen {
+				for i := 0; i < srcLen && i < dstLen; i++ {
+					srcElement := src.Index(i)
+					dstElement := dst.Index(i)
+
+					if srcElement.CanInterface() {
+						srcElement = reflect.ValueOf(srcElement.Interface())
+					}
+					if dstElement.CanInterface() {
+						dstElement = reflect.ValueOf(dstElement.Interface())
+					}
+
+					fmt.Println(srcElement.Kind())
+					srcVal, e := srcElement.Interface().(string)
+					if e {
+						fmt.Printf("NativeSlice:=%s|err=%v\n", srcVal, e)
+						dstVal, e := dstElement.Interface().(string)
+						fmt.Printf("NativeSlice:=%s|err=%v\n", dstVal, e)
+					}
+
+					switch reflect.TypeOf(srcElement.Interface()).Kind() {
+					case reflect.String:
+						// The dst element is not addressable so overwriting of individual elements in the
+						// slice won't work, therefore we always use the src slice in full
+						dst.Set(src)
+						break
+					default:
+						fmt.Println(reflect.TypeOf(srcElement.Interface()).Kind())
+					}
+
+					if err = deepMerge(dstElement, srcElement, visited, depth+1, config); err != nil {
+						return
+					}
 				}
+			} else {
+				dst.Set(src)
 			}
 		}
 	case reflect.Ptr:

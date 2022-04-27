@@ -147,6 +147,7 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		return
 	}
 
+	applyExternalDependenciesVolume(i, &statefulSet.Spec.Template.Spec)
 	if _, err := applyExternalArtifactsDownload(i, &statefulSet.Spec.Template.Spec); err != nil {
 		ctx.RetryProcessing(err)
 		return
