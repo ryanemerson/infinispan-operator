@@ -7,8 +7,8 @@ import (
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sort"
 	"strings"
 )
@@ -29,12 +29,9 @@ func PrelimChecksCondition(ctx pipeline.Context) {
 func WellFormedCondition(ctx pipeline.Context) {
 	i := ctx.Instance()
 	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().LoadWithNoCaching(i.GetStatefulSetName(), statefulSet); err != nil {
-		if errors.IsNotFound(err) {
-			// StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
-			err = nil
-		}
-		ctx.RetryProcessing(err)
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
+		// Ignore NotFound. StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
+		ctx.RetryProcessing(client.IgnoreNotFound(err))
 		return
 	}
 	podList := &corev1.PodList{}

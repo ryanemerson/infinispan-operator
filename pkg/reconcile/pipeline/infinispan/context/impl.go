@@ -2,7 +2,6 @@ package context
 
 import (
 	"context"
-	"fmt"
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
@@ -11,14 +10,11 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
-	"github.com/r3labs/diff/v2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
-	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 var _ pipeline.Context = &impl{}
@@ -47,7 +43,6 @@ func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConf
 		instance:              config.Instance, // TODO remove and just use value from config directly
 		ctx:                   ctx,
 		ispnConfig:            &pipeline.ConfigFiles{},
-		resources:             make(map[string]resource),
 	}, nil
 }
 
@@ -59,7 +54,6 @@ type impl struct {
 	ctx        context.Context
 	instance   *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
-	resources  map[string]resource
 }
 
 func (i impl) Instance() *ispnv1.Infinispan {
@@ -124,40 +118,11 @@ func (i impl) IsTypeSupported(gvk schema.GroupVersionKind) bool {
 }
 
 func (i impl) Close() error {
-	if i.err != nil {
-		//	// Only persist Infinispan Status to persist any errors represented in status.Conditions
-		return i.updateStatus()
-	}
-
-	for _, resource := range i.resources {
-		if resource.delete {
-			if err := i.Delete(i.ctx, resource.Object); err != nil {
-				if !errors.IsNotFound(err) {
-					return fmt.Errorf("unable to delete '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)
-				}
-			}
-			continue
-		}
-
-		if err := i.createOrPatch(resource.Object); err != nil {
-			// TODO add condition to describe persist resource error?
-			return fmt.Errorf("unable to persist changes to '%s' %s: %w", resource.GetName(), resource.GetObjectKind(), err)
-		}
-	}
-	return i.updateAll()
+	return i.updateStatus()
 }
 
 func (i impl) updateStatus() error {
 	return i.update(func(ispn *ispnv1.Infinispan) {
-		ispn.Status = i.instance.Status
-	})
-}
-
-func (i impl) updateAll() error {
-	return i.update(func(ispn *ispnv1.Infinispan) {
-		ispn.ObjectMeta.Annotations = i.instance.ObjectMeta.Annotations
-		ispn.ObjectMeta.Labels = i.instance.ObjectMeta.Labels
-		ispn.Spec = i.instance.Spec
 		ispn.Status = i.instance.Status
 	})
 }
@@ -172,45 +137,4 @@ func (i impl) update(update func(ispn *ispnv1.Infinispan)) error {
 		return nil
 	})
 	return err
-}
-
-func (i impl) createOrPatch(obj client.Object) error {
-	key := client.ObjectKeyFromObject(obj)
-
-	// Create an empty instance of the provided client.Object for retrieval so the passed object's definition is not overwritten
-	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
-		val = reflect.Indirect(val)
-	}
-	objType := val.Type()
-	existing := reflect.New(objType).Interface().(client.Object)
-
-	if err := i.Client.Get(i.ctx, key, existing); err != nil {
-		if errors.IsNotFound(err) {
-			// The resource does not exist, so we create it
-			return i.Create(i.ctx, obj)
-		}
-		return err
-	}
-
-	latest := reflect.New(objType).Interface().(client.Object)
-	if err := kube.Merge(latest, existing, obj); err != nil {
-		return fmt.Errorf("unable to merge existing and new resource: %w", err)
-	}
-
-	// Get the diff of the existing and latest resource definition
-	changeLog, err := diff.Diff(existing, latest)
-	if err != nil {
-		return fmt.Errorf("unable to merge existing and new resource: %w", err)
-	}
-
-	// Only update the k8s resource if there's changes in the diff that we require
-	changeLog = changeLog.FilterOut(strings.Fields("Status"))
-	changeLog = changeLog.FilterOut(strings.Fields("ObjectMeta CreationTimestamp Time"))
-	if len(changeLog) > 0 {
-		if err = i.Client.Update(i.ctx, latest); err != nil {
-			return err
-		}
-	}
-	return nil
 }

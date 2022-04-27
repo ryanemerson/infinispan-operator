@@ -16,83 +16,80 @@ import (
 func PingService(ctx pipeline.Context) {
 	i := ctx.Instance()
 
-	service := newService(
-		i.GetPingServiceName(),
-		i.Namespace,
-		i.ServiceLabels("infinispan-service-ping"),
-		i.ServiceAnnotations(),
-	)
+	svc := newService(i, i.GetPingServiceName())
 
-	service.Spec = corev1.ServiceSpec{
-		Type:      corev1.ServiceTypeClusterIP,
-		ClusterIP: corev1.ClusterIPNone,
-		Selector:  i.ServiceSelectorLabels(),
-		Ports: []corev1.ServicePort{
-			{
-				Name:       consts.InfinispanPingPortName,
-				Port:       consts.InfinispanPingPort,
-				TargetPort: intstr.FromInt(consts.InfinispanPingPort),
+	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+		svc.Annotations = i.ServiceAnnotations()
+		svc.Labels = i.ServiceLabels("infinispan-service-ping")
+		svc.Spec = corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: corev1.ClusterIPNone,
+			Selector:  i.ServiceSelectorLabels(),
+			Ports: []corev1.ServicePort{
+				{
+					Name:       consts.InfinispanPingPortName,
+					Port:       consts.InfinispanPingPort,
+					TargetPort: intstr.FromInt(consts.InfinispanPingPort),
+				},
 			},
-		},
+		}
+	})
+	if err != nil {
+		ctx.RetryProcessing(err)
 	}
-	ctx.Resources().Define(service, true)
 }
 
 func ClusterService(ctx pipeline.Context) {
 	i := ctx.Instance()
 
-	service := newService(
-		i.GetServiceName(),
-		i.Namespace,
-		i.ServiceLabels("infinispan-service"),
-		i.ServiceAnnotations(),
-	)
-
-	service.Spec = corev1.ServiceSpec{
-		Type:     corev1.ServiceTypeClusterIP,
-		Selector: i.ServiceSelectorLabels(),
-		Ports: []corev1.ServicePort{
+	svc := newService(i, i.GetServiceName())
+	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+		svc.Annotations = i.ServiceAnnotations()
+		svc.Labels = i.ServiceLabels("infinispan-service")
+		svc.Spec.Type = corev1.ServiceTypeClusterIP
+		svc.Spec.Selector = i.ServiceSelectorLabels()
+		svc.Spec.Ports = []corev1.ServicePort{
 			{
 				Name:       consts.InfinispanUserPortName,
 				Port:       consts.InfinispanUserPort,
 				TargetPort: intstr.FromInt(consts.InfinispanPingPort),
 			},
-		},
-	}
-
-	if i.IsEncryptionCertFromService() {
-		if strings.Contains(i.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
-			// Using platform service. Only OpenShift is integrated atm
-			secretName := i.GetKeystoreSecretName()
-			service.Annotations[i.Spec.Security.EndpointEncryption.CertServiceName+"/serving-cert-secret-name"] = secretName
 		}
+
+		if i.IsEncryptionCertFromService() {
+			if strings.Contains(i.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
+				// Using platform service. Only OpenShift is integrated atm
+				secretName := i.GetKeystoreSecretName()
+				svc.Annotations[i.Spec.Security.EndpointEncryption.CertServiceName+"/serving-cert-secret-name"] = secretName
+			}
+		}
+	})
+	if err != nil {
+		ctx.RetryProcessing(err)
 	}
-	ctx.Resources().Define(service, true)
 }
 
 func AdminService(ctx pipeline.Context) {
 	i := ctx.Instance()
 
-	service := newService(
-		i.GetAdminServiceName(),
-		i.Namespace,
-		i.ServiceLabels("infinispan-service-admin"),
-		i.ServiceAnnotations(),
-	)
+	svc := newService(i, i.GetAdminServiceName())
+	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+		svc.Annotations = i.ServiceAnnotations()
+		svc.Labels = i.ServiceLabels("infinispan-service-admin")
 
-	service.Spec = corev1.ServiceSpec{
-		Type:      corev1.ServiceTypeClusterIP,
-		ClusterIP: corev1.ClusterIPNone,
-		Selector:  i.ServiceSelectorLabels(),
-		Ports: []corev1.ServicePort{
+		svc.Spec.Type = corev1.ServiceTypeClusterIP
+		svc.Spec.Selector = i.ServiceSelectorLabels()
+		svc.Spec.Ports = []corev1.ServicePort{
 			{
 				Name:       consts.InfinispanAdminPortName,
 				Port:       consts.InfinispanAdminPort,
 				TargetPort: intstr.FromInt(consts.InfinispanPingPort),
 			},
-		},
+		}
+	})
+	if err != nil {
+		ctx.RetryProcessing(err)
 	}
-	ctx.Resources().Define(service, true)
 }
 
 func ExternalService(ctx pipeline.Context) {
@@ -113,8 +110,11 @@ func ExternalService(ctx pipeline.Context) {
 				if err := ctx.Resources().List(labels, serviceList); err != nil {
 					ctx.Log().Error(err, "unable to list Services for deletion")
 				}
-				for _, service := range serviceList.Items {
-					ctx.Resources().MarkForDeletion(&service)
+				for _, svc := range serviceList.Items {
+					if err := ctx.Resources().Delete(svc.Name, &svc); err != nil {
+						ctx.RetryProcessing(err)
+						return
+					}
 				}
 			case pipeline.RouteGVK:
 				routeList := &routev1.RouteList{}
@@ -122,7 +122,10 @@ func ExternalService(ctx pipeline.Context) {
 					ctx.Log().Error(err, "unable to list Routes for deletion")
 				}
 				for _, route := range routeList.Items {
-					ctx.Resources().MarkForDeletion(&route)
+					if err := ctx.Resources().Delete(route.Name, &route); err != nil {
+						ctx.RetryProcessing(err)
+						return
+					}
 				}
 			case pipeline.IngressGVK:
 				ingressList := &ingressv1.IngressList{}
@@ -130,7 +133,10 @@ func ExternalService(ctx pipeline.Context) {
 					ctx.Log().Error(err, "unable to list Ingress' for deletion")
 				}
 				for _, route := range ingressList.Items {
-					ctx.Resources().MarkForDeletion(&route)
+					if err := ctx.Resources().Delete(route.Name, &route); err != nil {
+						ctx.RetryProcessing(err)
+						return
+					}
 				}
 			}
 		}
@@ -151,37 +157,37 @@ func ExternalService(ctx pipeline.Context) {
 }
 
 func defineExternalService(ctx pipeline.Context, i *ispnv1.Infinispan) {
-	exposeConf := i.Spec.Expose
 	externalServiceType := corev1.ServiceType(i.Spec.Expose.Type)
 
-	service := newService(
-		i.GetServiceExternalName(),
-		i.Namespace,
-		i.ExternalServiceLabels(),
-		i.ServiceAnnotations(),
-	)
-	for k, v := range i.Spec.Expose.Annotations {
-		service.Annotations[k] = v
-	}
+	svc := newService(i, i.GetServiceExternalName())
+	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+		svc.Annotations = i.ServiceAnnotations()
+		for k, v := range i.Spec.Expose.Annotations {
+			svc.Annotations[k] = v
+		}
 
-	exposeSpec := corev1.ServiceSpec{
-		Type:     externalServiceType,
-		Selector: i.ServiceSelectorLabels(),
-		Ports: []corev1.ServicePort{
+		svc.Labels = i.ExternalServiceLabels()
+		svc.Spec.Type = externalServiceType
+		svc.Spec.Selector = i.ServiceSelectorLabels()
+		svc.Spec.Ports = []corev1.ServicePort{
 			{
 				Port:       int32(consts.InfinispanUserPort),
 				TargetPort: intstr.FromInt(consts.InfinispanUserPort),
 			},
-		},
+		}
+
+		exposeConf := i.Spec.Expose
+		if exposeConf.NodePort > 0 && exposeConf.Type == ispnv1.ExposeTypeNodePort {
+			svc.Spec.Ports[0].NodePort = exposeConf.NodePort
+		}
+		if exposeConf.Port > 0 && exposeConf.Type == ispnv1.ExposeTypeLoadBalancer {
+			svc.Spec.Ports[0].Port = exposeConf.Port
+		}
+	})
+
+	if err != nil {
+		ctx.RetryProcessing(err)
 	}
-	if exposeConf.NodePort > 0 && exposeConf.Type == ispnv1.ExposeTypeNodePort {
-		exposeSpec.Ports[0].NodePort = exposeConf.NodePort
-	}
-	if exposeConf.Port > 0 && exposeConf.Type == ispnv1.ExposeTypeLoadBalancer {
-		exposeSpec.Ports[0].Port = exposeConf.Port
-	}
-	service.Spec = exposeSpec
-	ctx.Resources().Define(service, true)
 }
 
 func defineExternalRoute(ctx pipeline.Context, i *ispnv1.Infinispan) {
@@ -191,80 +197,91 @@ func defineExternalRoute(ctx pipeline.Context, i *ispnv1.Infinispan) {
 			Kind:       "Route",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        i.GetServiceExternalName(),
-			Namespace:   i.Namespace,
-			Annotations: i.ServiceAnnotations(),
-			Labels:      i.ExternalServiceLabels(),
-		},
-		Spec: routev1.RouteSpec{
-			Host: i.Spec.Expose.Host,
-			Port: &routev1.RoutePort{
-				TargetPort: intstr.FromInt(consts.InfinispanUserPort),
-			},
-			To: routev1.RouteTargetReference{
-				Kind: "Service",
-				Name: i.Name,
-			},
+			Name:      i.GetServiceExternalName(),
+			Namespace: i.Namespace,
 		},
 	}
-	if i.IsEncryptionEnabled() {
-		route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
+	err := ctx.Resources().CreateOrUpdate(route, true, func() {
+		route.Annotations = i.ServiceAnnotations()
+		route.Labels = i.ExternalServiceLabels()
+		route.Spec.Host = i.Spec.Expose.Host
+		route.Spec.Port = &routev1.RoutePort{
+			TargetPort: intstr.FromInt(consts.InfinispanUserPort),
+		}
+		route.Spec.To = routev1.RouteTargetReference{
+			Kind: "Service",
+			Name: i.Name,
+		}
+
+		if i.IsEncryptionEnabled() {
+			route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
+		}
+	})
+	if err != nil {
+		ctx.RetryProcessing(err)
 	}
-	ctx.Resources().Define(route, true)
 }
 
 func defineExternalIngress(ctx pipeline.Context, i *ispnv1.Infinispan) {
 	pathTypePrefix := ingressv1.PathTypePrefix
+
 	ingress := &ingressv1.Ingress{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "networking.k8s.io/v1",
 			Kind:       "Ingress",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        i.GetServiceExternalName(),
-			Namespace:   i.Namespace,
-			Annotations: i.ServiceAnnotations(),
-			Labels:      i.ExternalServiceLabels(),
+			Name:      i.GetServiceExternalName(),
+			Namespace: i.Namespace,
 		},
-		Spec: ingressv1.IngressSpec{
-			TLS: []ingressv1.IngressTLS{},
-			Rules: []ingressv1.IngressRule{
-				{
-					Host: i.Spec.Expose.Host,
-					IngressRuleValue: ingressv1.IngressRuleValue{
-						HTTP: &ingressv1.HTTPIngressRuleValue{
-							Paths: []ingressv1.HTTPIngressPath{
-								{
-									PathType: &pathTypePrefix,
-									Path:     "/",
-									Backend: ingressv1.IngressBackend{
-										Service: &ingressv1.IngressServiceBackend{
-											Name: i.Name,
-											Port: ingressv1.ServiceBackendPort{Number: consts.InfinispanUserPort},
-										},
-									}}},
-						}}}}}}
-	if i.IsEncryptionEnabled() {
-		ingress.Spec.TLS = []ingressv1.IngressTLS{
+	}
+
+	err := ctx.Resources().CreateOrUpdate(ingress, true, func() {
+		ingress.Annotations = i.ServiceAnnotations()
+		ingress.Labels = i.ExternalServiceLabels()
+		ingress.Spec.Rules = []ingressv1.IngressRule{
 			{
-				Hosts: []string{i.Spec.Expose.Host},
+				Host: i.Spec.Expose.Host,
+				IngressRuleValue: ingressv1.IngressRuleValue{
+					HTTP: &ingressv1.HTTPIngressRuleValue{
+						Paths: []ingressv1.HTTPIngressPath{
+							{
+								PathType: &pathTypePrefix,
+								Path:     "/",
+								Backend: ingressv1.IngressBackend{
+									Service: &ingressv1.IngressServiceBackend{
+										Name: i.Name,
+										Port: ingressv1.ServiceBackendPort{Number: consts.InfinispanUserPort},
+									},
+								}}},
+					},
+				},
 			},
 		}
+
+		if i.IsEncryptionEnabled() {
+			ingress.Spec.TLS = []ingressv1.IngressTLS{
+				{
+					Hosts: []string{i.Spec.Expose.Host},
+				},
+			}
+		}
+	})
+
+	if err != nil {
+		ctx.RetryProcessing(err)
 	}
-	ctx.Resources().Define(ingress, true)
 }
 
-func newService(name, namespace string, labels, annotations map[string]string) *corev1.Service {
+func newService(i *ispnv1.Infinispan, name string) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Service",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Namespace:   namespace,
-			Labels:      labels,
-			Annotations: annotations,
+			Name:      name,
+			Namespace: i.Namespace,
 		},
 	}
 }

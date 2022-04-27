@@ -161,7 +161,15 @@ func AddVolumeForUserAuthentication(i *ispnv1.Infinispan, spec *corev1.PodSpec) 
 	return true
 }
 
-func ChmodInitContainer(containerName, volumeName, mountPath string) corev1.Container {
+// AddVolumeChmodInitContainer adds an init container that run chmod if needed
+func AddVolumeChmodInitContainer(containerName, volumeName, mountPath string, spec *corev1.PodSpec) {
+	if chmod, ok := os.LookupEnv("MAKE_DATADIR_WRITABLE"); ok && chmod == "true" {
+		c := &spec.InitContainers
+		*c = append(*c, chmodInitContainer(containerName, volumeName, mountPath))
+	}
+}
+
+func chmodInitContainer(containerName, volumeName, mountPath string) corev1.Container {
 	return corev1.Container{
 		Image:   consts.InitContainerImageName,
 		Name:    containerName,
@@ -216,6 +224,7 @@ func AddSecretVolume(secretName, volumeName, mountPath string, spec *corev1.PodS
 	}
 }
 
+// TODO move generic function to Kubernetes package
 func GetContainer(name string, spec *corev1.PodSpec) *corev1.Container {
 	for i, c := range spec.Containers {
 		if c.Name == name {

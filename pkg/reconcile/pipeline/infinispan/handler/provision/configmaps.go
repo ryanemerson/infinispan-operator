@@ -9,17 +9,23 @@ import (
 func InfinispanConfigMap(ctx pipeline.Context) {
 	i := ctx.Instance()
 	config := ctx.ConfigFiles()
+
 	configmap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      i.GetConfigName(),
 			Namespace: i.Namespace,
-			// TODO uncomment when rebased on label/annotations refactoring
-			//Labels:    i.Labels("infinispan-configmap-configuration"),
-		},
-		Data: map[string]string{
-			"infinispan.xml": config.ServerConfig,
-			"log4j.xml":      config.Log4j,
 		},
 	}
-	ctx.Resources().Define(configmap, true)
+
+	err := ctx.Resources().CreateOrUpdate(configmap, true, func() {
+		configmap.Data = map[string]string{
+			"infinispan.xml": config.ServerConfig,
+			"log4j.xml":      config.Log4j,
+		}
+		configmap.Labels = i.Labels("infinispan-configmap-configuration")
+	})
+
+	if err != nil {
+		ctx.RetryProcessing(err)
+	}
 }

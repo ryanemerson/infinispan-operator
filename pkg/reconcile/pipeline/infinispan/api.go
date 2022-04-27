@@ -130,21 +130,16 @@ type Truststore struct {
 }
 
 type Resources interface {
-	Define(obj client.Object, setControllerRef bool)
-	// TODO add Get. Like Load, except that no error is returned and a panic is thrown if the resource does not exist
-	// Use for actions in a pipeline that have a hard requirement on a resource that should already have been loaded by a prior step?
-	// OR just call LOAD as required and remove collect stage entirely?
-	// The collection and configure packages can be merged into one?
-	// Loads a resource from the Infinispan namespace
-	Load(name string, obj client.Object) error
-	// Loads a globally scoped resource
-	LoadGlobal(name string, obj client.Object) error
-	LoadGlobalWithNoCaching(name string, obj client.Object) error
-	LoadWithNoCaching(name string, obj client.Object) error
+	Create(obj client.Object, setControllerRef bool) error
+	CreateOrUpdate(obj client.Object, setControllerRef bool, mutate func()) error
+	CreateOrPatch(obj client.Object, setControllerRef bool, mutate func()) error
+	Delete(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
-	MarkForDeletion(obj client.Object)
-	// Set the controller reference of the passed object to the Infinispan CR being reconciled
+	Load(name string, obj client.Object) error
+	LoadGlobal(name string, obj client.Object) error
+	// SetControllerReference Set the controller reference of the passed object to the Infinispan CR being reconciled
 	SetControllerReference(controlled metav1.Object) error
+	Update(obj client.Object) error
 }
 
 type ContextProvider interface {

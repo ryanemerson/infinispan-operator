@@ -9,11 +9,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
+	"time"
 )
 
 const (
@@ -40,35 +41,54 @@ const (
 	SiteTruststoreVolumeName        = "encrypt-truststore-site-tls-volume"
 )
 
-func AddChmodInitContainer(ctx pipeline.Context) {
-	i := ctx.Instance()
-	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
-		ctx.Error(fmt.Errorf("unable to add InitContainer: %w", err))
-	}
-	c := &statefulSet.Spec.Template.Spec.InitContainers
-	*c = append(*c, ChmodInitContainer("data-chmod-pv", DataMountVolume, DataMountPath))
-}
-
 func ClusterStatefulSet(ctx pipeline.Context) {
 	i := ctx.Instance()
+
+	// If StatefulSet already exists, continue to the next handler in the pipeline
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), &appsv1.StatefulSet{}); err == nil {
+		return
+	} else if client.IgnoreNotFound(err) != nil {
+		ctx.RetryProcessing(err)
+		return
+	}
 
 	labelsForPod := i.PodLabels()
 	labelsForPod[consts.StatefulSetPodLabel] = i.Name
 
-	// Attempt to load any existing StatefulSet definitions so that we can copy the UUID
-	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
-		if !errors.IsNotFound(err) {
-			ctx.RetryProcessing(err)
-			return
-		}
-	}
+	annotationsForPod := i.PodAnnotations()
+	annotationsForPod["updateDate"] = time.Now().String()
 
 	// We can ignore the err here as the validating webhook ensures that the resources are valid
 	podResources, _ := PodResources(i.Spec.Container)
 	configFiles := ctx.ConfigFiles()
-	statefulSet = &appsv1.StatefulSet{
+
+	container := corev1.Container{
+		Image: i.ImageName(),
+		Args:  BuildServerContainerArgs(ctx.ConfigFiles().UserConfig),
+		Name:  InfinispanContainer,
+		Env: PodEnv(i, &[]corev1.EnvVar{
+			{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},
+			{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)},
+			{Name: "IDENTITIES_BATCH", Value: consts.ServerOperatorSecurity + "/" + consts.ServerIdentitiesCliFilename},
+		}),
+		LivenessProbe:  PodLivenessProbe(),
+		Ports:          PodPortsWithXsite(i),
+		ReadinessProbe: PodReadinessProbe(),
+		StartupProbe:   PodStartupProbe(),
+		Resources:      *podResources,
+		VolumeMounts: []corev1.VolumeMount{{
+			Name:      ConfigVolumeName,
+			MountPath: OperatorConfMountPath,
+		}, {
+			Name:      InfinispanSecurityVolumeName,
+			MountPath: consts.ServerOperatorSecurity,
+		}, {
+			Name:      DataMountVolume,
+			MountPath: DataMountPath,
+		}},
+	}
+
+	statefulSet := &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "StatefulSet",
@@ -81,7 +101,6 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 				"openshift.io/documentation-url": "http://infinispan.org/documentation/",
 			},
 			Labels: map[string]string{},
-			UID:    statefulSet.ObjectMeta.UID,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{Type: appsv1.RollingUpdateStatefulSetStrategyType},
@@ -92,35 +111,11 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labelsForPod,
-					Annotations: i.PodAnnotations(),
+					Annotations: annotationsForPod,
 				},
 				Spec: corev1.PodSpec{
-					Affinity: i.Spec.Affinity,
-					Containers: []corev1.Container{{
-						Image: i.ImageName(),
-						Args:  buildStartupArgs(ctx.ConfigFiles().UserConfig),
-						Name:  InfinispanContainer,
-						Env: PodEnv(i, &[]corev1.EnvVar{
-							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},
-							{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)},
-							{Name: "IDENTITIES_BATCH", Value: consts.ServerOperatorSecurity + "/" + consts.ServerIdentitiesCliFilename},
-						}),
-						LivenessProbe:  PodLivenessProbe(),
-						Ports:          PodPortsWithXsite(i),
-						ReadinessProbe: PodReadinessProbe(),
-						StartupProbe:   PodStartupProbe(),
-						Resources:      *podResources,
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      ConfigVolumeName,
-							MountPath: OperatorConfMountPath,
-						}, {
-							Name:      InfinispanSecurityVolumeName,
-							MountPath: consts.ServerOperatorSecurity,
-						}, {
-							Name:      DataMountVolume,
-							MountPath: DataMountPath,
-						}},
-					}},
+					Affinity:   i.Spec.Affinity,
+					Containers: []corev1.Container{container},
 					Volumes: []corev1.Volume{{
 						Name: ConfigVolumeName,
 						VolumeSource: corev1.VolumeSource{
@@ -147,17 +142,20 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		return
 	}
 
-	if _, err := applyExternalArtifactsDownload(i, &statefulSet.Spec.Template.Spec); err != nil {
+	if _, err := ApplyExternalArtifactsDownload(i, &container.VolumeMounts, &statefulSet.Spec.Template.Spec); err != nil {
 		ctx.RetryProcessing(err)
 		return
 	}
+	ApplyExternalDependenciesVolume(i, &container.VolumeMounts, &statefulSet.Spec.Template.Spec)
 
 	addUserIdentities(ctx, i, statefulSet)
 	addUserConfigVolumes(ctx, i, statefulSet)
 	addTLS(ctx, i, statefulSet)
 	addXSiteTLS(ctx, i, statefulSet)
 
-	ctx.Resources().Define(statefulSet, true)
+	if err := ctx.Resources().Create(statefulSet, true); err != nil {
+		ctx.RetryProcessing(err)
+	}
 }
 
 func addUserIdentities(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
@@ -230,6 +228,8 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 		pvc.Spec.StorageClassName = &storageClassName
 	}
 	statefulset.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{*pvc}
+
+	AddVolumeChmodInitContainer("data-chmod-pv", DataMountVolume, DataMountPath, &statefulset.Spec.Template.Spec)
 	return nil
 }
 
@@ -256,7 +256,7 @@ func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulse
 	})
 }
 
-func buildStartupArgs(userConfig pipeline.UserConfig) []string {
+func BuildServerContainerArgs(userConfig pipeline.UserConfig) []string {
 	var args strings.Builder
 
 	// Preallocate a buffer to speed up string building (saves code from growing the memory dynamically)

@@ -21,10 +21,8 @@ const (
 	ExternalArtifactsHashValidationCommand = "echo %s %s | %ssum -c"
 )
 
-func applyExternalDependenciesVolume(ispn *ispnv1.Infinispan, spec *corev1.PodSpec) (updated bool) {
-	ispnContainer := GetContainer(InfinispanContainer, spec)
+func ApplyExternalDependenciesVolume(ispn *ispnv1.Infinispan, volumeMounts *[]corev1.VolumeMount, spec *corev1.PodSpec) (updated bool) {
 	volumes := &spec.Volumes
-	volumeMounts := &ispnContainer.VolumeMounts
 	volumePosition := findVolume(*volumes, CustomLibrariesVolumeName)
 	if ispn.HasDependenciesVolume() && volumePosition < 0 {
 		*volumeMounts = append(*volumeMounts, corev1.VolumeMount{Name: CustomLibrariesVolumeName, MountPath: CustomLibrariesMountPath, ReadOnly: true})
@@ -33,17 +31,15 @@ func applyExternalDependenciesVolume(ispn *ispnv1.Infinispan, spec *corev1.PodSp
 	} else if !ispn.HasDependenciesVolume() && volumePosition >= 0 {
 		volumeMountPosition := findVolumeMount(*volumeMounts, CustomLibrariesVolumeName)
 		*volumes = append(spec.Volumes[:volumePosition], spec.Volumes[volumePosition+1:]...)
-		*volumeMounts = append(ispnContainer.VolumeMounts[:volumeMountPosition], ispnContainer.VolumeMounts[volumeMountPosition+1:]...)
+		*volumeMounts = append((*volumeMounts)[:volumeMountPosition], (*volumeMounts)[volumeMountPosition+1:]...)
 		updated = true
 	}
 	return
 }
 
-func applyExternalArtifactsDownload(ispn *ispnv1.Infinispan, spec *corev1.PodSpec) (updated bool, retErr error) {
+func ApplyExternalArtifactsDownload(ispn *ispnv1.Infinispan, volumeMounts *[]corev1.VolumeMount, spec *corev1.PodSpec) (updated bool, retErr error) {
 	initContainers := &spec.InitContainers
-	ispnContainer := GetContainer(InfinispanContainer, spec)
 	volumes := &spec.Volumes
-	volumeMounts := &ispnContainer.VolumeMounts
 	containerPosition := kube.ContainerIndex(*initContainers, ExternalArtifactsDownloadInitContainer)
 	if ispn.HasExternalArtifacts() {
 		extractCommands, err := externalArtifactsExtractCommand(ispn)

@@ -6,13 +6,14 @@ import (
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/provision"
 	routev1 "github.com/openshift/api/route/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	ingressv1 "k8s.io/api/networking/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Current update path:
@@ -104,7 +105,7 @@ func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
 	}
 
 	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().LoadWithNoCaching(i.GetStatefulSetName(), statefulSet); err != nil {
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to retrieve StatefulSet in ExecuteGracefulShutdownUpgrade: %w", err))
 		return
 	}
@@ -169,7 +170,7 @@ func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
 
 	if i.IsUpgradeCondition() && i.HasCondition(ispnv1.ConditionGracefulShutdown) {
 		logger.Info("GracefulShutdown complete, continuing upgrade process")
-		markAllResourcesForDeletion(ctx, i)
+		destroyResources(i, ctx)
 
 		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
@@ -191,34 +192,48 @@ func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
 	}
 }
 
-func markAllResourcesForDeletion(ctx pipeline.Context, i *ispnv1.Infinispan) {
-	meta := func(name string) metav1.ObjectMeta {
-		return metav1.ObjectMeta{
-			Name:      name,
-			Namespace: i.Namespace,
+func destroyResources(i *ispnv1.Infinispan, ctx pipeline.Context) {
+
+	type resource struct {
+		name string
+		obj  client.Object
+	}
+
+	resources := []resource{
+		{i.GetStatefulSetName(), &appsv1.StatefulSet{}},
+		{i.GetGossipRouterDeploymentName(), &appsv1.Deployment{}},
+		{i.GetConfigName(), &corev1.ConfigMap{}},
+		{i.Name, &corev1.Service{}},
+		{i.GetPingServiceName(), &corev1.Service{}},
+		{i.GetAdminServiceName(), &corev1.Service{}},
+		{i.GetServiceExternalName(), &corev1.Service{}},
+		{i.GetSiteServiceName(), &corev1.Service{}},
+	}
+
+	del := func(name string, obj client.Object) error {
+		if err := ctx.Resources().Delete(name, obj); err != nil {
+			ctx.RetryProcessing(err)
+			return err
+		}
+		return nil
+	}
+
+	for _, r := range resources {
+		if err := del(r.name, r.obj); err != nil {
+			ctx.RetryProcessing(err)
+			return
 		}
 	}
 
-	r := ctx.Resources()
-	r.MarkForDeletion(&appsv1.StatefulSet{ObjectMeta: meta(i.GetStatefulSetName())})
-	r.MarkForDeletion(&appsv1.Deployment{ObjectMeta: meta(i.GetGossipRouterDeploymentName())})
-	r.MarkForDeletion(&corev1.ConfigMap{ObjectMeta: meta(i.GetConfigName())})
-	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.Name)})
-	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetPingServiceName())})
-	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetAdminServiceName())})
-	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetServiceExternalName())})
-	r.MarkForDeletion(&corev1.Service{ObjectMeta: meta(i.GetSiteServiceName())})
-
-	// ConfigListener
-	configListenerName := i.GetConfigListenerName()
-	r.MarkForDeletion(&appsv1.Deployment{ObjectMeta: meta(configListenerName)})
-	r.MarkForDeletion(&rbacv1.RoleBinding{ObjectMeta: meta(configListenerName)})
-	r.MarkForDeletion(&rbacv1.Role{ObjectMeta: meta(configListenerName)})
-	r.MarkForDeletion(&corev1.ServiceAccount{ObjectMeta: meta(configListenerName)})
-
 	if ctx.IsTypeSupported(pipeline.RouteGVK) {
-		r.MarkForDeletion(&routev1.Route{ObjectMeta: meta(i.GetServiceExternalName())})
+		if err := del(i.GetServiceExternalName(), &routev1.Route{}); err != nil {
+			return
+		}
 	} else if ctx.IsTypeSupported(pipeline.IngressGVK) {
-		r.MarkForDeletion(&ingressv1.Ingress{ObjectMeta: meta(i.GetServiceExternalName())})
+		if err := del(i.GetServiceExternalName(), &ingressv1.Ingress{}); err != nil {
+			return
+		}
 	}
+
+	provision.RemoveConfigListener(i, ctx)
 }
