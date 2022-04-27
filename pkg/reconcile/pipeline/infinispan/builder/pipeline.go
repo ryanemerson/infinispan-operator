@@ -8,7 +8,6 @@ import (
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/version"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
-	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/collect"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/configure"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/manage"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/provision"
@@ -121,13 +120,11 @@ func (b *builder) Build() pipeline.Pipeline {
 	// Apply default meta before doing anything else
 	handlers.Add(manage.PrelimChecksCondition)
 
-	// TODO Merge the collect and configure packages into one?
-	// Collect Handlers
+	// TODO after GracefulShutdown stages?
 	handlers.Add(
-		collect.UserAuthenticationSecret,
-		collect.UserEncryptionSecrets,
-		collect.UserConfigMap,
-		collect.AdminSecret,
+		configure.UserAuthenticationSecret,
+		configure.UserConfigMap,
+		configure.AdminSecret,
 	)
 
 	// Upgrade handlers
