@@ -72,11 +72,15 @@ func TruststoreSecret(ctx pipeline.Context) {
 
 	truststore := ctx.ConfigFiles().Truststore
 	secret := newSecret(i, i.GetTruststoreSecretName())
-	secret.Data = map[string][]byte{
-		consts.EncryptTruststoreKey:         truststore.File,
-		consts.EncryptTruststorePasswordKey: []byte(truststore.Password),
-	}
-	if err := ctx.Resources().Create(secret, false); err != nil {
+	if err := ctx.Resources().CreateOrPatch(secret, false, func() {
+		_, truststoreExists := secret.Data[consts.EncryptTruststoreKey]
+		if !truststoreExists {
+			secret.Data = map[string][]byte{
+				consts.EncryptTruststoreKey:         truststore.File,
+				consts.EncryptTruststorePasswordKey: []byte(truststore.Password),
+			}
+		}
+	}); err != nil {
 		ctx.RetryProcessing(err)
 	}
 }
