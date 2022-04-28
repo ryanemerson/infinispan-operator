@@ -92,7 +92,7 @@ func NewWithContext(ctx context.Context, p Parameters) {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.IspnReconciler{}).SetupWithManager(mgr); err != nil {
+	if err = (&controllers.IspnReconciler{}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Infinispan")
 		os.Exit(1)
 	}

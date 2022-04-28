@@ -1,4 +1,4 @@
-package builder_test
+package pipeline_test
 
 //
 //import (

@@ -1,6 +1,8 @@
 package context
 
-import pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+import (
+	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+)
 
 type flowCtrl struct {
 	retry bool

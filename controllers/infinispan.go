@@ -3,6 +3,9 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	pipelineContext "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/context"
+	pipelineBuilder "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/pipeline"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
@@ -12,9 +15,6 @@ import (
 	"github.com/go-logr/logr"
 	infinispanv1 "github.com/infinispan/infinispan-operator/api/v1"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
-	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
-	pipelineBuilder "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/builder"
-	pipelineContext "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/context"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -36,7 +36,7 @@ type IspnReconciler struct {
 	supportedTypes     map[schema.GroupVersionKind]struct{}
 }
 
-func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *IspnReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	kubernetes := kube.NewKubernetesFromController(mgr)
 
 	r.Client = mgr.GetClient()
@@ -48,7 +48,6 @@ func (r *IspnReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		mgr.GetEventRecorderFor("controller-infinispan"),
 	)
 
-	ctx := context.TODO()
 	var err error
 	// Add Secret name fields to the index for caching
 	if err = mgr.GetFieldIndexer().IndexField(ctx, &infinispanv1.Infinispan{}, "spec.security.endpointSecretName", func(obj client.Object) []string {

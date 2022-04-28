@@ -1,6 +1,5 @@
-package builder
+package pipeline
 
-// TODO rename package to pipeline
 import (
 	"context"
 	"fmt"
