@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
-	"github.com/infinispan/infinispan-operator/pkg/infinispan/version"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/configure"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/manage"
@@ -19,20 +18,17 @@ var _ pipeline.Pipeline = &impl{}
 
 type impl struct {
 	*pipeline.ContextProviderConfig
-	ctxProvider     pipeline.ContextProvider
-	handlers        []pipeline.Handler
-	deployedVersion *version.Version
-	targetVersion   *version.Version
+	ctxProvider pipeline.ContextProvider
+	handlers    []pipeline.Handler
 }
 
-func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retry bool, err error) {
+func (i *impl) Process(ctx context.Context) (retry bool, err error) {
 	defer func() {
 		if perr := recover(); perr != nil {
 			retry = true
 			err = fmt.Errorf("panic occurred: %v", perr)
 		}
 	}()
-	i.ContextProviderConfig.Instance = infinispan
 	ispnContext, err := i.ctxProvider.Get(ctx, i.ContextProviderConfig)
 	if err != nil {
 		return false, err
@@ -40,7 +36,7 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 
 	var status pipeline.FlowStatus
 	for _, h := range i.handlers {
-		invokeHandler(h, infinispan, ispnContext)
+		invokeHandler(h, i.Instance, ispnContext)
 		status = ispnContext.FlowStatus()
 		if status.Stop {
 			break
@@ -66,6 +62,11 @@ func invokeHandler(h pipeline.Handler, i *ispnv1.Infinispan, ctx pipeline.Contex
 
 type builder impl
 
+func (b *builder) For(i *ispnv1.Infinispan) *builder {
+	b.Instance = i
+	return b
+}
+
 func (b *builder) WithAnnotations(annotations map[string]string) *builder {
 	if len(annotations) > 0 {
 		b.DefaultAnnotations = annotations
@@ -75,11 +76,6 @@ func (b *builder) WithAnnotations(annotations map[string]string) *builder {
 
 func (b *builder) WithContextProvider(ctxProvider pipeline.ContextProvider) *builder {
 	b.ctxProvider = ctxProvider
-	return b
-}
-
-func (b *builder) WithDeployedVersion(v *version.Version) *builder {
-	b.deployedVersion = v
 	return b
 }
 
@@ -100,17 +96,9 @@ func (b *builder) WithSupportedTypes(types map[schema.GroupVersionKind]struct{})
 	return b
 }
 
-func (b *builder) WithTargetVersion(v *version.Version) *builder {
-	b.targetVersion = v
-	return b
-}
-
 func (b *builder) Build() pipeline.Pipeline {
-	// TODO init handlers based upon Version
-	// No upgrade required
-	if b.deployedVersion == nil {
-		// TODO
-	}
+	i := b.Instance
+	// TODO init handlers based upon Version defined in Spec and Status
 	handlers := handlerBuilder{
 		handlers: make([]pipeline.HandlerFunc, 0),
 	}
@@ -118,62 +106,50 @@ func (b *builder) Build() pipeline.Pipeline {
 	// Apply default meta before doing anything else
 	handlers.Add(manage.PrelimChecksCondition)
 
-	// TODO after GracefulShutdown stages?
-	handlers.Add(
-		configure.UserAuthenticationSecret,
-		configure.UserConfigMap,
-		configure.AdminSecret,
-	)
-
-	// Upgrade handlers
-	// TODO disable if Rolling Upgrades configured
-	handlers.Add(
-		configure.UserAuthenticationSecret,
-		configure.UserConfigMap,
-		configure.AdminSecret,
+	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(),
 		manage.ScheduleGracefulShutdownUpgrade,
 		manage.ExecuteGracefulShutdownUpgrade,
 	)
 
 	// Configuration Handlers
+	handlers.AddFeatureSpecific(i.IsAuthenticationEnabled(), configure.UserAuthenticationSecret)
+	handlers.AddFeatureSpecific(i.UserConfigDefined(), configure.UserConfigMap)
+	handlers.AddFeatureSpecific(i.IsEncryptionEnabled(), configure.Keystore)
+	handlers.AddFeatureSpecific(i.IsClientCertEnabled(), configure.Truststore)
+	handlers.AddFeatureSpecific(i.IsAuthenticationEnabled() && i.IsGeneratedSecret(), configure.UserIdentities)
 	handlers.Add(
-		configure.Keystore,
-		configure.Truststore,
+		configure.AdminSecret,
 		configure.InfinispanServer,
 		configure.Logging,
 		configure.AdminIdentities,
-		configure.UserIdentities,
 		configure.IdentitiesBatch,
 	)
 
 	// Provision Handlers
+	handlers.AddFeatureSpecific(i.IsAuthenticationEnabled() && i.IsGeneratedSecret(), provision.UserAuthenticationSecret)
+	handlers.AddFeatureSpecific(i.IsClientCertEnabled(), provision.TruststoreSecret)
 	handlers.Add(
-		provision.UserAuthenticationSecret,
 		provision.AdminSecret,
 		provision.InfinispanSecuritySecret,
-		provision.TruststoreSecret,
 		provision.InfinispanConfigMap,
 		provision.PingService,
 		provision.AdminService,
 		provision.ClusterService,
-		provision.ExternalService,
 		provision.ClusterStatefulSet,
 	)
+	handlers.AddFeatureSpecific(i.IsExposed(), provision.ExternalService)
 
+	// Manage the created Cluster
 	handlers.Add(
 		manage.PodStatus,
 		manage.StatefulSetRollingUpgrade,
 		manage.WellFormedCondition,
 	)
 
-	handlers.Add(
-		provision.ConfigListener,
-	)
-
+	// Provision any resources that require a running cluster
+	handlers.Add(provision.ConfigListener)
 	//handlers.AddFeatureSpecific(i.IsCache(), manage.CreateDefaultCache)
 	handlers.Add(manage.ConsoleUrl)
-
-	// Runtime Handlers
 
 	b.handlers = handlers.Build()
 

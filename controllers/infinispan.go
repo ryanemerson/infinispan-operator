@@ -212,6 +212,7 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 
 	// TODO construct pipeline with target and source operand version
 	pipeline := pipelineBuilder.Builder().
+		For(instance).
 		WithAnnotations(r.defaultAnnotations).
 		WithContextProvider(r.contextProvider).
 		WithLabels(r.defaultLabels).
@@ -219,7 +220,7 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 		WithSupportedTypes(r.supportedTypes).
 		Build()
 
-	retry, err := pipeline.Process(ctx, instance)
+	retry, err := pipeline.Process(ctx)
 	result := ctrl.Result{Requeue: retry}
 	reqLogger.Info("Done", "retry", retry, "error", err)
 	if retry {

@@ -57,7 +57,7 @@ import (
 //  [ConditionWellFormed]
 
 func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if i.IsUpgradeCondition() || i.Spec.Upgrades.Type != ispnv1.UpgradeTypeShutdown {
+	if i.IsUpgradeCondition() {
 		return
 	}
 

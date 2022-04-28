@@ -9,13 +9,9 @@ import (
 )
 
 func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if !i.IsAuthenticationEnabled() || !i.IsGeneratedSecret() {
-		return
-	}
-
 	secret := newSecret(i, i.GetSecretName())
 	err := ctx.Resources().CreateOrUpdate(secret, true, func() {
-		secret.Type = corev1.SecretTypeOpaque // TODO is this explicit definition required?
+		secret.Type = corev1.SecretTypeOpaque
 		secret.Data = map[string][]byte{consts.ServerIdentitiesFilename: ctx.ConfigFiles().UserIdentities}
 	})
 	if err != nil {

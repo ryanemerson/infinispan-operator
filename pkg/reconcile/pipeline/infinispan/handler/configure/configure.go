@@ -20,9 +20,6 @@ const (
 )
 
 func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if !i.IsAuthenticationEnabled() {
-		return
-	}
 	secret := &corev1.Secret{}
 	if err := ctx.Resources().Load(i.GetSecretName(), secret); err != nil {
 		if !i.IsGeneratedSecret() {
@@ -40,10 +37,6 @@ func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 }
 
 func UserConfigMap(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if !i.UserConfigDefined() {
-		return
-	}
-
 	overlayConfigMap := &corev1.ConfigMap{}
 	if err := ctx.Resources().Load(i.Spec.ConfigMapName, overlayConfigMap); err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to load user configmap: %w", err))
@@ -229,11 +222,7 @@ func AdminIdentities(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles.AdminIdentities.CliProperties = fmt.Sprintf("autoconnect-url=%s", autoconnectUrl)
 }
 
-func UserIdentities(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if !i.IsAuthenticationEnabled() || !i.IsGeneratedSecret() {
-		return
-	}
-
+func UserIdentities(_ *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 	if configFiles.UserIdentities == nil {
 		identities, err := security.GetUserCredentials()
@@ -282,22 +271,18 @@ func IdentitiesBatch(i *ispnv1.Infinispan, ctx pipeline.Context) {
 }
 
 func Keystore(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if !i.IsEncryptionEnabled() {
-		return
-	}
-
-	keystoreSecret := &corev1.Secret{}
-	if err := ctx.Resources().Load(i.GetKeystoreSecretName(), keystoreSecret); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to load user keystore secret: %w", err))
-		return
-	}
-
 	keystore := &pipeline.Keystore{}
 	if i.IsEncryptionCertFromService() {
 		if strings.Contains(i.Spec.Security.EndpointEncryption.CertServiceName, "openshift.io") {
 			keystore.Path = consts.ServerOperatorSecurity + "/" + EncryptPemKeystoreName
 		}
 	} else {
+		keystoreSecret := &corev1.Secret{}
+		if err := ctx.Resources().Load(i.GetKeystoreSecretName(), keystoreSecret); err != nil {
+			ctx.RetryProcessing(fmt.Errorf("unable to load user keystore secret: %w", err))
+			return
+		}
+
 		isUserProvidedPrivateKey := func() bool {
 			for _, k := range []string{corev1.TLSPrivateKeyKey, corev1.TLSCertKey} {
 				if _, ok := keystoreSecret.Data[k]; !ok {
@@ -322,10 +307,6 @@ func Keystore(i *ispnv1.Infinispan, ctx pipeline.Context) {
 }
 
 func Truststore(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	if !i.IsClientCertEnabled() {
-		return
-	}
-
 	trustSecret := &corev1.Secret{}
 	if err := ctx.Resources().Load(i.GetTruststoreSecretName(), trustSecret); err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to load user truststore secret: %w", err))

@@ -21,10 +21,10 @@ import (
 
 // Pipeline for Infinispan reconciliation
 type Pipeline interface {
-	// Process given Infinispan CR
+	// Process the pipeline
 	// Returns true if processing should be repeated and optional error if occurred
 	// important: even if error occurred it might not be needed to retry processing
-	Process(ctx context.Context, i *ispnv1.Infinispan) (bool, error)
+	Process(ctx context.Context) (bool, error)
 }
 
 // A pipeline stage

@@ -862,3 +862,11 @@ func (ispn *Infinispan) GetConfigListenerName() string {
 func (ispn *Infinispan) UserConfigDefined() bool {
 	return ispn.Spec.ConfigMapName != ""
 }
+
+func (ispn *Infinispan) GracefulShutdownUpgrades() bool {
+	return ispn.Spec.Upgrades == nil || ispn.Spec.Upgrades.Type == UpgradeTypeShutdown
+}
+
+func (ispn *Infinispan) HotRodRollingUpgrades() bool {
+	return ispn.Spec.Upgrades != nil && ispn.Spec.Upgrades.Type == UpgradeTypeHotRodRolling
+}
