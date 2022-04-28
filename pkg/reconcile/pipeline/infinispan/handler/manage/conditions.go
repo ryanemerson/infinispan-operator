@@ -13,8 +13,7 @@ import (
 	"strings"
 )
 
-func PrelimChecksCondition(ctx pipeline.Context) {
-	i := ctx.Instance()
+func PrelimChecksCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if i.GetCondition(ispnv1.ConditionPrelimChecksPassed).Status == metav1.ConditionFalse {
 		i.ApplyOperatorMeta(ctx.DefaultLabels(), ctx.DefaultAnnotations())
 
@@ -26,9 +25,7 @@ func PrelimChecksCondition(ctx pipeline.Context) {
 	}
 }
 
-func PodStatus(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func PodStatus(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	ss := &appsv1.StatefulSet{}
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), ss); err != nil {
 		ctx.RetryProcessing(err)
@@ -56,8 +53,7 @@ func PodStatus(ctx pipeline.Context) {
 	}
 }
 
-func WellFormedCondition(ctx pipeline.Context) {
-	i := ctx.Instance()
+func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	statefulSet := &appsv1.StatefulSet{}
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
 		// Ignore NotFound. StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed

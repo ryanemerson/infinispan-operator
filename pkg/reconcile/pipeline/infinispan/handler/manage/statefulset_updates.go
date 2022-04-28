@@ -2,6 +2,7 @@ package manage
 
 import (
 	"fmt"
+	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/hash"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -14,8 +15,7 @@ import (
 	"time"
 )
 
-func StatefulSetRollingUpgrade(ctx pipeline.Context) {
-	i := ctx.Instance()
+func StatefulSetRollingUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	log := ctx.Log()
 	configFiles := ctx.ConfigFiles()
 

@@ -41,7 +41,7 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 
 	var status pipeline.FlowStatus
 	for _, h := range i.handlers {
-		invokeHandler(h, ispnContext)
+		invokeHandler(h, infinispan, ispnContext)
 		status = ispnContext.FlowStatus()
 		if status.Stop {
 			break
@@ -54,7 +54,7 @@ func (i *impl) Process(ctx context.Context, infinispan *ispnv1.Infinispan) (retr
 	return status.Retry, status.Err
 }
 
-func invokeHandler(h pipeline.Handler, ctx pipeline.Context) {
+func invokeHandler(h pipeline.Handler, i *ispnv1.Infinispan, ctx pipeline.Context) {
 	defer func() {
 		if err := recover(); err != nil {
 			e := fmt.Errorf("panic occurred: %v", err)
@@ -62,7 +62,7 @@ func invokeHandler(h pipeline.Handler, ctx pipeline.Context) {
 			ctx.RetryProcessing(e)
 		}
 	}()
-	h.Handle(ctx)
+	h.Handle(i, ctx)
 }
 
 type builder impl

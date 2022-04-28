@@ -19,8 +19,7 @@ const (
 	EncryptPemKeystoreName    = "keystore.pem"
 )
 
-func UserAuthenticationSecret(ctx pipeline.Context) {
-	i := ctx.Instance()
+func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsAuthenticationEnabled() {
 		return
 	}
@@ -40,8 +39,7 @@ func UserAuthenticationSecret(ctx pipeline.Context) {
 	ctx.ConfigFiles().UserIdentities = userIdentities
 }
 
-func UserConfigMap(ctx pipeline.Context) {
-	i := ctx.Instance()
+func UserConfigMap(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.UserConfigDefined() {
 		return
 	}
@@ -78,8 +76,7 @@ func UserConfigMap(ctx pipeline.Context) {
 	}
 }
 
-func AdminSecret(ctx pipeline.Context) {
-	i := ctx.Instance()
+func AdminSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	secret := &corev1.Secret{}
 	if err := ctx.Resources().Load(i.GetAdminSecretName(), secret); err != nil {
 		if !errors.IsNotFound(err) {
@@ -97,9 +94,7 @@ func AdminSecret(ctx pipeline.Context) {
 // TODO how to reuse server generation during HotRod rolling upgrade?
 // Collect xsite resources before configuration called, make it so that all that is required to generate
 // server config is statefulset name, xsite backups
-func InfinispanServer(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	var roleMapper string
 	if i.IsClientCertEnabled() && i.Spec.Security.EndpointEncryption.ClientCert == ispnv1.ClientCertAuthenticate {
 		roleMapper = "commonName"
@@ -172,9 +167,7 @@ func InfinispanServer(ctx pipeline.Context) {
 	ctx.ConfigFiles().ServerConfig = serverConf
 }
 
-func Logging(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func Logging(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	loggingSpec := &logging.Spec{
 		Categories: i.GetLogCategoriesForConfig(),
 	}
@@ -187,8 +180,7 @@ func Logging(ctx pipeline.Context) {
 	ctx.ConfigFiles().Log4j = log4jXml
 }
 
-func AdminIdentities(ctx pipeline.Context) {
-	i := ctx.Instance()
+func AdminIdentities(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 
 	user := consts.DefaultOperatorUser
@@ -237,8 +229,7 @@ func AdminIdentities(ctx pipeline.Context) {
 	configFiles.AdminIdentities.CliProperties = fmt.Sprintf("autoconnect-url=%s", autoconnectUrl)
 }
 
-func UserIdentities(ctx pipeline.Context) {
-	i := ctx.Instance()
+func UserIdentities(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsAuthenticationEnabled() || !i.IsGeneratedSecret() {
 		return
 	}
@@ -254,8 +245,7 @@ func UserIdentities(ctx pipeline.Context) {
 	}
 }
 
-func IdentitiesBatch(ctx pipeline.Context) {
-	i := ctx.Instance()
+func IdentitiesBatch(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 
 	// Define admin identities on the server
@@ -291,9 +281,7 @@ func IdentitiesBatch(ctx pipeline.Context) {
 	configFiles.IdentitiesBatch = batch
 }
 
-func Keystore(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func Keystore(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsEncryptionEnabled() {
 		return
 	}
@@ -310,13 +298,22 @@ func Keystore(ctx pipeline.Context) {
 			keystore.Path = consts.ServerOperatorSecurity + "/" + EncryptPemKeystoreName
 		}
 	} else {
+		isUserProvidedPrivateKey := func() bool {
+			for _, k := range []string{corev1.TLSPrivateKeyKey, corev1.TLSCertKey} {
+				if _, ok := keystoreSecret.Data[k]; !ok {
+					return false
+				}
+			}
+			return true
+		}
+
 		if userKeystore, exists := keystoreSecret.Data[EncryptPkcs12KeystoreName]; exists {
 			// If the user provides a keystore in secret then use it ...
 			keystore.Path = fmt.Sprintf("%s/%s", consts.ServerEncryptKeystoreRoot, EncryptPkcs12KeystoreName)
 			keystore.Alias = string(keystoreSecret.Data["alias"])
 			keystore.Password = string(keystoreSecret.Data["password"])
 			keystore.File = userKeystore
-		} else if IsUserProvidedPrivateKey(keystoreSecret) {
+		} else if isUserProvidedPrivateKey() {
 			keystore.Path = consts.ServerOperatorSecurity + "/" + EncryptPemKeystoreName
 			keystore.PemFile = append(keystoreSecret.Data["tls.key"], keystoreSecret.Data["tls.crt"]...)
 		}
@@ -324,9 +321,7 @@ func Keystore(ctx pipeline.Context) {
 	ctx.ConfigFiles().Keystore = keystore
 }
 
-func Truststore(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func Truststore(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsClientCertEnabled() {
 		return
 	}
@@ -375,13 +370,4 @@ func Truststore(ctx pipeline.Context) {
 		File:     truststore,
 		Password: password,
 	}
-}
-
-func IsUserProvidedPrivateKey(secret *corev1.Secret) bool {
-	for _, k := range []string{corev1.TLSPrivateKeyKey, corev1.TLSCertKey} {
-		if _, ok := secret.Data[k]; !ok {
-			return false
-		}
-	}
-	return true
 }

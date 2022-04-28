@@ -41,9 +41,7 @@ const (
 	SiteTruststoreVolumeName        = "encrypt-truststore-site-tls-volume"
 )
 
-func ClusterStatefulSet(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func ClusterStatefulSet(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	// If StatefulSet already exists, continue to the next handler in the pipeline
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), &appsv1.StatefulSet{}); err == nil {
 		return

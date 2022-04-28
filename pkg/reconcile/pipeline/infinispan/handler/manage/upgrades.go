@@ -56,9 +56,7 @@ import (
 //  Requeue until required #pods exists
 //  [ConditionWellFormed]
 
-func ScheduleGracefulShutdownUpgrade(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if i.IsUpgradeCondition() || i.Spec.Upgrades.Type != ispnv1.UpgradeTypeShutdown {
 		return
 	}
@@ -90,8 +88,7 @@ func ScheduleGracefulShutdownUpgrade(ctx pipeline.Context) {
 	}
 }
 
-func ExecuteGracefulShutdownUpgrade(ctx pipeline.Context) {
-	i := ctx.Instance()
+func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	logger := ctx.Log()
 
 	if !i.HasAnyConditionTrue(ispnv1.ConditionUpgrade, ispnv1.ConditionStopping, ispnv1.ConditionGracefulShutdown) {

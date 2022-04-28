@@ -13,9 +13,7 @@ import (
 	"strings"
 )
 
-func PingService(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func PingService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	svc := newService(i, i.GetPingServiceName())
 
 	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
@@ -39,9 +37,7 @@ func PingService(ctx pipeline.Context) {
 	}
 }
 
-func ClusterService(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func ClusterService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	svc := newService(i, i.GetServiceName())
 	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
 		svc.Annotations = i.ServiceAnnotations()
@@ -69,9 +65,7 @@ func ClusterService(ctx pipeline.Context) {
 	}
 }
 
-func AdminService(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func AdminService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	svc := newService(i, i.GetAdminServiceName())
 	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
 		svc.Annotations = i.ServiceAnnotations()
@@ -92,9 +86,7 @@ func AdminService(ctx pipeline.Context) {
 	}
 }
 
-func ExternalService(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func ExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsExposed() {
 		return
 	}
@@ -144,19 +136,19 @@ func ExternalService(ctx pipeline.Context) {
 
 	switch exposeType {
 	case ispnv1.ExposeTypeLoadBalancer, ispnv1.ExposeTypeNodePort:
-		defineExternalService(ctx, i)
+		defineExternalService(i, ctx)
 	case ispnv1.ExposeTypeRoute:
 		if ctx.IsTypeSupported(pipeline.RouteGVK) {
-			defineExternalRoute(ctx, i)
+			defineExternalRoute(i, ctx)
 		} else if ctx.IsTypeSupported(pipeline.IngressGVK) {
-			defineExternalIngress(ctx, i)
+			defineExternalIngress(i, ctx)
 		} else {
 			ctx.Error(fmt.Errorf("unable to expose cluster with type Route, as no implementations are supported"))
 		}
 	}
 }
 
-func defineExternalService(ctx pipeline.Context, i *ispnv1.Infinispan) {
+func defineExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	externalServiceType := corev1.ServiceType(i.Spec.Expose.Type)
 
 	svc := newService(i, i.GetServiceExternalName())
@@ -191,7 +183,7 @@ func defineExternalService(ctx pipeline.Context, i *ispnv1.Infinispan) {
 	}
 }
 
-func defineExternalRoute(ctx pipeline.Context, i *ispnv1.Infinispan) {
+func defineExternalRoute(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	route := &routev1.Route{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "route.openshift.io/v1",
@@ -223,7 +215,7 @@ func defineExternalRoute(ctx pipeline.Context, i *ispnv1.Infinispan) {
 	}
 }
 
-func defineExternalIngress(ctx pipeline.Context, i *ispnv1.Infinispan) {
+func defineExternalIngress(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	pathTypePrefix := ingressv1.PathTypePrefix
 
 	ingress := &ingressv1.Ingress{

@@ -8,8 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func UserAuthenticationSecret(ctx pipeline.Context) {
-	i := ctx.Instance()
+func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsAuthenticationEnabled() || !i.IsGeneratedSecret() {
 		return
 	}
@@ -24,8 +23,7 @@ func UserAuthenticationSecret(ctx pipeline.Context) {
 	}
 }
 
-func AdminSecret(ctx pipeline.Context) {
-	i := ctx.Instance()
+func AdminSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 
 	secret := newSecret(i, i.GetAdminSecretName())
@@ -44,8 +42,7 @@ func AdminSecret(ctx pipeline.Context) {
 	}
 }
 
-func InfinispanSecuritySecret(ctx pipeline.Context) {
-	i := ctx.Instance()
+func InfinispanSecuritySecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 
 	secret := newSecret(i, i.GetInfinispanSecuritySecretName())
@@ -63,9 +60,7 @@ func InfinispanSecuritySecret(ctx pipeline.Context) {
 	}
 }
 
-func TruststoreSecret(ctx pipeline.Context) {
-	i := ctx.Instance()
-
+func TruststoreSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsClientCertEnabled() {
 		return
 	}

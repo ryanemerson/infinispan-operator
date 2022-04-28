@@ -15,8 +15,7 @@ import (
 
 const InfinispanListenerContainer = "infinispan-listener"
 
-func ConfigListener(ctx pipeline.Context) {
-	i := ctx.Instance()
+func ConfigListener(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	r := ctx.Resources()
 	name := i.GetConfigListenerName()
 	namespace := i.Namespace

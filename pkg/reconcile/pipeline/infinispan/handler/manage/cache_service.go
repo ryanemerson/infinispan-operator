@@ -1,8 +1,7 @@
 package manage
 
 // TODO revist once DefaultCacheTemplateXML split into separate package from controllers allowing for re-use between cache_controller and Infinispan pipeline
-//func CreateDefaultCache(ctx pipeline.Context) {
-//	i := ctx.Instance()
+//func CreateDefaultCache(i *ispnv1.Infinispan, ctx pipeline.Context) {
 //	log := ctx.Log()
 //
 //	ispnClient, err := ctx.InfinispanClient()

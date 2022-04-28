@@ -24,18 +24,18 @@ type Pipeline interface {
 	// Process given Infinispan CR
 	// Returns true if processing should be repeated and optional error if occurred
 	// important: even if error occurred it might not be needed to retry processing
-	Process(ctx context.Context, infinispan *ispnv1.Infinispan) (bool, error)
+	Process(ctx context.Context, i *ispnv1.Infinispan) (bool, error)
 }
 
 // A pipeline stage
 type Handler interface {
-	Handle(ctx Context)
+	Handle(i *ispnv1.Infinispan, ctx Context)
 }
 
-type HandlerFunc func(ctx Context)
+type HandlerFunc func(i *ispnv1.Infinispan, ctx Context)
 
-func (f HandlerFunc) Handle(ctx Context) {
-	f(ctx)
+func (f HandlerFunc) Handle(i *ispnv1.Infinispan, ctx Context) {
+	f(i, ctx)
 }
 
 // Pipeline flow control
