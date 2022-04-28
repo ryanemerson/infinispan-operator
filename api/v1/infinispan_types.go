@@ -434,8 +434,6 @@ type InfinispanStatus struct {
 	// +optional
 	Security *InfinispanSecurity `json:"security,omitempty"`
 	// +optional
-	Replicas int32 `json:"replicas,omitempty"`
-	// +optional
 	ReplicasWantedAtRestart int32 `json:"replicasWantedAtRestart,omitempty"`
 	// The Pod's currently in the cluster
 	// +optional
