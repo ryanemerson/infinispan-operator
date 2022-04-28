@@ -138,11 +138,29 @@ type Resources interface {
 	CreateOrPatch(obj client.Object, setControllerRef bool, mutate func()) error
 	Delete(name string, obj client.Object) error
 	List(set map[string]string, list client.ObjectList) error
-	Load(name string, obj client.Object) error
-	LoadGlobal(name string, obj client.Object) error
+	Load(name string, obj client.Object, opts ...func(config *ResourcesConfig)) error
+	LoadGlobal(name string, obj client.Object, opts ...func(config *ResourcesConfig)) error
 	// SetControllerReference Set the controller reference of the passed object to the Infinispan CR being reconciled
 	SetControllerReference(controlled metav1.Object) error
 	Update(obj client.Object) error
+}
+
+type ResourcesConfig struct {
+	RetryOnErr     bool
+	SkipCache      bool
+	IgnoreNotFound bool
+}
+
+func RetryOnErr(config *ResourcesConfig) {
+	config.RetryOnErr = true
+}
+
+func SkipCache(config *ResourcesConfig) {
+	config.SkipCache = true
+}
+
+func IgnoreNotFound(config *ResourcesConfig) {
+	config.IgnoreNotFound = true
 }
 
 type ContextProvider interface {

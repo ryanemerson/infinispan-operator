@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	k8sctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -85,24 +86,73 @@ func (r resources) List(set map[string]string, list client.ObjectList) error {
 	)
 }
 
-// TODO reinstate caching as defualt behaviour
-// TODO add options to calls via varargs
-// NoCaching
-// RetryOnErr
-// IgnoreNotFound
-func (r resources) Load(name string, obj client.Object) error {
+// TODO update calls to use options as required
+func (r resources) Load(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
 	// TODO are these necessary?
 	obj.SetName(name)
 	obj.SetNamespace(r.instance.Namespace)
+
+	config := &pipeline.ResourcesConfig{}
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	loadFn := func() error {
+		return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj)
+	}
+
 	return exec(
-		r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj),
+		r.load(name, obj, loadFn, opts...),
 	)
 }
 
-func (r resources) LoadGlobal(name string, obj client.Object) error {
+func (r resources) LoadGlobal(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
+	config := &pipeline.ResourcesConfig{}
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	loadFn := func() error {
+		return r.Client.Get(r.ctx, types.NamespacedName{Name: name}, obj)
+	}
+
 	return exec(
-		r.Client.Get(r.ctx, types.NamespacedName{Name: name}, obj),
+		r.load(name, obj, loadFn, opts...),
 	)
+}
+
+func (r resources) load(name string, obj client.Object, load func() error, opts ...func(config *pipeline.ResourcesConfig)) error {
+	config := &pipeline.ResourcesConfig{}
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	key := r.resourceKey(name, obj)
+
+	handleErr := func(err error) error {
+		if config.RetryOnErr {
+			r.RetryProcessing(err)
+		}
+
+		if config.IgnoreNotFound {
+			return client.IgnoreNotFound(err)
+		}
+		return err
+	}
+
+	if config.SkipCache {
+		return handleErr(load())
+	}
+	if storedObj, ok := r.resources[key]; ok {
+		// Reflection trickery so that the passed obj reference is updated to the stored pointer
+		reflect.ValueOf(obj).Elem().Set(reflect.ValueOf(storedObj).Elem())
+		return nil
+	}
+	if err := load(); err != nil {
+		return handleErr(err)
+	}
+	r.resources[key] = obj
+	return nil
 }
 
 func (r resources) SetControllerReference(controlled metav1.Object) error {

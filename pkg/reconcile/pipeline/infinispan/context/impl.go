@@ -46,6 +46,7 @@ func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConf
 		ctx:                   ctx,
 		ispnConfig:            &pipeline.ConfigFiles{},
 		ispnClient:            nil,
+		resources:             make(map[string]client.Object),
 	}, nil
 }
 
@@ -58,6 +59,7 @@ type impl struct {
 	instance   *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
 	ispnClient api.Infinispan
+	resources  map[string]client.Object
 }
 
 func (i impl) Instance() *ispnv1.Infinispan {
