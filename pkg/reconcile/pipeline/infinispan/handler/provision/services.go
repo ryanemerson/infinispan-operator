@@ -165,23 +165,24 @@ func defineExternalService(ctx pipeline.Context, i *ispnv1.Infinispan) {
 		for k, v := range i.Spec.Expose.Annotations {
 			svc.Annotations[k] = v
 		}
-
 		svc.Labels = i.ExternalServiceLabels()
 		svc.Spec.Type = externalServiceType
 		svc.Spec.Selector = i.ServiceSelectorLabels()
-		svc.Spec.Ports = []corev1.ServicePort{
-			{
-				Port:       int32(consts.InfinispanUserPort),
-				TargetPort: intstr.FromInt(consts.InfinispanUserPort),
-			},
+
+		// We must utilise the existing ServicePort values if updating the service, to prevent the created ports being overwritten
+		if svc.CreationTimestamp.IsZero() {
+			svc.Spec.Ports = []corev1.ServicePort{{}}
 		}
+		servicePort := &svc.Spec.Ports[0]
+		servicePort.Port = int32(consts.InfinispanUserPort)
+		servicePort.TargetPort = intstr.FromInt(consts.InfinispanUserPort)
 
 		exposeConf := i.Spec.Expose
 		if exposeConf.NodePort > 0 && exposeConf.Type == ispnv1.ExposeTypeNodePort {
-			svc.Spec.Ports[0].NodePort = exposeConf.NodePort
+			servicePort.NodePort = exposeConf.NodePort
 		}
 		if exposeConf.Port > 0 && exposeConf.Type == ispnv1.ExposeTypeLoadBalancer {
-			svc.Spec.Ports[0].Port = exposeConf.Port
+			servicePort.Port = exposeConf.Port
 		}
 	})
 
