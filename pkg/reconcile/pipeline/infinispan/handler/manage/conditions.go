@@ -26,6 +26,36 @@ func PrelimChecksCondition(ctx pipeline.Context) {
 	}
 }
 
+func PodStatus(ctx pipeline.Context) {
+	i := ctx.Instance()
+
+	ss := &appsv1.StatefulSet{}
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), ss); err != nil {
+		ctx.RetryProcessing(err)
+		return
+	}
+
+	var ready, starting, stopped []string
+	if ss.Spec.Replicas == nil || *ss.Spec.Replicas == 0 || ss.Status.Replicas == 0 {
+		stopped = append(stopped, ss.Name)
+	} else {
+		for i := int32(0); i < ss.Status.Replicas; i++ {
+			instanceName := fmt.Sprintf("%s-%d", ss.Name, i+1)
+			if i < ss.Status.ReadyReplicas {
+				ready = append(ready, instanceName)
+			} else {
+				starting = append(starting, instanceName)
+			}
+		}
+	}
+	ctx.Log().Info("Found deployments with status ", "stopped", stopped, "starting", starting, "ready", ready)
+	i.Status.PodStatus = ispnv1.DeploymentStatus{
+		Stopped:  stopped,
+		Starting: starting,
+		Ready:    ready,
+	}
+}
+
 func WellFormedCondition(ctx pipeline.Context) {
 	i := ctx.Instance()
 	statefulSet := &appsv1.StatefulSet{}

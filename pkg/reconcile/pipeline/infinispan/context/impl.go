@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
@@ -10,6 +11,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -43,6 +45,7 @@ func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConf
 		instance:              config.Instance, // TODO remove and just use value from config directly
 		ctx:                   ctx,
 		ispnConfig:            &pipeline.ConfigFiles{},
+		ispnClient:            nil,
 	}, nil
 }
 
@@ -54,17 +57,34 @@ type impl struct {
 	ctx        context.Context
 	instance   *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
+	ispnClient api.Infinispan
 }
 
 func (i impl) Instance() *ispnv1.Infinispan {
 	return i.instance
 }
 
-func (i impl) InfinispanClient() api.Infinispan {
-	//TODO implement me
-	// TODO lookup podList and create new curl
-	// TODO cache created client to prevent pod list lookup everytime?
-	panic("implement me")
+func (i impl) InfinispanClient() (api.Infinispan, error) {
+	if i.ispnClient != nil {
+		return i.ispnClient, nil
+	}
+
+	podList := &corev1.PodList{}
+	if err := i.Resources().List(i.instance.PodLabels(), podList); err != nil {
+		return nil, err
+	}
+	if len(podList.Items) == 0 {
+		return nil, fmt.Errorf("unable to create Infinispan client, no Infinispan pods exists")
+	}
+	var pod string
+	for _, p := range podList.Items {
+		if kube.IsPodReady(p) {
+			pod = p.Name
+			break
+		}
+	}
+	i.ispnClient = i.InfinispanClientForPod(pod)
+	return i.ispnClient, nil
 }
 
 func (i impl) InfinispanClientForPod(podName string) api.Infinispan {
@@ -91,9 +111,8 @@ func (i impl) ConfigFiles() *pipeline.ConfigFiles {
 	return i.ispnConfig
 }
 
-func (i impl) NewCluster() bool {
-	//TODO implement me
-	panic("implement me")
+func (i impl) Ctx() context.Context {
+	return i.ctx
 }
 
 func (i impl) Log() logr.Logger {
@@ -102,6 +121,10 @@ func (i impl) Log() logr.Logger {
 
 func (i impl) EventRecorder() record.EventRecorder {
 	return i.eventRec
+}
+
+func (i impl) Kubernetes() *kube.Kubernetes {
+	return i.kubernetes
 }
 
 func (i impl) DefaultAnnotations() map[string]string {
@@ -118,10 +141,10 @@ func (i impl) IsTypeSupported(gvk schema.GroupVersionKind) bool {
 }
 
 func (i impl) Close() error {
-	return i.updateStatus()
+	return i.UpdateStatus()
 }
 
-func (i impl) updateStatus() error {
+func (i impl) UpdateStatus() error {
 	return i.update(func(ispn *ispnv1.Infinispan) {
 		ispn.Status = i.instance.Status
 	})

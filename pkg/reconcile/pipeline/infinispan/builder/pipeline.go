@@ -108,7 +108,6 @@ func (b *builder) WithTargetVersion(v *version.Version) *builder {
 
 func (b *builder) Build() pipeline.Pipeline {
 	// TODO init handlers based upon Version
-
 	// No upgrade required
 	if b.deployedVersion == nil {
 		// TODO
@@ -130,6 +129,9 @@ func (b *builder) Build() pipeline.Pipeline {
 	// Upgrade handlers
 	// TODO disable if Rolling Upgrades configured
 	handlers.Add(
+		configure.UserAuthenticationSecret,
+		configure.UserConfigMap,
+		configure.AdminSecret,
 		manage.ScheduleGracefulShutdownUpgrade,
 		manage.ExecuteGracefulShutdownUpgrade,
 	)
@@ -160,6 +162,7 @@ func (b *builder) Build() pipeline.Pipeline {
 	)
 
 	handlers.Add(
+		manage.PodStatus,
 		manage.StatefulSetRollingUpgrade,
 		manage.WellFormedCondition,
 	)
@@ -167,6 +170,9 @@ func (b *builder) Build() pipeline.Pipeline {
 	handlers.Add(
 		provision.ConfigListener,
 	)
+
+	//handlers.AddFeatureSpecific(i.IsCache(), manage.CreateDefaultCache)
+	handlers.Add(manage.ConsoleUrl)
 
 	// Runtime Handlers
 

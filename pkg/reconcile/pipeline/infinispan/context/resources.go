@@ -85,6 +85,11 @@ func (r resources) List(set map[string]string, list client.ObjectList) error {
 	)
 }
 
+// TODO reinstate caching as defualt behaviour
+// TODO add options to calls via varargs
+// NoCaching
+// RetryOnErr
+// IgnoreNotFound
 func (r resources) Load(name string, obj client.Object) error {
 	// TODO are these necessary?
 	obj.SetName(name)

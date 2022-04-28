@@ -6,6 +6,7 @@ import (
 	"github.com/go-logr/logr"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
+	"github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -53,7 +54,7 @@ type Context interface {
 	Instance() *ispnv1.Infinispan
 
 	// InfinispanClient operand specific client for Infinispan servers
-	InfinispanClient() ispnApi.Infinispan
+	InfinispanClient() (ispnApi.Infinispan, error)
 
 	InfinispanClientForPod(podName string) ispnApi.Infinispan
 
@@ -61,19 +62,21 @@ type Context interface {
 
 	Resources() Resources
 
-	// TODO remove?
-	// Return true if StatefulSet doesn't exist yet
-	NewCluster() bool
+	Ctx() context.Context
 
 	Log() logr.Logger
 
 	EventRecorder() record.EventRecorder
+
+	Kubernetes() *kubernetes.Kubernetes
 
 	DefaultAnnotations() map[string]string
 
 	DefaultLabels() map[string]string
 
 	IsTypeSupported(gvk schema.GroupVersionKind) bool
+
+	UpdateStatus() error
 
 	// Indicates that the cluster should be retried at some later time
 	// The current processing stops and context gets closed
