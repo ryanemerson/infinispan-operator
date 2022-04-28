@@ -37,9 +37,10 @@ func ApplyExternalDependenciesVolume(ispn *ispnv1.Infinispan, volumeMounts *[]co
 	return
 }
 
-func ApplyExternalArtifactsDownload(ispn *ispnv1.Infinispan, volumeMounts *[]corev1.VolumeMount, spec *corev1.PodSpec) (updated bool, retErr error) {
+func ApplyExternalArtifactsDownload(ispn *ispnv1.Infinispan, ispnContainer *corev1.Container, spec *corev1.PodSpec) (updated bool, retErr error) {
 	initContainers := &spec.InitContainers
 	volumes := &spec.Volumes
+	volumeMounts := &ispnContainer.VolumeMounts
 	containerPosition := kube.ContainerIndex(*initContainers, ExternalArtifactsDownloadInitContainer)
 	if ispn.HasExternalArtifacts() {
 		extractCommands, err := externalArtifactsExtractCommand(ispn)

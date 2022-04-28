@@ -62,32 +62,6 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 	podResources, _ := PodResources(i.Spec.Container)
 	configFiles := ctx.ConfigFiles()
 
-	container := corev1.Container{
-		Image: i.ImageName(),
-		Args:  BuildServerContainerArgs(ctx.ConfigFiles().UserConfig),
-		Name:  InfinispanContainer,
-		Env: PodEnv(i, &[]corev1.EnvVar{
-			{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},
-			{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)},
-			{Name: "IDENTITIES_BATCH", Value: consts.ServerOperatorSecurity + "/" + consts.ServerIdentitiesCliFilename},
-		}),
-		LivenessProbe:  PodLivenessProbe(),
-		Ports:          PodPortsWithXsite(i),
-		ReadinessProbe: PodReadinessProbe(),
-		StartupProbe:   PodStartupProbe(),
-		Resources:      *podResources,
-		VolumeMounts: []corev1.VolumeMount{{
-			Name:      ConfigVolumeName,
-			MountPath: OperatorConfMountPath,
-		}, {
-			Name:      InfinispanSecurityVolumeName,
-			MountPath: consts.ServerOperatorSecurity,
-		}, {
-			Name:      DataMountVolume,
-			MountPath: DataMountPath,
-		}},
-	}
-
 	statefulSet := &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -114,8 +88,32 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 					Annotations: annotationsForPod,
 				},
 				Spec: corev1.PodSpec{
-					Affinity:   i.Spec.Affinity,
-					Containers: []corev1.Container{container},
+					Affinity: i.Spec.Affinity,
+					Containers: []corev1.Container{{
+						Image: i.ImageName(),
+						Args:  BuildServerContainerArgs(ctx.ConfigFiles().UserConfig),
+						Name:  InfinispanContainer,
+						Env: PodEnv(i, &[]corev1.EnvVar{
+							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerConfig)},
+							{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)},
+							{Name: "IDENTITIES_BATCH", Value: consts.ServerOperatorSecurity + "/" + consts.ServerIdentitiesCliFilename},
+						}),
+						LivenessProbe:  PodLivenessProbe(),
+						Ports:          PodPortsWithXsite(i),
+						ReadinessProbe: PodReadinessProbe(),
+						StartupProbe:   PodStartupProbe(),
+						Resources:      *podResources,
+						VolumeMounts: []corev1.VolumeMount{{
+							Name:      ConfigVolumeName,
+							MountPath: OperatorConfMountPath,
+						}, {
+							Name:      InfinispanSecurityVolumeName,
+							MountPath: consts.ServerOperatorSecurity,
+						}, {
+							Name:      DataMountVolume,
+							MountPath: DataMountPath,
+						}},
+					}},
 					Volumes: []corev1.Volume{{
 						Name: ConfigVolumeName,
 						VolumeSource: corev1.VolumeSource{
@@ -142,7 +140,8 @@ func ClusterStatefulSet(ctx pipeline.Context) {
 		return
 	}
 
-	if _, err := ApplyExternalArtifactsDownload(i, &container.VolumeMounts, &statefulSet.Spec.Template.Spec); err != nil {
+	container := GetContainer(InfinispanContainer, &statefulSet.Spec.Template.Spec)
+	if _, err := ApplyExternalArtifactsDownload(i, container, &statefulSet.Spec.Template.Spec); err != nil {
 		ctx.RetryProcessing(err)
 		return
 	}

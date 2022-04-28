@@ -94,7 +94,7 @@ func StatefulSetRollingUpgrade(ctx pipeline.Context) {
 	updateNeeded = updateStatefulSetAnnotations(statefulSet, "checksum/overlayConfig", hashVal) || updateNeeded
 	updateNeeded = applyOverlayConfigVolume(container, i.Spec.ConfigMapName, spec) || updateNeeded
 
-	externalArtifactsUpd, err := provision.ApplyExternalArtifactsDownload(i, &container.VolumeMounts, spec)
+	externalArtifactsUpd, err := provision.ApplyExternalArtifactsDownload(i, container, spec)
 	if err != nil {
 		ctx.RetryProcessing(err)
 		return
