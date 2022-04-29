@@ -144,6 +144,9 @@ func (i impl) Close() error {
 
 func (i impl) UpdateInfinispan() error {
 	return i.update(func(ispn *ispnv1.Infinispan) {
+		ispn.Annotations = i.infinispan.Annotations
+		ispn.ObjectMeta.Labels = i.infinispan.ObjectMeta.Labels
+		ispn.Spec = i.infinispan.Spec
 		ispn.Status = i.infinispan.Status
 	})
 }
