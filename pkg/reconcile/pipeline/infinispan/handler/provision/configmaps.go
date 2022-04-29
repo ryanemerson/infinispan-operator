@@ -19,8 +19,9 @@ func InfinispanConfigMap(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 	err := ctx.Resources().CreateOrUpdate(configmap, true, func() {
 		configmap.Data = map[string]string{
-			"infinispan.xml": config.ServerConfig,
-			"log4j.xml":      config.Log4j,
+			"infinispan.xml":      config.ServerConfig,
+			"infinispan-zero.xml": config.ZeroConfig,
+			"log4j.xml":           config.Log4j,
 		}
 		configmap.Labels = i.Labels("infinispan-configmap-configuration")
 	})

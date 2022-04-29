@@ -47,6 +47,8 @@ func UserConfigMap(i *ispnv1.Infinispan, ctx pipeline.Context) {
 // Collect xsite resources before configuration called, make it so that all that is required to generate
 // server config is statefulset name, xsite backups
 func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
+	configFiles := ctx.ConfigFiles()
+
 	var roleMapper string
 	if i.IsClientCertEnabled() && i.Spec.Security.EndpointEncryption.ClientCert == ispnv1.ClientCertAuthenticate {
 		roleMapper = "commonName"
@@ -96,7 +98,7 @@ func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		}
 	}
 	if i.IsEncryptionEnabled() {
-		ks := ctx.ConfigFiles().Keystore
+		ks := configFiles.Keystore
 		configSpec.Keystore = config.Keystore{
 			Alias: ks.Alias,
 			// Actual value is not used by template, but required to show that a credential ref is required
@@ -111,12 +113,19 @@ func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 
 	// TODO utilise a version specific configurator once server/operator versions decoupled
-	serverConf, err := config.Generate(nil, configSpec)
-	if err != nil {
+	if serverConfig, err := config.Generate(nil, configSpec); err == nil {
+		configFiles.ServerConfig = serverConfig
+	} else {
 		ctx.RetryProcessing(fmt.Errorf("unable to generate infinispan.xml: %w", err))
 		return
 	}
-	ctx.ConfigFiles().ServerConfig = serverConf
+
+	// TODO utilise a version specific configurator once server/operator versions decoupled
+	if zeroConfig, err := config.GenerateZeroCapacity(nil, configSpec); err == nil {
+		configFiles.ZeroConfig = zeroConfig
+	} else {
+		ctx.RetryProcessing(fmt.Errorf("unable to generate infinispan.xml: %w", err))
+	}
 }
 
 func Logging(i *ispnv1.Infinispan, ctx pipeline.Context) {

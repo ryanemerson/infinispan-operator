@@ -174,6 +174,7 @@ func SkipEventRec(config *ResourcesConfig) {
 // ConfigFiles is used to hold all configuration required by the Operand in provisioned resources
 type ConfigFiles struct {
 	ServerConfig    string
+	ZeroConfig      string
 	Log4j           string
 	UserIdentities  []byte
 	AdminIdentities *AdminIdentities
