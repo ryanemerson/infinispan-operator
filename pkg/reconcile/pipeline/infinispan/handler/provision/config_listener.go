@@ -1,11 +1,11 @@
 package provision
 
 import (
+	"fmt"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/api/v2alpha1"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
-	v1 "github.com/operator-framework/api/pkg/operators/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -16,6 +16,13 @@ import (
 const InfinispanListenerContainer = "infinispan-listener"
 
 func ConfigListener(i *ispnv1.Infinispan, ctx pipeline.Context) {
+	if constants.ConfigListenerImageName == "" {
+		err := fmt.Errorf("'%s' has not been defined", constants.ConfigListenerEnvName)
+		ctx.Log().Error(err, "unable to create ConfigListener deployment")
+		ctx.RetryProcessing(err)
+		return
+	}
+
 	r := ctx.Resources()
 	name := i.GetConfigListenerName()
 	namespace := i.Namespace
@@ -77,7 +84,7 @@ func ConfigListener(i *ispnv1.Infinispan, ctx pipeline.Context) {
 				},
 			},
 			{
-				APIGroups: []string{v1.GroupVersion.Group},
+				APIGroups: []string{ispnv1.GroupVersion.Group},
 				Resources: []string{"infinispans"},
 				Verbs:     []string{"get"},
 			}, {
