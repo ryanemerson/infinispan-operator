@@ -217,7 +217,7 @@ func addDataMountVolume(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset 
 	// Set a storage class if specified
 	if storageClassName := i.StorageClassName(); storageClassName != "" {
 		if err := ctx.Resources().LoadGlobal(storageClassName, &storagev1.StorageClass{}); err != nil {
-			return fmt.Errorf("unable to load StorageClass %s: %v", storageClassName, err)
+			return fmt.Errorf("unable to load StorageClass %s: %w", storageClassName, err)
 		}
 		pvc.Spec.StorageClassName = &storageClassName
 	}
