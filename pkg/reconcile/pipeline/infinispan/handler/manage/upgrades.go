@@ -102,8 +102,7 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 	}
 
 	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to retrieve StatefulSet in ExecuteGracefulShutdownUpgrade: %w", err))
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet, pipeline.RetryOnErr); err != nil {
 		return
 	}
 

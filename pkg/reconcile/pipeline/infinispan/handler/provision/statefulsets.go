@@ -31,10 +31,7 @@ const (
 	InfinispanSecurityVolumeName = "infinispan-security-volume"
 	OverlayConfigMountPath       = consts.ServerRoot + "/conf/user"
 
-	EventReasonLowPersistenceStorage = "LowPersistenceStorage"
-	EventReasonEphemeralStorage      = "EphemeralStorageEnables"
-	EventReasonParseValueProblem     = "ParseValueProblem"
-	EventLoadBalancerUnsupported     = "LoadBalancerUnsupported"
+	EventReasonEphemeralStorage = "EphemeralStorageEnables"
 
 	SiteTransportKeystoreVolumeName = "encrypt-transport-site-tls-volume"
 	SiteRouterKeystoreVolumeName    = "encrypt-router-site-tls-volume"

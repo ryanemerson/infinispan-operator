@@ -8,7 +8,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sort"
 	"strings"
 )
@@ -27,8 +26,7 @@ func PrelimChecksCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 func PodStatus(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	ss := &appsv1.StatefulSet{}
-	if err := ctx.Resources().Load(i.GetStatefulSetName(), ss); err != nil {
-		ctx.RetryProcessing(err)
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), ss, pipeline.RetryOnErr); err != nil {
 		return
 	}
 
@@ -55,9 +53,8 @@ func PodStatus(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	statefulSet := &appsv1.StatefulSet{}
-	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet); err != nil {
-		// Ignore NotFound. StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
-		ctx.RetryProcessing(client.IgnoreNotFound(err))
+	// Ignore NotFound. StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
+	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet, pipeline.IgnoreNotFound, pipeline.RetryOnErr); err != nil {
 		return
 	}
 	podList := &corev1.PodList{}

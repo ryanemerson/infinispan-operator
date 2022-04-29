@@ -34,9 +34,7 @@ func ConsoleUrl(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		// Wait for the cluster external Service to be created by service-controller
 		externalService := &corev1.Service{}
 
-		if err := r.Load(i.GetServiceExternalName(), externalService); err != nil {
-			// TODO add Event
-			ctx.RetryProcessing(err)
+		if err := r.Load(i.GetServiceExternalName(), externalService, pipeline.RetryOnErr); err != nil {
 			return
 		}
 		if len(externalService.Spec.Ports) > 0 && i.GetExposeType() == ispnv1.ExposeTypeNodePort {
@@ -64,17 +62,13 @@ func ConsoleUrl(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	case ispnv1.ExposeTypeRoute:
 		if ctx.IsTypeSupported(pipeline.RouteGVK) {
 			externalRoute := &routev1.Route{}
-			if err := r.Load(i.GetServiceExternalName(), externalRoute); err != nil {
-				// TODO add Event
-				ctx.RetryProcessing(err)
+			if err := r.Load(i.GetServiceExternalName(), externalRoute, pipeline.RetryOnErr); err != nil {
 				return
 			}
 			exposeAddress = externalRoute.Spec.Host
 		} else if ctx.IsTypeSupported(pipeline.IngressGVK) {
 			externalIngress := &ingressv1.Ingress{}
-			if err := r.Load(i.GetServiceExternalName(), externalIngress); err != nil {
-				// TODO add Event
-				ctx.RetryProcessing(err)
+			if err := r.Load(i.GetServiceExternalName(), externalIngress, pipeline.RetryOnErr); err != nil {
 				return
 			}
 			if len(externalIngress.Spec.Rules) > 0 {

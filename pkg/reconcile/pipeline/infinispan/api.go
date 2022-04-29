@@ -145,22 +145,27 @@ type Resources interface {
 	Update(obj client.Object) error
 }
 
+func IgnoreNotFound(config *ResourcesConfig) {
+	config.IgnoreNotFound = true
+}
+
 type ResourcesConfig struct {
-	RetryOnErr     bool
-	SkipCache      bool
-	IgnoreNotFound bool
+	IgnoreNotFound  bool
+	InvalidateCache bool
+	RetryOnErr      bool
+	SkipEventRec    bool
 }
 
 func RetryOnErr(config *ResourcesConfig) {
 	config.RetryOnErr = true
 }
 
-func SkipCache(config *ResourcesConfig) {
-	config.SkipCache = true
+func InvalidateCache(config *ResourcesConfig) {
+	config.InvalidateCache = true
 }
 
-func IgnoreNotFound(config *ResourcesConfig) {
-	config.IgnoreNotFound = true
+func SkipEventRec(config *ResourcesConfig) {
+	config.SkipEventRec = true
 }
 
 type ContextProvider interface {

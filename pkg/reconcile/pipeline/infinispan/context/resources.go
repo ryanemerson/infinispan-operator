@@ -4,6 +4,8 @@ import (
 	"fmt"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -86,16 +88,10 @@ func (r resources) List(set map[string]string, list client.ObjectList) error {
 	)
 }
 
-// TODO update calls to use options as required
 func (r resources) Load(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
 	// TODO are these necessary?
 	obj.SetName(name)
 	obj.SetNamespace(r.instance.Namespace)
-
-	config := &pipeline.ResourcesConfig{}
-	for _, opt := range opts {
-		opt(config)
-	}
 
 	loadFn := func() error {
 		return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj)
@@ -107,11 +103,6 @@ func (r resources) Load(name string, obj client.Object, opts ...func(config *pip
 }
 
 func (r resources) LoadGlobal(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
-	config := &pipeline.ResourcesConfig{}
-	for _, opt := range opts {
-		opt(config)
-	}
-
 	loadFn := func() error {
 		return r.Client.Get(r.ctx, types.NamespacedName{Name: name}, obj)
 	}
@@ -127,26 +118,35 @@ func (r resources) load(name string, obj client.Object, load func() error, opts 
 		opt(config)
 	}
 
-	key := r.resourceKey(name, obj)
-
 	handleErr := func(err error) error {
+		if err == nil {
+			return nil
+		}
+
+		isNotFound := errors.IsNotFound(err)
+		if isNotFound && config.IgnoreNotFound {
+			return nil
+		}
+
 		if config.RetryOnErr {
 			r.RetryProcessing(err)
 		}
 
-		if config.IgnoreNotFound {
-			return client.IgnoreNotFound(err)
+		if isNotFound && !config.SkipEventRec {
+			msg := fmt.Sprintf("%s resource '%s' not ready", reflect.TypeOf(obj).Elem().Name(), name)
+			r.Log().Info(msg)
+			r.EventRecorder().Event(r.instance, corev1.EventTypeWarning, "ResourceNotReady", msg)
 		}
 		return err
 	}
 
-	if config.SkipCache {
-		return handleErr(load())
-	}
-	if storedObj, ok := r.resources[key]; ok {
-		// Reflection trickery so that the passed obj reference is updated to the stored pointer
-		reflect.ValueOf(obj).Elem().Set(reflect.ValueOf(storedObj).Elem())
-		return nil
+	key := r.resourceKey(name, obj)
+	if !config.InvalidateCache {
+		if storedObj, ok := r.resources[key]; ok {
+			// Reflection trickery so that the passed obj reference is updated to the stored pointer
+			reflect.ValueOf(obj).Elem().Set(reflect.ValueOf(storedObj).Elem())
+			return nil
+		}
 	}
 	if err := load(); err != nil {
 		return handleErr(err)
