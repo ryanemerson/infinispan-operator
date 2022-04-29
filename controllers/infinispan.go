@@ -210,7 +210,6 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 		return reconcile.Result{}, nil
 	}
 
-	// TODO construct pipeline with target and source operand version
 	pipeline := pipelineBuilder.Builder().
 		For(instance).
 		WithAnnotations(r.defaultAnnotations).

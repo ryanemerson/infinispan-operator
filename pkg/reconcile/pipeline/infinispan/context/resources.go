@@ -19,16 +19,6 @@ type resources struct {
 	*impl
 }
 
-func (r resources) resourceKey(name string, obj client.Object) string {
-	gvk, err := apiutil.GVKForObject(obj, r.scheme)
-	if err != nil {
-		// Panic so that we don't have to handle errors for all Resources methods
-		// Panic is caught by the pipeline handler and logged, so the Operator won't terminate
-		panic(err)
-	}
-	return fmt.Sprintf("%s.%s", name, gvk)
-}
-
 func (i *impl) Resources() pipeline.Resources {
 	return &resources{i}
 }
@@ -72,7 +62,7 @@ func (r resources) CreateOrPatch(obj client.Object, setControllerRef bool, mutat
 
 func (r resources) Delete(name string, obj client.Object) error {
 	obj.SetName(name)
-	obj.SetNamespace(r.instance.Namespace)
+	obj.SetNamespace(r.infinispan.Namespace)
 	return exec(
 		client.IgnoreNotFound(
 			r.Client.Delete(r.ctx, obj),
@@ -82,19 +72,18 @@ func (r resources) Delete(name string, obj client.Object) error {
 
 func (r resources) List(set map[string]string, list client.ObjectList) error {
 	labelSelector := labels.SelectorFromSet(set)
-	listOps := &client.ListOptions{Namespace: r.instance.Namespace, LabelSelector: labelSelector}
+	listOps := &client.ListOptions{Namespace: r.infinispan.Namespace, LabelSelector: labelSelector}
 	return exec(
 		r.Client.List(r.ctx, list, listOps),
 	)
 }
 
 func (r resources) Load(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
-	// TODO are these necessary?
 	obj.SetName(name)
-	obj.SetNamespace(r.instance.Namespace)
+	obj.SetNamespace(r.infinispan.Namespace)
 
 	loadFn := func() error {
-		return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.instance.Namespace, Name: name}, obj)
+		return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.infinispan.Namespace, Name: name}, obj)
 	}
 
 	return exec(
@@ -135,12 +124,17 @@ func (r resources) load(name string, obj client.Object, load func() error, opts 
 		if isNotFound && !config.SkipEventRec {
 			msg := fmt.Sprintf("%s resource '%s' not ready", reflect.TypeOf(obj).Elem().Name(), name)
 			r.Log().Info(msg)
-			r.EventRecorder().Event(r.instance, corev1.EventTypeWarning, "ResourceNotReady", msg)
+			r.EventRecorder().Event(r.infinispan, corev1.EventTypeWarning, "ResourceNotReady", msg)
 		}
 		return err
 	}
 
-	key := r.resourceKey(name, obj)
+	gvk, err := apiutil.GVKForObject(obj, r.scheme)
+	if err != nil {
+		return fmt.Errorf("unable to get the GVK for object: %w", err)
+	}
+	key := fmt.Sprintf("%s.%s", name, gvk)
+
 	if !config.InvalidateCache {
 		if storedObj, ok := r.resources[key]; ok {
 			// Reflection trickery so that the passed obj reference is updated to the stored pointer
@@ -157,7 +151,7 @@ func (r resources) load(name string, obj client.Object, load func() error, opts 
 
 func (r resources) SetControllerReference(controlled metav1.Object) error {
 	return exec(
-		k8sctrlutil.SetControllerReference(r.instance, controlled, r.scheme),
+		k8sctrlutil.SetControllerReference(r.infinispan, controlled, r.scheme),
 	)
 }
 

@@ -122,7 +122,6 @@ func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	conditions = append(conditions, wellFormed)
 	i.SetConditions(conditions)
 
-	// TODO set Status.PodStatus here?
 	if i.NotClusterFormed(len(podList.Items), int(i.Spec.Replicas)) {
 		ctx.Log().Info("Cluster not well-formed, retrying ...")
 		ctx.RetryProcessing(nil)

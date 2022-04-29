@@ -36,7 +36,7 @@ func (i *impl) Process(ctx context.Context) (retry bool, err error) {
 
 	var status pipeline.FlowStatus
 	for _, h := range i.handlers {
-		invokeHandler(h, i.Instance, ispnContext)
+		invokeHandler(h, i.Infinispan, ispnContext)
 		status = ispnContext.FlowStatus()
 		if status.Stop {
 			break
@@ -63,7 +63,7 @@ func invokeHandler(h pipeline.Handler, i *ispnv1.Infinispan, ctx pipeline.Contex
 type builder impl
 
 func (b *builder) For(i *ispnv1.Infinispan) *builder {
-	b.Instance = i
+	b.Infinispan = i
 	return b
 }
 
@@ -97,7 +97,7 @@ func (b *builder) WithSupportedTypes(types map[schema.GroupVersionKind]struct{})
 }
 
 func (b *builder) Build() pipeline.Pipeline {
-	i := b.Instance
+	i := b.Infinispan
 	// TODO init handlers based upon Version defined in Spec and Status
 	handlers := handlerBuilder{
 		handlers: make([]pipeline.HandlerFunc, 0),

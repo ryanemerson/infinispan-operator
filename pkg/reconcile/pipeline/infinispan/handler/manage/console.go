@@ -18,7 +18,7 @@ const (
 func ConsoleUrl(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if !i.IsExposed() {
 		i.Status.ConsoleUrl = nil
-		if err := ctx.UpdateStatus(); err != nil {
+		if err := ctx.UpdateInfinispan(); err != nil {
 			ctx.RetryProcessing(err)
 		}
 		return
@@ -83,7 +83,7 @@ func ConsoleUrl(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		i.Status.ConsoleUrl = pointer.StringPtr(fmt.Sprintf("%s://%s/console", i.GetEndpointScheme(), exposeAddress))
 	}
 
-	if err := ctx.UpdateStatus(); err != nil {
+	if err := ctx.UpdateInfinispan(); err != nil {
 		ctx.RetryProcessing(err)
 	}
 }

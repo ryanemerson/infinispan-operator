@@ -42,7 +42,7 @@ func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConf
 		provider:              p,
 		flowCtrl:              &flowCtrl{},
 		ContextProviderConfig: config,
-		instance:              config.Instance, // TODO remove and just use value from config directly
+		infinispan:            config.Infinispan,
 		ctx:                   ctx,
 		ispnConfig:            &pipeline.ConfigFiles{},
 		ispnClient:            nil,
@@ -56,14 +56,10 @@ type impl struct {
 	*provider
 	*pipeline.ContextProviderConfig
 	ctx        context.Context
-	instance   *ispnv1.Infinispan
+	infinispan *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
 	ispnClient api.Infinispan
 	resources  map[string]client.Object
-}
-
-func (i impl) Instance() *ispnv1.Infinispan {
-	return i.instance
 }
 
 func (i impl) InfinispanClient() (api.Infinispan, error) {
@@ -72,7 +68,7 @@ func (i impl) InfinispanClient() (api.Infinispan, error) {
 	}
 
 	podList := &corev1.PodList{}
-	if err := i.Resources().List(i.instance.PodLabels(), podList); err != nil {
+	if err := i.Resources().List(i.infinispan.PodLabels(), podList); err != nil {
 		return nil, err
 	}
 	if len(podList.Items) == 0 {
@@ -103,7 +99,7 @@ func (i impl) curlClient(podName string) *curl.Client {
 		// TODO use constant
 		Container: "infinispan",
 		Podname:   podName,
-		Namespace: i.instance.Namespace,
+		Namespace: i.infinispan.Namespace,
 		Protocol:  "http",
 		Port:      consts.InfinispanAdminPort,
 	}, i.kubernetes)
@@ -143,17 +139,17 @@ func (i impl) IsTypeSupported(gvk schema.GroupVersionKind) bool {
 }
 
 func (i impl) Close() error {
-	return i.UpdateStatus()
+	return i.UpdateInfinispan()
 }
 
-func (i impl) UpdateStatus() error {
+func (i impl) UpdateInfinispan() error {
 	return i.update(func(ispn *ispnv1.Infinispan) {
-		ispn.Status = i.instance.Status
+		ispn.Status = i.infinispan.Status
 	})
 }
 
 func (i impl) update(update func(ispn *ispnv1.Infinispan)) error {
-	loadedInstance := i.instance.DeepCopy()
+	loadedInstance := i.infinispan.DeepCopy()
 	_, err := kube.CreateOrPatch(i.ctx, i.Client, loadedInstance, func() error {
 		if loadedInstance.CreationTimestamp.IsZero() || loadedInstance.GetDeletionTimestamp() != nil {
 			return errors.NewNotFound(schema.ParseGroupResource("infinispan.infinispan.org"), loadedInstance.Name)

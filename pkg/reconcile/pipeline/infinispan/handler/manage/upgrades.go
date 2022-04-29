@@ -73,8 +73,7 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 	}
 
 	// Get default Infinispan image for a running Infinispan pod
-	// TODO use constant for container name
-	podDefaultImage := kube.GetPodDefaultImage(*kube.GetContainer("infinispan", &podList.Items[0].Spec))
+	podDefaultImage := kube.GetPodDefaultImage(*kube.GetContainer(provision.InfinispanContainer, &podList.Items[0].Spec))
 
 	// If the operator's default image differs from the pod's default image,
 	// schedule an upgrade by gracefully shutting down the current cluster.
