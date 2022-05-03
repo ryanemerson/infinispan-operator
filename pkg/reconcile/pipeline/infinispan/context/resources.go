@@ -86,10 +86,15 @@ func (r resources) Delete(name string, obj client.Object, opts ...func(config *p
 	return r.createOrMutateErr(err, append(opts, pipeline.IgnoreNotFound)...)
 }
 
-func (r resources) List(set map[string]string, list client.ObjectList) error {
+func (r resources) List(set map[string]string, list client.ObjectList, opts ...func(config *pipeline.ResourcesConfig)) error {
 	labelSelector := labels.SelectorFromSet(set)
 	listOps := &client.ListOptions{Namespace: r.infinispan.Namespace, LabelSelector: labelSelector}
-	return r.Client.List(r.ctx, list, listOps)
+	config := resourcesConfig(opts...)
+	err := r.Client.List(r.ctx, list, listOps)
+	if err != nil && config.RetryOnErr {
+		r.RetryProcessing(err)
+	}
+	return err
 }
 
 func (r resources) Load(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {

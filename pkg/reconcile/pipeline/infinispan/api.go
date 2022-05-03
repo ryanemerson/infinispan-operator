@@ -72,6 +72,7 @@ type Context interface {
 
 	// InfinispanPods returns all pods associated with the Infinispan cluster's StatefulSet
 	// The list is created Lazily and cached per Pipeline execution to prevent repeated calls to retrieve the cluster pods
+	// If an error is returned, then RetryProcessing is automatically set
 	InfinispanPods() (*corev1.PodList, error)
 
 	// ConfigFiles returns the ConfigFiles struct used to hold all configuration data required by the Operand
@@ -138,7 +139,7 @@ type Resources interface {
 	// IgnoreFoundError option is always true
 	Delete(name string, obj client.Object, opts ...func(config *ResourcesConfig)) error
 	// List resources in the Infinispan namespace using the passed set as a LabelSelector
-	List(set map[string]string, list client.ObjectList) error
+	List(set map[string]string, list client.ObjectList, opts ...func(config *ResourcesConfig)) error
 	// Load a resource from the Infinispan namespace
 	Load(name string, obj client.Object, opts ...func(config *ResourcesConfig)) error
 	// LoadGlobal loads a cluster scoped kubernetes resource

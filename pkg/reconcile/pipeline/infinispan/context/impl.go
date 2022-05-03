@@ -96,7 +96,7 @@ func (i impl) InfinispanPods() (*corev1.PodList, error) {
 	if i.ispnPods == nil {
 		podList := &corev1.PodList{}
 		labels := i.infinispan.PodSelectorLabels()
-		if err := i.Resources().List(labels, podList); err != nil {
+		if err := i.Resources().List(labels, podList, pipeline.RetryOnErr); err != nil {
 			return nil, fmt.Errorf("unable to list Infinispan pods: %w", err)
 		}
 		i.ispnPods = podList

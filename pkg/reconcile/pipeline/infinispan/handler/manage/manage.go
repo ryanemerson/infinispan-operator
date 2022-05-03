@@ -14,7 +14,6 @@ import (
 func RemoveFailedInitContainers(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	podList, err := ctx.InfinispanPods()
 	if err != nil {
-		ctx.RetryProcessing(err)
 		return
 	}
 
@@ -39,7 +38,6 @@ func RemoveFailedInitContainers(i *ispnv1.Infinispan, ctx pipeline.Context) {
 func UpdatePodLabels(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	podList, err := ctx.InfinispanPods()
 	if err != nil {
-		ctx.RetryProcessing(err)
 		return
 	}
 

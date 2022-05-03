@@ -63,7 +63,6 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 
 	podList, err := ctx.InfinispanPods()
 	if err != nil {
-		ctx.RetryProcessing(err)
 		return
 	}
 
@@ -92,7 +91,6 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 
 	podList, err := ctx.InfinispanPods()
 	if err != nil {
-		ctx.RetryProcessing(err)
 		return
 	}
 

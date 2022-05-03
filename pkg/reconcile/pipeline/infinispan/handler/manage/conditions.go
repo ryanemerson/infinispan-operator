@@ -58,7 +58,6 @@ func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 	podList, err := ctx.InfinispanPods()
 	if err != nil {
-		ctx.RetryProcessing(err)
 		return
 	}
 	kube.FilterPodsByOwnerUID(podList, statefulSet.GetUID())
