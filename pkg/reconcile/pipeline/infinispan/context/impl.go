@@ -46,6 +46,7 @@ func (p *provider) Get(ctx context.Context, config *pipeline.ContextProviderConf
 		ctx:                   ctx,
 		ispnConfig:            &pipeline.ConfigFiles{},
 		ispnClient:            nil,
+		ispnPods:              nil,
 		resources:             make(map[string]client.Object),
 	}, nil
 }
@@ -59,6 +60,7 @@ type impl struct {
 	infinispan *ispnv1.Infinispan
 	ispnConfig *pipeline.ConfigFiles
 	ispnClient api.Infinispan
+	ispnPods   *corev1.PodList
 	resources  map[string]client.Object
 }
 
@@ -67,8 +69,8 @@ func (i impl) InfinispanClient() (api.Infinispan, error) {
 		return i.ispnClient, nil
 	}
 
-	podList := &corev1.PodList{}
-	if err := i.Resources().List(i.infinispan.PodSelectorLabels(), podList); err != nil {
+	podList, err := i.InfinispanPods()
+	if err != nil {
 		return nil, err
 	}
 	if len(podList.Items) == 0 {
@@ -88,6 +90,18 @@ func (i impl) InfinispanClient() (api.Infinispan, error) {
 func (i impl) InfinispanClientForPod(podName string) api.Infinispan {
 	curlClient := i.curlClient(podName)
 	return ispnClient.New(curlClient)
+}
+
+func (i impl) InfinispanPods() (*corev1.PodList, error) {
+	if i.ispnPods == nil {
+		podList := &corev1.PodList{}
+		labels := i.infinispan.PodSelectorLabels()
+		if err := i.Resources().List(labels, podList); err != nil {
+			return nil, fmt.Errorf("unable to list Infinispan pods: %w", err)
+		}
+		i.ispnPods = podList
+	}
+	return i.ispnPods, nil
 }
 
 func (i impl) curlClient(podName string) *curl.Client {
@@ -143,22 +157,16 @@ func (i impl) Close() error {
 }
 
 func (i impl) UpdateInfinispan() error {
-	return i.update(func(ispn *ispnv1.Infinispan) {
-		ispn.Annotations = i.infinispan.Annotations
-		ispn.ObjectMeta.Labels = i.infinispan.ObjectMeta.Labels
-		ispn.Spec = i.infinispan.Spec
-		ispn.Status = i.infinispan.Status
-	})
-}
-
-func (i impl) update(update func(ispn *ispnv1.Infinispan)) error {
-	loadedInstance := i.infinispan.DeepCopy()
-	_, err := kube.CreateOrPatch(i.ctx, i.Client, loadedInstance, func() error {
-		if loadedInstance.CreationTimestamp.IsZero() || loadedInstance.GetDeletionTimestamp() != nil {
-			return errors.NewNotFound(schema.ParseGroupResource("infinispan.infinispan.org"), loadedInstance.Name)
+	latestIspn := i.infinispan.DeepCopy()
+	mutateFn := func() error {
+		if latestIspn.CreationTimestamp.IsZero() || latestIspn.GetDeletionTimestamp() != nil {
+			return errors.NewNotFound(schema.ParseGroupResource("infinispan.infinispan.org"), latestIspn.Name)
 		}
-		update(loadedInstance)
+		latestIspn.Annotations = i.infinispan.Annotations
+		latestIspn.ObjectMeta.Labels = i.infinispan.ObjectMeta.Labels
+		latestIspn.Spec = i.infinispan.Spec
+		latestIspn.Status = i.infinispan.Status
 		return nil
-	})
-	return err
+	}
+	return i.Resources().CreateOrPatch(latestIspn, false, mutateFn, pipeline.RetryOnErr)
 }

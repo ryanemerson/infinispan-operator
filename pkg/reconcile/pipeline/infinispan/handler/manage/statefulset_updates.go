@@ -145,11 +145,10 @@ func StatefulSetRollingUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			labelsForPod[consts.StatefulSetPodLabel] = i.Name
 			statefulSet.Spec.Template.Labels = labelsForPod
 		}
-		err := ctx.Resources().Update(statefulSet)
+		err := ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
 		if err != nil {
 			log.Error(err, "failed to update StatefulSet", "StatefulSet.Name", statefulSet.Name)
 		}
-		ctx.RetryProcessing(err)
 		return
 	}
 }

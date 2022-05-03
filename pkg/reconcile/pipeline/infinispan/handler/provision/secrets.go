@@ -10,20 +10,19 @@ import (
 
 func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	secret := newSecret(i, i.GetSecretName())
-	err := ctx.Resources().CreateOrUpdate(secret, true, func() {
+	mutateFn := func() error {
 		secret.Type = corev1.SecretTypeOpaque
 		secret.Data = map[string][]byte{consts.ServerIdentitiesFilename: ctx.ConfigFiles().UserIdentities}
-	})
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(secret, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func AdminSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 
 	secret := newSecret(i, i.GetAdminSecretName())
-	err := ctx.Resources().CreateOrPatch(secret, true, func() {
+	mutateFn := func() error {
 		secret.Labels = i.Labels("infinispan-secret-admin-identities")
 		secret.Data = map[string][]byte{
 			consts.AdminUsernameKey:         []byte(configFiles.AdminIdentities.Username),
@@ -31,18 +30,16 @@ func AdminSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			consts.CliPropertiesFilename:    []byte(configFiles.AdminIdentities.CliProperties),
 			consts.ServerIdentitiesFilename: configFiles.AdminIdentities.IdentitiesFile,
 		}
-	})
-
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(secret, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func InfinispanSecuritySecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	configFiles := ctx.ConfigFiles()
 
 	secret := newSecret(i, i.GetInfinispanSecuritySecretName())
-	err := ctx.Resources().CreateOrUpdate(secret, true, func() {
+	mutateFn := func() error {
 		secret.Labels = i.Labels("infinispan-secret-server-security")
 		secret.Data = map[string][]byte{
 			consts.ServerIdentitiesCliFilename: []byte(configFiles.IdentitiesBatch),
@@ -50,10 +47,9 @@ func InfinispanSecuritySecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		if i.IsEncryptionEnabled() && len(configFiles.Keystore.PemFile) > 0 {
 			secret.Data["keystore.pem"] = configFiles.Keystore.PemFile
 		}
-	})
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(secret, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func TruststoreSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -63,7 +59,7 @@ func TruststoreSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 	truststore := ctx.ConfigFiles().Truststore
 	secret := newSecret(i, i.GetTruststoreSecretName())
-	if err := ctx.Resources().CreateOrPatch(secret, false, func() {
+	mutateFn := func() error {
 		_, truststoreExists := secret.Data[consts.EncryptTruststoreKey]
 		if !truststoreExists {
 			secret.Data = map[string][]byte{
@@ -71,9 +67,9 @@ func TruststoreSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 				consts.EncryptTruststorePasswordKey: []byte(truststore.Password),
 			}
 		}
-	}); err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(secret, false, mutateFn, pipeline.RetryOnErr)
 }
 
 func newSecret(i *ispnv1.Infinispan, name string) *corev1.Secret {

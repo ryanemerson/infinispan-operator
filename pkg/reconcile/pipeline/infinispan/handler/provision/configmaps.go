@@ -17,16 +17,14 @@ func InfinispanConfigMap(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		},
 	}
 
-	err := ctx.Resources().CreateOrUpdate(configmap, true, func() {
+	mutateFn := func() error {
 		configmap.Data = map[string]string{
 			"infinispan.xml":      config.ServerConfig,
 			"infinispan-zero.xml": config.ZeroConfig,
 			"log4j.xml":           config.Log4j,
 		}
 		configmap.Labels = i.Labels("infinispan-configmap-configuration")
-	})
-
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(configmap, true, mutateFn, pipeline.RetryOnErr)
 }

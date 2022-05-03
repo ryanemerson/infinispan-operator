@@ -70,6 +70,10 @@ type Context interface {
 	// InfinispanClientForPod returns a client for the specific pod
 	InfinispanClientForPod(podName string) ispnApi.Infinispan
 
+	// InfinispanPods returns all pods associated with the Infinispan cluster's StatefulSet
+	// The list is created Lazily and cached per Pipeline execution to prevent repeated calls to retrieve the cluster pods
+	InfinispanPods() (*corev1.PodList, error)
+
 	// ConfigFiles returns the ConfigFiles struct used to hold all configuration data required by the Operand
 	ConfigFiles() *ConfigFiles
 
@@ -99,6 +103,7 @@ type Context interface {
 	IsTypeSupported(gvk schema.GroupVersionKind) bool
 
 	// UpdateInfinispan updates the Infinispan CR resource being reconciled
+	// If an error is encountered, then RetryProcessing is automatically set
 	UpdateInfinispan() error
 
 	// RetryProcessing indicates that the pipeline should stop once the current Handler has finished execution and
@@ -122,15 +127,16 @@ type Context interface {
 type Resources interface {
 	// Create the passed object in the Infinispan namespace, setting the objects ControllerRef to the Infinispan CR if
 	// setControllerRef is true
-	Create(obj client.Object, setControllerRef bool) error
+	Create(obj client.Object, setControllerRef bool, opts ...func(config *ResourcesConfig)) error
 	// CreateOrUpdate the passed object in the Infinispan namespace, setting the objects ControllerRef to the Infinispan CR if
 	// setControllerRef is true
-	CreateOrUpdate(obj client.Object, setControllerRef bool, mutate func()) error
+	CreateOrUpdate(obj client.Object, setControllerRef bool, mutate func() error, opts ...func(config *ResourcesConfig)) error
 	// CreateOrPatch the passed object in the Infinispan namespace, setting the objects ControllerRef to the Infinispan CR if
 	// setControllerRef is true
-	CreateOrPatch(obj client.Object, setControllerRef bool, mutate func()) error
+	CreateOrPatch(obj client.Object, setControllerRef bool, mutate func() error, opts ...func(config *ResourcesConfig)) error
 	// Delete the obj from the Infinispan namespace
-	Delete(name string, obj client.Object) error
+	// IgnoreFoundError option is always true
+	Delete(name string, obj client.Object, opts ...func(config *ResourcesConfig)) error
 	// List resources in the Infinispan namespace using the passed set as a LabelSelector
 	List(set map[string]string, list client.ObjectList) error
 	// Load a resource from the Infinispan namespace
@@ -140,7 +146,7 @@ type Resources interface {
 	// SetControllerReference Set the controller reference of the passed object to the Infinispan CR being reconciled
 	SetControllerReference(controlled metav1.Object) error
 	// Update a kubernetes resource in the Infinispan namespace
-	Update(obj client.Object) error
+	Update(obj client.Object, opts ...func(config *ResourcesConfig)) error
 }
 
 // ResourcesConfig config used by Resources implementations to control implementation behaviour
@@ -162,11 +168,13 @@ func RetryOnErr(config *ResourcesConfig) {
 }
 
 // InvalidateCache ignore any cached resources and execute a new call to the api-server
+// Only applicable for Load and LoadGlobal functions
 func InvalidateCache(config *ResourcesConfig) {
 	config.InvalidateCache = true
 }
 
 // SkipEventRec do not send an event to the EventRecorder in the event of an error
+// Only applicable for Load and LoadGlobal functions
 func SkipEventRec(config *ResourcesConfig) {
 	config.SkipEventRec = true
 }

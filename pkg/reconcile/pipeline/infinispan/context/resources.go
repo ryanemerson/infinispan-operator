@@ -23,59 +23,73 @@ func (i *impl) Resources() pipeline.Resources {
 	return &resources{i}
 }
 
-func (r resources) Create(obj client.Object, setControllerRef bool) error {
+func (r resources) Create(obj client.Object, setControllerRef bool, opts ...func(config *pipeline.ResourcesConfig)) error {
 	if setControllerRef {
 		if err := r.SetControllerReference(obj); err != nil {
 			return err
 		}
 	}
-	return exec(
-		r.Client.Create(r.ctx, obj),
-	)
+	err := r.Client.Create(r.ctx, obj)
+	return r.createOrMutateErr(err, opts...)
 }
 
-func (r resources) CreateOrUpdate(obj client.Object, setControllerRef bool, mutate func()) error {
+func (r resources) CreateOrUpdate(obj client.Object, setControllerRef bool, mutate func() error, opts ...func(config *pipeline.ResourcesConfig)) error {
 	_, err := k8sctrlutil.CreateOrUpdate(r.ctx, r.Client, obj, func() error {
 		if mutate != nil {
-			mutate()
+			if err := mutate(); err != nil {
+				return err
+			}
 		}
 		if setControllerRef {
 			return r.SetControllerReference(obj)
 		}
 		return nil
 	})
-	return exec(err)
+	return r.createOrMutateErr(err, opts...)
 }
 
-func (r resources) CreateOrPatch(obj client.Object, setControllerRef bool, mutate func()) error {
+func (r resources) CreateOrPatch(obj client.Object, setControllerRef bool, mutate func() error, opts ...func(config *pipeline.ResourcesConfig)) error {
 	_, err := kube.CreateOrPatch(r.ctx, r.Client, obj, func() error {
 		if mutate != nil {
-			mutate()
+			if err := mutate(); err != nil {
+				return err
+			}
 		}
 		if setControllerRef {
 			return r.SetControllerReference(obj)
 		}
 		return nil
 	})
-	return exec(err)
+	return r.createOrMutateErr(err, opts...)
 }
 
-func (r resources) Delete(name string, obj client.Object) error {
+func (r resources) createOrMutateErr(err error, opts ...func(config *pipeline.ResourcesConfig)) error {
+	if err != nil {
+		config := resourcesConfig(opts...)
+		isNotFound := errors.IsNotFound(err)
+		if isNotFound && config.IgnoreNotFound {
+			return nil
+		}
+
+		if config.RetryOnErr {
+			r.RetryProcessing(err)
+		}
+		return err
+	}
+	return nil
+}
+
+func (r resources) Delete(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
 	obj.SetName(name)
 	obj.SetNamespace(r.infinispan.Namespace)
-	return exec(
-		client.IgnoreNotFound(
-			r.Client.Delete(r.ctx, obj),
-		),
-	)
+	err := r.Client.Delete(r.ctx, obj)
+	return r.createOrMutateErr(err, append(opts, pipeline.IgnoreNotFound)...)
 }
 
 func (r resources) List(set map[string]string, list client.ObjectList) error {
 	labelSelector := labels.SelectorFromSet(set)
 	listOps := &client.ListOptions{Namespace: r.infinispan.Namespace, LabelSelector: labelSelector}
-	return exec(
-		r.Client.List(r.ctx, list, listOps),
-	)
+	return r.Client.List(r.ctx, list, listOps)
 }
 
 func (r resources) Load(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
@@ -85,28 +99,18 @@ func (r resources) Load(name string, obj client.Object, opts ...func(config *pip
 	loadFn := func() error {
 		return r.Client.Get(r.ctx, types.NamespacedName{Namespace: r.infinispan.Namespace, Name: name}, obj)
 	}
-
-	return exec(
-		r.load(name, obj, loadFn, opts...),
-	)
+	return r.load(name, obj, loadFn, opts...)
 }
 
 func (r resources) LoadGlobal(name string, obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
 	loadFn := func() error {
 		return r.Client.Get(r.ctx, types.NamespacedName{Name: name}, obj)
 	}
-
-	return exec(
-		r.load(name, obj, loadFn, opts...),
-	)
+	return r.load(name, obj, loadFn, opts...)
 }
 
 func (r resources) load(name string, obj client.Object, load func() error, opts ...func(config *pipeline.ResourcesConfig)) error {
-	config := &pipeline.ResourcesConfig{}
-	for _, opt := range opts {
-		opt(config)
-	}
-
+	config := resourcesConfig(opts...)
 	handleErr := func(err error) error {
 		if err == nil {
 			return nil
@@ -150,21 +154,18 @@ func (r resources) load(name string, obj client.Object, load func() error, opts 
 }
 
 func (r resources) SetControllerReference(controlled metav1.Object) error {
-	return exec(
-		k8sctrlutil.SetControllerReference(r.infinispan, controlled, r.scheme),
-	)
+	return k8sctrlutil.SetControllerReference(r.infinispan, controlled, r.scheme)
 }
 
-func (r resources) Update(obj client.Object) error {
-	return exec(
-		r.Client.Update(r.ctx, obj),
-	)
+func (r resources) Update(obj client.Object, opts ...func(config *pipeline.ResourcesConfig)) error {
+	err := r.Client.Update(r.ctx, obj)
+	return r.createOrMutateErr(err, opts...)
 }
 
-// Wrapper for all executions that allows error debugging in a single place
-func exec(err error) error {
-	if client.IgnoreNotFound(err) != nil {
-		return err
+func resourcesConfig(opts ...func(config *pipeline.ResourcesConfig)) *pipeline.ResourcesConfig {
+	config := &pipeline.ResourcesConfig{}
+	for _, opt := range opts {
+		opt(config)
 	}
-	return err
+	return config
 }

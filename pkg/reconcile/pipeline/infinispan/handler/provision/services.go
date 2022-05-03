@@ -16,7 +16,7 @@ import (
 func PingService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	svc := newService(i, i.GetPingServiceName())
 
-	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+	mutateFn := func() error {
 		svc.Annotations = i.ServiceAnnotations()
 		svc.Labels = i.ServiceLabels("infinispan-service-ping")
 		svc.Spec.Type = corev1.ServiceTypeClusterIP
@@ -29,15 +29,14 @@ func PingService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		servicePort := &svc.Spec.Ports[0]
 		servicePort.Name = consts.InfinispanPingPortName
 		servicePort.Port = consts.InfinispanPingPort
-	})
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(svc, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func ClusterService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	svc := newService(i, i.GetServiceName())
-	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+	mutateFn := func() error {
 		svc.Annotations = i.ServiceAnnotations()
 		svc.Labels = i.ServiceLabels("infinispan-service")
 		svc.Spec.Type = corev1.ServiceTypeClusterIP
@@ -57,15 +56,14 @@ func ClusterService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 				svc.Annotations[i.Spec.Security.EndpointEncryption.CertServiceName+"/serving-cert-secret-name"] = secretName
 			}
 		}
-	})
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(svc, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func AdminService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	svc := newService(i, i.GetAdminServiceName())
-	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+	mutateFn := func() error {
 		svc.Annotations = i.ServiceAnnotations()
 		svc.Labels = i.ServiceLabels("infinispan-service-admin")
 
@@ -79,10 +77,9 @@ func AdminService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		servicePort := &svc.Spec.Ports[0]
 		servicePort.Name = consts.InfinispanAdminPortName
 		servicePort.Port = consts.InfinispanAdminPort
-	})
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(svc, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func ExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -102,8 +99,7 @@ func ExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 					ctx.Log().Error(err, "unable to list Services for deletion")
 				}
 				for _, svc := range serviceList.Items {
-					if err := ctx.Resources().Delete(svc.Name, &svc); err != nil {
-						ctx.RetryProcessing(err)
+					if err := ctx.Resources().Delete(svc.Name, &svc, pipeline.RetryOnErr); err != nil {
 						return
 					}
 				}
@@ -113,8 +109,7 @@ func ExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 					ctx.Log().Error(err, "unable to list Routes for deletion")
 				}
 				for _, route := range routeList.Items {
-					if err := ctx.Resources().Delete(route.Name, &route); err != nil {
-						ctx.RetryProcessing(err)
+					if err := ctx.Resources().Delete(route.Name, &route, pipeline.RetryOnErr); err != nil {
 						return
 					}
 				}
@@ -124,8 +119,7 @@ func ExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 					ctx.Log().Error(err, "unable to list Ingress' for deletion")
 				}
 				for _, route := range ingressList.Items {
-					if err := ctx.Resources().Delete(route.Name, &route); err != nil {
-						ctx.RetryProcessing(err)
+					if err := ctx.Resources().Delete(route.Name, &route, pipeline.RetryOnErr); err != nil {
 						return
 					}
 				}
@@ -151,7 +145,7 @@ func defineExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	externalServiceType := corev1.ServiceType(i.Spec.Expose.Type)
 
 	svc := newService(i, i.GetServiceExternalName())
-	err := ctx.Resources().CreateOrUpdate(svc, true, func() {
+	mutateFn := func() error {
 		svc.Annotations = i.ServiceAnnotations()
 		for k, v := range i.Spec.Expose.Annotations {
 			svc.Annotations[k] = v
@@ -175,11 +169,9 @@ func defineExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		if exposeConf.Port > 0 && exposeConf.Type == ispnv1.ExposeTypeLoadBalancer {
 			servicePort.Port = exposeConf.Port
 		}
-	})
-
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(svc, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func defineExternalRoute(i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -193,7 +185,7 @@ func defineExternalRoute(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			Namespace: i.Namespace,
 		},
 	}
-	err := ctx.Resources().CreateOrUpdate(route, true, func() {
+	mutateFn := func() error {
 		route.Annotations = i.ServiceAnnotations()
 		route.Labels = i.ExternalServiceLabels()
 		route.Spec.Host = i.Spec.Expose.Host
@@ -208,10 +200,9 @@ func defineExternalRoute(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		if i.IsEncryptionEnabled() {
 			route.Spec.TLS = &routev1.TLSConfig{Termination: routev1.TLSTerminationPassthrough}
 		}
-	})
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(route, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func defineExternalIngress(i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -228,7 +219,7 @@ func defineExternalIngress(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		},
 	}
 
-	err := ctx.Resources().CreateOrUpdate(ingress, true, func() {
+	mutateFn := func() error {
 		ingress.Annotations = i.ServiceAnnotations()
 		ingress.Labels = i.ExternalServiceLabels()
 		ingress.Spec.Rules = []ingressv1.IngressRule{
@@ -258,11 +249,9 @@ func defineExternalIngress(i *ispnv1.Infinispan, ctx pipeline.Context) {
 				},
 			}
 		}
-	})
-
-	if err != nil {
-		ctx.RetryProcessing(err)
+		return nil
 	}
+	_ = ctx.Resources().CreateOrUpdate(ingress, true, mutateFn, pipeline.RetryOnErr)
 }
 
 func newService(i *ispnv1.Infinispan, name string) *corev1.Service {

@@ -147,9 +147,7 @@ func ClusterStatefulSet(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	addTLS(ctx, i, statefulSet)
 	addXSiteTLS(ctx, i, statefulSet)
 
-	if err := ctx.Resources().Create(statefulSet, true); err != nil {
-		ctx.RetryProcessing(err)
-	}
+	_ = ctx.Resources().Create(statefulSet, true, pipeline.RetryOnErr)
 }
 
 func addUserIdentities(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {

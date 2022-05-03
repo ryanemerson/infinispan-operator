@@ -61,9 +61,9 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 		return
 	}
 
-	podList := &corev1.PodList{}
-	if err := ctx.Resources().List(i.PodSelectorLabels(), podList); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to list pods in ScheduleGracefulShutdownUpgrade: %w", err))
+	podList, err := ctx.InfinispanPods()
+	if err != nil {
+		ctx.RetryProcessing(err)
 		return
 	}
 
@@ -90,9 +90,9 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	logger := ctx.Log()
 
-	podList := &corev1.PodList{}
-	if err := ctx.Resources().List(i.PodSelectorLabels(), podList); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to list pods in ExecuteGracefulShutdownUpgrade: %w", err))
+	podList, err := ctx.InfinispanPods()
+	if err != nil {
+		ctx.RetryProcessing(err)
 		return
 	}
 
@@ -136,7 +136,7 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 					logger.Info("GracefulShutdown successfully executed on the Infinispan cluster")
 					i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionTrue, "")
 					i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionFalse, "")
-					ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
+					_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
 					return
 				}
 			}
@@ -144,13 +144,13 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 			i.Status.ReplicasWantedAtRestart = *statefulSet.Spec.Replicas
 			statefulSet.Spec.Replicas = pointer.Int32Ptr(0)
 			// GracefulShutdown in progress, but we must wait until the StatefulSet has scaled down before proceeding
-			ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
+			_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
 			return
 		}
 		// GracefulShutdown complete, proceed with the upgrade
 		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionTrue, "")
 		i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionFalse, "")
-		ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
+		_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
 		return
 	}
 
@@ -161,7 +161,7 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 
 		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
-		ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
+		_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
 		return
 	}
 
@@ -173,10 +173,7 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 		}
 		i.Status.ReplicasWantedAtRestart = 0
 		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionFalse, "")
-		if err := ctx.Resources().Update(statefulSet); err != nil {
-			ctx.RetryProcessing(err)
-			return
-		}
+		_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
 	}
 }
 
@@ -199,8 +196,7 @@ func destroyResources(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 
 	del := func(name string, obj client.Object) error {
-		if err := ctx.Resources().Delete(name, obj); err != nil {
-			ctx.RetryProcessing(err)
+		if err := ctx.Resources().Delete(name, obj, pipeline.RetryOnErr); err != nil {
 			return err
 		}
 		return nil
@@ -208,7 +204,6 @@ func destroyResources(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 	for _, r := range resources {
 		if err := del(r.name, r.obj); err != nil {
-			ctx.RetryProcessing(err)
 			return
 		}
 	}

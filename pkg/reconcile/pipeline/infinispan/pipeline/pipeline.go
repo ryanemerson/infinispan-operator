@@ -137,6 +137,8 @@ func (b *builder) Build() pipeline.Pipeline {
 	// Manage the created Cluster
 	handlers.Add(manage.PodStatus)
 	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(),
+		manage.RemoveFailedInitContainers,
+		manage.UpdatePodLabels,
 		manage.ScheduleGracefulShutdownUpgrade,
 		manage.ExecuteGracefulShutdownUpgrade,
 	)

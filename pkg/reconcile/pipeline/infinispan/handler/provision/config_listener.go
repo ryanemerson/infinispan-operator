@@ -48,16 +48,11 @@ func ConfigListener(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 
 	createOrUpdate := func(obj client.Object) error {
-		var err error
 		if listenerExists {
-			err = r.Update(obj)
+			return r.Update(obj, pipeline.RetryOnErr)
 		} else {
-			err = r.Create(obj, true)
+			return r.Create(obj, true, pipeline.RetryOnErr)
 		}
-		if err != nil {
-			ctx.RetryProcessing(err)
-		}
-		return err
 	}
 	// Create a ServiceAccount in the cluster namespace so that the ConfigListener has the required API permissions
 	sa := &corev1.ServiceAccount{
@@ -171,8 +166,7 @@ func RemoveConfigListener(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 	name := i.GetConfigListenerName()
 	for _, obj := range resources {
-		if err := ctx.Resources().Delete(name, obj); err != nil {
-			ctx.RetryProcessing(err)
+		if err := ctx.Resources().Delete(name, obj, pipeline.RetryOnErr); err != nil {
 			return
 		}
 	}

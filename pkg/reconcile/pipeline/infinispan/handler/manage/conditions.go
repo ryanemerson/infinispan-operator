@@ -6,7 +6,6 @@ import (
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
 	"strings"
@@ -57,9 +56,9 @@ func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet, pipeline.IgnoreNotFound, pipeline.RetryOnErr); err != nil {
 		return
 	}
-	podList := &corev1.PodList{}
-	if err := ctx.Resources().List(i.PodSelectorLabels(), podList); err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to list pods when checking if cluster WellFormed: %w", err))
+	podList, err := ctx.InfinispanPods()
+	if err != nil {
+		ctx.RetryProcessing(err)
 		return
 	}
 	kube.FilterPodsByOwnerUID(podList, statefulSet.GetUID())
