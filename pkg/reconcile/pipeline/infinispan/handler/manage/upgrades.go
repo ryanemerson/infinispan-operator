@@ -62,7 +62,7 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 	}
 
 	podList := &corev1.PodList{}
-	if err := ctx.Resources().List(i.PodLabels(), podList); err != nil {
+	if err := ctx.Resources().List(i.PodSelectorLabels(), podList); err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to list pods in ScheduleGracefulShutdownUpgrade: %w", err))
 		return
 	}
@@ -90,12 +90,8 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	logger := ctx.Log()
 
-	if !i.HasAnyConditionTrue(ispnv1.ConditionUpgrade, ispnv1.ConditionStopping, ispnv1.ConditionGracefulShutdown) {
-		return
-	}
-
 	podList := &corev1.PodList{}
-	if err := ctx.Resources().List(i.PodLabels(), podList); err != nil {
+	if err := ctx.Resources().List(i.PodSelectorLabels(), podList); err != nil {
 		ctx.RetryProcessing(fmt.Errorf("unable to list pods in ExecuteGracefulShutdownUpgrade: %w", err))
 		return
 	}
@@ -106,8 +102,7 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 	}
 
 	// Initiate the GracefulShutdown if it's not already in progress
-	if i.IsUpgradeCondition() && !i.HasCondition(ispnv1.ConditionGracefulShutdown) && i.Spec.Replicas == 0 {
-
+	if !i.HasCondition(ispnv1.ConditionGracefulShutdown) && i.Spec.Replicas == 0 {
 		logger.Info(".Spec.Replicas==0")
 		if *statefulSet.Spec.Replicas != 0 {
 			logger.Info("StatefulSet.Spec.Replicas!=0")
@@ -141,49 +136,47 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 					logger.Info("GracefulShutdown successfully executed on the Infinispan cluster")
 					i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionTrue, "")
 					i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionFalse, "")
+					ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
+					return
 				}
-				// Retry in order to persist the Status updates, or retry the GracefulShutdown if na error occurred
-				ctx.RetryProcessing(nil)
-				return
 			}
 
 			i.Status.ReplicasWantedAtRestart = *statefulSet.Spec.Replicas
 			statefulSet.Spec.Replicas = pointer.Int32Ptr(0)
-
 			// GracefulShutdown in progress, but we must wait until the StatefulSet has scaled down before proceeding
-			ctx.RetryProcessing(nil)
+			ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
 			return
 		}
 		// GracefulShutdown complete, proceed with the upgrade
 		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionTrue, "")
 		i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionFalse, "")
-
-		// Retry in order to persist the Status updates
-		ctx.RetryProcessing(nil)
+		ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
 		return
 	}
 
 	if i.IsUpgradeCondition() && i.HasCondition(ispnv1.ConditionGracefulShutdown) {
 		logger.Info("GracefulShutdown complete, continuing upgrade process")
 		destroyResources(i, ctx)
+		logger.Info("Infinispan resources removed", "replicasWantedAtRestart", i.Status.ReplicasWantedAtRestart)
 
 		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
-		// Retry in order to persist the Status updates
-		ctx.RetryProcessing(nil)
+		ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
 		return
 	}
 
-	if i.Spec.Replicas > 0 && i.HasCondition(ispnv1.ConditionGracefulShutdown) {
+	if i.Spec.Replicas != 0 && i.IsConditionTrue(ispnv1.ConditionGracefulShutdown) {
 		logger.Info("Resuming from graceful shutdown")
-		if i.Spec.Replicas != i.Status.ReplicasWantedAtRestart {
+		if i.Status.ReplicasWantedAtRestart != 0 && i.Spec.Replicas != i.Status.ReplicasWantedAtRestart {
 			ctx.RetryProcessing(fmt.Errorf("Spec.Replicas(%d) must be 0 or equal to Status.ReplicasWantedAtRestart(%d)", i.Spec.Replicas, i.Status.ReplicasWantedAtRestart))
+			return
 		}
 		i.Status.ReplicasWantedAtRestart = 0
 		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionFalse, "")
-		// Retry in order to persist the Status updates
-		ctx.RetryProcessing(nil)
-		return
+		if err := ctx.Resources().Update(statefulSet); err != nil {
+			ctx.RetryProcessing(err)
+			return
+		}
 	}
 }
 

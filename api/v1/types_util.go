@@ -93,22 +93,6 @@ func (ispn *Infinispan) HasCondition(condition ConditionType) bool {
 	return false
 }
 
-// HasAnyConditionTrue return true if any of the conditions are present and true
-func (ispn *Infinispan) HasAnyConditionTrue(conditions ...ConditionType) bool {
-	m := make(map[ConditionType]struct{}, len(conditions))
-	for _, c := range conditions {
-		m[c] = struct{}{}
-	}
-	for _, c := range ispn.Status.Conditions {
-		if _, ok := m[c.Type]; ok {
-			if c.Status == metav1.ConditionTrue {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // SetCondition set condition to status
 func (ispn *Infinispan) SetCondition(condition ConditionType, status metav1.ConditionStatus, message string) bool {
 	changed := false

@@ -106,11 +106,6 @@ func (b *builder) Build() pipeline.Pipeline {
 	// Apply default meta before doing anything else
 	handlers.Add(manage.PrelimChecksCondition)
 
-	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(),
-		manage.ScheduleGracefulShutdownUpgrade,
-		manage.ExecuteGracefulShutdownUpgrade,
-	)
-
 	// Configuration Handlers
 	handlers.AddFeatureSpecific(i.IsAuthenticationEnabled(), configure.UserAuthenticationSecret)
 	handlers.AddFeatureSpecific(i.UserConfigDefined(), configure.UserConfigMap)
@@ -140,8 +135,12 @@ func (b *builder) Build() pipeline.Pipeline {
 	handlers.AddFeatureSpecific(i.IsExposed(), provision.ExternalService)
 
 	// Manage the created Cluster
+	handlers.Add(manage.PodStatus)
+	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(),
+		manage.ScheduleGracefulShutdownUpgrade,
+		manage.ExecuteGracefulShutdownUpgrade,
+	)
 	handlers.Add(
-		manage.PodStatus,
 		manage.StatefulSetRollingUpgrade,
 		manage.WellFormedCondition,
 	)

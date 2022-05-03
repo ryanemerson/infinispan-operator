@@ -68,7 +68,7 @@ func (i impl) InfinispanClient() (api.Infinispan, error) {
 	}
 
 	podList := &corev1.PodList{}
-	if err := i.Resources().List(i.infinispan.PodLabels(), podList); err != nil {
+	if err := i.Resources().List(i.infinispan.PodSelectorLabels(), podList); err != nil {
 		return nil, err
 	}
 	if len(podList.Items) == 0 {
