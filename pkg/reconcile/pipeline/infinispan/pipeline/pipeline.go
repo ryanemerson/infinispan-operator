@@ -135,22 +135,30 @@ func (b *builder) Build() pipeline.Pipeline {
 	handlers.AddFeatureSpecific(i.IsExposed(), provision.ExternalService)
 
 	// Manage the created Cluster
+	// TODO set Status.StatefulSetName
 	handlers.Add(manage.PodStatus)
-	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(),
+	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(), manage.GracefulShutdownUpgrade)
+	handlers.Add(
 		manage.RemoveFailedInitContainers,
 		manage.UpdatePodLabels,
-		manage.ScheduleGracefulShutdownUpgrade,
-		manage.ExecuteGracefulShutdownUpgrade,
 	)
+	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(), manage.ScheduleGracefulShutdownUpgrade)
+
 	handlers.Add(
+		manage.GracefulShutdown,
+		manage.AwaitUpgrade,
 		manage.StatefulSetRollingUpgrade,
-		manage.WellFormedCondition,
+		manage.AwaitPodIps,
+		// TODO add autoscaling equipment
+		manage.AwaitWellFormedCondition,
+		manage.ConfigureLoggers,
 	)
 
 	// Provision any resources that require a running cluster
 	handlers.Add(provision.ConfigListener)
 	//handlers.AddFeatureSpecific(i.IsCache(), manage.CreateDefaultCache)
 	handlers.Add(manage.ConsoleUrl)
+	// TODO add xsite view conditions
 
 	b.handlers = handlers.Build()
 

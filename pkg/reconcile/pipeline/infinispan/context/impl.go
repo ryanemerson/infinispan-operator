@@ -11,6 +11,7 @@ import (
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/client/api"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -94,14 +95,20 @@ func (i impl) InfinispanClientForPod(podName string) api.Infinispan {
 
 func (i impl) InfinispanPods() (*corev1.PodList, error) {
 	if i.ispnPods == nil {
+		statefulSet := &appsv1.StatefulSet{}
+		if err := i.Resources().Load(i.infinispan.GetStatefulSetName(), statefulSet, pipeline.RetryOnErr); err != nil {
+			return nil, fmt.Errorf("unable to list Infinispan pods as StatefulSet can't be loaded: %w", err)
+		}
+
 		podList := &corev1.PodList{}
 		labels := i.infinispan.PodSelectorLabels()
 		if err := i.Resources().List(labels, podList, pipeline.RetryOnErr); err != nil {
 			return nil, fmt.Errorf("unable to list Infinispan pods: %w", err)
 		}
+		kube.FilterPodsByOwnerUID(podList, statefulSet.GetUID())
 		i.ispnPods = podList
 	}
-	return i.ispnPods, nil
+	return i.ispnPods.DeepCopy(), nil
 }
 
 func (i impl) curlClient(podName string) *curl.Client {

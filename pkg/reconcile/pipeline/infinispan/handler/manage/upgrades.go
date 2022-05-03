@@ -56,6 +56,8 @@ import (
 //  Requeue until required #pods exists
 //  [ConditionWellFormed]
 
+// ScheduleGracefulShutdownUpgrade if an upgrade is not already in progress, pods exist and the current pod image
+// is not equal to the most recent Operand image associated with the operator
 func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if i.IsUpgradeCondition() {
 		return
@@ -86,13 +88,10 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 	}
 }
 
-func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
+// GracefulShutdown safely scales down the cluster to 0 pods if the user sets .spec.Replicas == 0 or a GracefulShutdown
+// upgrade is triggered by the pipeline
+func GracefulShutdown(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	logger := ctx.Log()
-
-	podList, err := ctx.InfinispanPods()
-	if err != nil {
-		return
-	}
 
 	statefulSet := &appsv1.StatefulSet{}
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet, pipeline.RetryOnErr); err != nil {
@@ -100,13 +99,19 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 	}
 
 	// Initiate the GracefulShutdown if it's not already in progress
-	if !i.HasCondition(ispnv1.ConditionGracefulShutdown) && i.Spec.Replicas == 0 {
+	if i.Spec.Replicas == 0 {
 		logger.Info(".Spec.Replicas==0")
 		if *statefulSet.Spec.Replicas != 0 {
 			logger.Info("StatefulSet.Spec.Replicas!=0")
 			// Only send a GracefulShutdown request to the server if it hasn't succeeded already
 			if !i.IsConditionTrue(ispnv1.ConditionStopping) {
 				logger.Info("Sending GracefulShutdown request to the Infinispan cluster")
+
+				podList, err := ctx.InfinispanPods()
+				if err != nil {
+					return
+				}
+
 				var shutdownExecuted bool
 				for _, pod := range podList.Items {
 					if kube.IsPodReady(pod) {
@@ -134,7 +139,7 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 					logger.Info("GracefulShutdown successfully executed on the Infinispan cluster")
 					i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionTrue, "")
 					i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionFalse, "")
-					_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
+					ctx.RetryProcessing(nil)
 					return
 				}
 			}
@@ -142,24 +147,15 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 			i.Status.ReplicasWantedAtRestart = *statefulSet.Spec.Replicas
 			statefulSet.Spec.Replicas = pointer.Int32Ptr(0)
 			// GracefulShutdown in progress, but we must wait until the StatefulSet has scaled down before proceeding
-			_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
+			ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
 			return
 		}
 		// GracefulShutdown complete, proceed with the upgrade
-		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionTrue, "")
-		i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionFalse, "")
-		_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
-		return
-	}
-
-	if i.IsUpgradeCondition() && i.HasCondition(ispnv1.ConditionGracefulShutdown) {
-		logger.Info("GracefulShutdown complete, continuing upgrade process")
-		destroyResources(i, ctx)
-		logger.Info("Infinispan resources removed", "replicasWantedAtRestart", i.Status.ReplicasWantedAtRestart)
-
-		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
-		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
-		_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
+		if statefulSet.Status.CurrentReplicas == 0 {
+			i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionTrue, "")
+			i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionFalse, "")
+		}
+		ctx.RetryProcessing(nil)
 		return
 	}
 
@@ -171,7 +167,31 @@ func ExecuteGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) 
 		}
 		i.Status.ReplicasWantedAtRestart = 0
 		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionFalse, "")
-		_ = ctx.Resources().Update(statefulSet, pipeline.RetryOnErr)
+		ctx.RetryProcessing(nil)
+	}
+}
+
+// GracefulShutdownUpgrade performs the steps required by GracefulShutdown upgrades once the cluster has been scaled down
+// to 0 replicas
+func GracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
+	logger := ctx.Log()
+
+	if i.IsUpgradeCondition() && !i.IsConditionTrue(ispnv1.ConditionStopping) && i.Status.ReplicasWantedAtRestart > 0 {
+		logger.Info("GracefulShutdown complete, removing existing Infinispan resources")
+		destroyResources(i, ctx)
+		logger.Info("Infinispan resources removed", "replicasWantedAtRestart", i.Status.ReplicasWantedAtRestart)
+
+		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
+		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
+		ctx.RetryProcessing(nil)
+		return
+	}
+}
+
+func AwaitUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
+	if i.IsUpgradeCondition() {
+		ctx.Log().Info("IsUpgradeCondition")
+		ctx.RetryProcessing(nil)
 	}
 }
 

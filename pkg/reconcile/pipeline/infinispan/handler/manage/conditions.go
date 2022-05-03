@@ -50,25 +50,23 @@ func PodStatus(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 }
 
-func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
+func AwaitWellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	statefulSet := &appsv1.StatefulSet{}
 	// Ignore NotFound. StatefulSet hasn't been created yet, so it's not possible for cluster to be well-formed
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), statefulSet, pipeline.IgnoreNotFound, pipeline.RetryOnErr); err != nil {
 		return
 	}
-	podList, err := ctx.InfinispanPods()
-	if err != nil {
+
+	// If the StatefulSet has no replicas then it's not possible for the cluster to be WellFormed or allow any runtime
+	// operations, therefore we stop processing the request and wait for a new reconcile event to be triggered by a spec
+	// update
+	if statefulSet.Spec.Replicas != nil && *statefulSet.Spec.Replicas == 0 {
+		ctx.StopProcessing()
 		return
 	}
-	kube.FilterPodsByOwnerUID(podList, statefulSet.GetUID())
 
-	if !kube.ArePodIPsReady(podList) {
-		ctx.Log().Info("Pods IPs are not ready yet")
-
-		i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionUnknown, "Pods are not ready")
-		i.RemoveCondition(ispnv1.ConditionCrossSiteViewFormed)
-		i.Status.StatefulSetName = statefulSet.Name
-		ctx.RetryProcessing(nil)
+	podList, err := ctx.InfinispanPods()
+	if err != nil {
 		return
 	}
 
@@ -119,9 +117,13 @@ func WellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 	conditions = append(conditions, wellFormed)
 	i.SetConditions(conditions)
+	if err := ctx.UpdateInfinispan(); err != nil {
+		return
+	}
 
 	if i.NotClusterFormed(len(podList.Items), int(i.Spec.Replicas)) {
 		ctx.Log().Info("Cluster not well-formed, retrying ...")
+		ctx.Log().Info(fmt.Sprintf("podList.Items=%d, i.Spec.Replicas=%d", len(podList.Items), int(i.Spec.Replicas)))
 		ctx.RetryProcessing(nil)
 	}
 }

@@ -1,6 +1,7 @@
 package manage
 
 import (
+	"fmt"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
@@ -8,7 +9,22 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func AwaitPodIps(i *ispnv1.Infinispan, ctx pipeline.Context) {
+	podList, err := ctx.InfinispanPods()
+	if err != nil {
+		return
+	}
+
+	if !kube.ArePodIPsReady(podList) {
+		ctx.Log().Info("Pods IPs are not ready yet")
+		i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionUnknown, "Pods are not ready")
+		i.RemoveCondition(ispnv1.ConditionCrossSiteViewFormed)
+		ctx.RetryProcessing(nil)
+	}
+}
 
 // RemoveFailedInitContainers Recover Pods with updated init containers in case of fails
 func RemoveFailedInitContainers(i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -67,6 +83,35 @@ func UpdatePodLabels(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		err := ctx.Resources().CreateOrUpdate(&pod, false, mutateFn, pipeline.IgnoreNotFound, pipeline.RetryOnErr)
 		if err != nil {
 			return
+		}
+	}
+}
+
+func ConfigureLoggers(infinispan *ispnv1.Infinispan, ctx pipeline.Context) {
+	if infinispan.Spec.Logging == nil || len(infinispan.Spec.Logging.Categories) == 0 {
+		return
+	}
+
+	podList, err := ctx.InfinispanPods()
+	if err != nil {
+		return
+	}
+
+	for _, pod := range podList.Items {
+		logging := ctx.InfinispanClientForPod(pod.Name).Logging()
+		serverLoggers, err := logging.GetLoggers()
+		if err != nil {
+			ctx.RetryProcessing(fmt.Errorf("unable to obtain loggers: %w", err))
+			return
+		}
+		for category, level := range infinispan.Spec.Logging.Categories {
+			serverLevel, ok := serverLoggers[category]
+			if !(ok && string(level) == serverLevel) {
+				if err := logging.SetLogger(category, string(level)); err != nil {
+					ctx.RetryProcessing(fmt.Errorf("unable to set logger %s=%s: %w", category, string(level), err))
+					return
+				}
+			}
 		}
 	}
 }
