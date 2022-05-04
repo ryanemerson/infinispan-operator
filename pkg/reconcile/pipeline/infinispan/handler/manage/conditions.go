@@ -57,14 +57,6 @@ func AwaitWellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		return
 	}
 
-	// If the StatefulSet has no replicas then it's not possible for the cluster to be WellFormed or allow any runtime
-	// operations, therefore we stop processing the request and wait for a new reconcile event to be triggered by a spec
-	// update
-	if statefulSet.Spec.Replicas != nil && *statefulSet.Spec.Replicas == 0 {
-		ctx.StopProcessing()
-		return
-	}
-
 	podList, err := ctx.InfinispanPods()
 	if err != nil {
 		return
