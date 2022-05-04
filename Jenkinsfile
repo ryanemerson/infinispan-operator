@@ -156,20 +156,20 @@ pipeline {
                     }
                 }
 
-                stage('Xsite') {
-                    steps {
-                        catchError (buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                            sh 'scripts/ci/configure-xsite.sh'
-                            sh 'make xsite-test'
-                        }
-                    }
+                // stage('Xsite') {
+                //     steps {
+                //         catchError (buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                //             sh 'scripts/ci/configure-xsite.sh'
+                //             sh 'make xsite-test'
+                //         }
+                //     }
 
-                    post {
-                        failure {
-                            debugKind(true, 'kind-xsite1', 'kind-xsite2')
-                        }
-                    }
-                }
+                //     post {
+                //         failure {
+                //             debugKind(true, 'kind-xsite1', 'kind-xsite2')
+                //         }
+                //     }
+                // }
 
                 stage('Publish test results') {
                     steps {
