@@ -220,10 +220,6 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 		Build()
 
 	retry, err := pipeline.Process(ctx)
-	result := ctrl.Result{Requeue: retry}
 	reqLogger.Info("Done", "retry", retry, "error", err)
-	if retry {
-		return result, err
-	}
-	return result, nil
+	return ctrl.Result{Requeue: retry}, nil
 }
