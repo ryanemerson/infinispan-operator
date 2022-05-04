@@ -25,7 +25,7 @@ func StatefulSetRollingUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			// No existing StatefulSet so nothing todo
 			return
 		}
-		ctx.RetryProcessing(fmt.Errorf("unable to retrieve StatefulSet in StatefulSetRollingUpgrade: %w", err))
+		ctx.Requeue(fmt.Errorf("unable to retrieve StatefulSet in StatefulSetRollingUpgrade: %w", err))
 		return
 	}
 
@@ -81,7 +81,7 @@ func StatefulSetRollingUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	updateNeeded = updateStatefulSetEnv(container, statefulSet, "ADMIN_IDENTITIES_HASH", hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)) || updateNeeded
 
 	if updateCmdArgs, err := updateStartupArgs(container, configFiles.UserConfig); err != nil {
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	} else {
 		updateNeeded = updateCmdArgs || updateNeeded
@@ -96,7 +96,7 @@ func StatefulSetRollingUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 	externalArtifactsUpd, err := provision.ApplyExternalArtifactsDownload(i, container, spec)
 	if err != nil {
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	}
 	updateNeeded = externalArtifactsUpd || updateNeeded

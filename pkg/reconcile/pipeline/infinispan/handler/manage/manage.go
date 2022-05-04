@@ -22,7 +22,7 @@ func AwaitPodIps(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		ctx.Log().Info("Pods IPs are not ready yet")
 		i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionUnknown, "Pods are not ready")
 		i.RemoveCondition(ispnv1.ConditionCrossSiteViewFormed)
-		ctx.RetryProcessing(nil)
+		ctx.RequeueAfter(consts.DefaultWaitClusterPodsNotReady, nil)
 	}
 }
 
@@ -42,7 +42,7 @@ func RemoveFailedInitContainers(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		if !kube.IsInitContainersEqual(statefulSet.Spec.Template.Spec.InitContainers, pod.Spec.InitContainers) {
 			if kube.InitContainerFailed(pod.Status.InitContainerStatuses) {
 				if err := ctx.Resources().Delete(pod.Name, &pod); err != nil {
-					ctx.RetryProcessing(err)
+					ctx.Requeue(err)
 					return
 				}
 			}
@@ -101,14 +101,14 @@ func ConfigureLoggers(infinispan *ispnv1.Infinispan, ctx pipeline.Context) {
 		logging := ctx.InfinispanClientForPod(pod.Name).Logging()
 		serverLoggers, err := logging.GetLoggers()
 		if err != nil {
-			ctx.RetryProcessing(fmt.Errorf("unable to obtain loggers: %w", err))
+			ctx.Requeue(fmt.Errorf("unable to obtain loggers: %w", err))
 			return
 		}
 		for category, level := range infinispan.Spec.Logging.Categories {
 			serverLevel, ok := serverLoggers[category]
 			if !(ok && string(level) == serverLevel) {
 				if err := logging.SetLogger(category, string(level)); err != nil {
-					ctx.RetryProcessing(fmt.Errorf("unable to set logger %s=%s: %w", category, string(level), err))
+					ctx.Requeue(fmt.Errorf("unable to set logger %s=%s: %w", category, string(level), err))
 					return
 				}
 			}

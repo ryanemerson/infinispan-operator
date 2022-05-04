@@ -43,7 +43,7 @@ func ClusterStatefulSet(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if err := ctx.Resources().Load(i.GetStatefulSetName(), &appsv1.StatefulSet{}); err == nil {
 		return
 	} else if client.IgnoreNotFound(err) != nil {
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	}
 
@@ -131,13 +131,13 @@ func ClusterStatefulSet(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 
 	if err := addDataMountVolume(ctx, i, statefulSet); err != nil {
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	}
 
 	container := GetContainer(InfinispanContainer, &statefulSet.Spec.Template.Spec)
 	if _, err := ApplyExternalArtifactsDownload(i, container, &statefulSet.Spec.Template.Spec); err != nil {
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	}
 	ApplyExternalDependenciesVolume(i, &container.VolumeMounts, &statefulSet.Spec.Template.Spec)

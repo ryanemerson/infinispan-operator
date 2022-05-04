@@ -219,7 +219,7 @@ func (r *IspnReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.Request
 		WithSupportedTypes(r.supportedTypes).
 		Build()
 
-	retry, err := pipeline.Process(ctx)
-	reqLogger.Info("Done", "retry", retry, "error", err)
-	return ctrl.Result{Requeue: retry}, nil
+	retry, delay, err := pipeline.Process(ctx)
+	reqLogger.Info("Done", "requeue", retry, "requeueAfter", delay, "error", err)
+	return ctrl.Result{Requeue: retry, RequeueAfter: delay}, err
 }

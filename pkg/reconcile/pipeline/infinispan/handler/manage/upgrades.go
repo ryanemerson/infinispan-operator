@@ -82,8 +82,8 @@ func ScheduleGracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context)
 		ctx.Log().Info("schedule an Infinispan cluster upgrade", "pod default image", podDefaultImage, "desired image", consts.DefaultImageName)
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionTrue, "")
 		i.Spec.Replicas = 0
-		// Retry in order to persist the Status updates
-		ctx.RetryProcessing(nil)
+		// Requeue in order to persist the Status updates
+		ctx.Requeue(nil)
 		return
 	}
 }
@@ -139,7 +139,7 @@ func GracefulShutdown(i *ispnv1.Infinispan, ctx pipeline.Context) {
 					logger.Info("GracefulShutdown successfully executed on the Infinispan cluster")
 					i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionTrue, "")
 					i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionFalse, "")
-					ctx.RetryProcessing(nil)
+					ctx.Requeue(nil)
 					return
 				}
 			}
@@ -147,7 +147,7 @@ func GracefulShutdown(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			i.Status.ReplicasWantedAtRestart = *statefulSet.Spec.Replicas
 			statefulSet.Spec.Replicas = pointer.Int32Ptr(0)
 			// GracefulShutdown in progress, but we must wait until the StatefulSet has scaled down before proceeding
-			ctx.RetryProcessing(ctx.Resources().Update(statefulSet))
+			ctx.Requeue(ctx.Resources().Update(statefulSet))
 			return
 		}
 		// GracefulShutdown complete, proceed with the upgrade
@@ -155,19 +155,19 @@ func GracefulShutdown(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionTrue, "")
 			i.SetCondition(ispnv1.ConditionStopping, metav1.ConditionFalse, "")
 		}
-		ctx.RetryProcessing(nil)
+		ctx.Requeue(nil)
 		return
 	}
 
 	if i.Spec.Replicas != 0 && i.IsConditionTrue(ispnv1.ConditionGracefulShutdown) {
 		logger.Info("Resuming from graceful shutdown")
 		if i.Status.ReplicasWantedAtRestart != 0 && i.Spec.Replicas != i.Status.ReplicasWantedAtRestart {
-			ctx.RetryProcessing(fmt.Errorf("Spec.Replicas(%d) must be 0 or equal to Status.ReplicasWantedAtRestart(%d)", i.Spec.Replicas, i.Status.ReplicasWantedAtRestart))
+			ctx.Requeue(fmt.Errorf("Spec.Replicas(%d) must be 0 or equal to Status.ReplicasWantedAtRestart(%d)", i.Spec.Replicas, i.Status.ReplicasWantedAtRestart))
 			return
 		}
 		i.Status.ReplicasWantedAtRestart = 0
 		i.SetCondition(ispnv1.ConditionGracefulShutdown, metav1.ConditionFalse, "")
-		ctx.RetryProcessing(nil)
+		ctx.Requeue(nil)
 	}
 }
 
@@ -183,7 +183,7 @@ func GracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 		i.Spec.Replicas = i.Status.ReplicasWantedAtRestart
 		i.SetCondition(ispnv1.ConditionUpgrade, metav1.ConditionFalse, "")
-		ctx.RetryProcessing(nil)
+		ctx.Requeue(nil)
 		return
 	}
 }
@@ -191,7 +191,7 @@ func GracefulShutdownUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 func AwaitUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if i.IsUpgradeCondition() {
 		ctx.Log().Info("IsUpgradeCondition")
-		ctx.RetryProcessing(nil)
+		ctx.Requeue(nil)
 	}
 }
 

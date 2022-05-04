@@ -32,7 +32,7 @@ func UserConfigMap(i *ispnv1.Infinispan, ctx pipeline.Context) {
 
 	if overlayConfigMapKey == "" && !overlayLog4jConfig {
 		err := fmt.Errorf("one of infinispan-config.[xml|yaml|json] or log4j.xml must be present in the provided ConfigMap: %s", overlayConfigMap.Name)
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 	}
 
 	configFiles := ctx.ConfigFiles()
@@ -116,7 +116,7 @@ func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if serverConfig, err := config.Generate(nil, configSpec); err == nil {
 		configFiles.ServerConfig = serverConfig
 	} else {
-		ctx.RetryProcessing(fmt.Errorf("unable to generate infinispan.xml: %w", err))
+		ctx.Requeue(fmt.Errorf("unable to generate infinispan.xml: %w", err))
 		return
 	}
 
@@ -124,7 +124,7 @@ func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if zeroConfig, err := config.GenerateZeroCapacity(nil, configSpec); err == nil {
 		configFiles.ZeroConfig = zeroConfig
 	} else {
-		ctx.RetryProcessing(fmt.Errorf("unable to generate infinispan.xml: %w", err))
+		ctx.Requeue(fmt.Errorf("unable to generate infinispan.xml: %w", err))
 	}
 }
 
@@ -135,7 +135,7 @@ func Logging(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	// TODO utilise a version specific logging once server/operator versions decoupled
 	log4jXml, err := logging.Generate(nil, loggingSpec)
 	if err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to generate log4j.xml: %w", err))
+		ctx.Requeue(fmt.Errorf("unable to generate log4j.xml: %w", err))
 		return
 	}
 	ctx.ConfigFiles().Log4j = log4jXml

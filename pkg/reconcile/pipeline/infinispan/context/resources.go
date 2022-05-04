@@ -72,7 +72,7 @@ func (r resources) createOrMutateErr(err error, opts ...func(config *pipeline.Re
 		}
 
 		if config.RetryOnErr {
-			r.RetryProcessing(err)
+			r.Requeue(err)
 		}
 		return err
 	}
@@ -92,7 +92,7 @@ func (r resources) List(set map[string]string, list client.ObjectList, opts ...f
 	config := resourcesConfig(opts...)
 	err := r.Client.List(r.ctx, list, listOps)
 	if err != nil && config.RetryOnErr {
-		r.RetryProcessing(err)
+		r.Requeue(err)
 	}
 	return err
 }
@@ -127,7 +127,7 @@ func (r resources) load(name string, obj client.Object, load func() error, opts 
 		}
 
 		if config.RetryOnErr {
-			r.RetryProcessing(err)
+			r.Requeue(err)
 		}
 
 		if isNotFound && !config.SkipEventRec {

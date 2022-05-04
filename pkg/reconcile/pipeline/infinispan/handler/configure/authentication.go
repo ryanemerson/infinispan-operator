@@ -15,14 +15,14 @@ func UserAuthenticationSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	secret := &corev1.Secret{}
 	if err := ctx.Resources().Load(i.GetSecretName(), secret); err != nil {
 		if !i.IsGeneratedSecret() {
-			ctx.RetryProcessing(fmt.Errorf("unable to load user credential secret: %w", err))
+			ctx.Requeue(fmt.Errorf("unable to load user credential secret: %w", err))
 		}
 		return
 	}
 
 	userIdentities, ok := secret.Data[consts.ServerIdentitiesFilename]
 	if !ok {
-		ctx.RetryProcessing(fmt.Errorf("authentiation secret '%s' missing required file '%s'", secret.Name, consts.ServerIdentitiesCliFilename))
+		ctx.Requeue(fmt.Errorf("authentiation secret '%s' missing required file '%s'", secret.Name, consts.ServerIdentitiesCliFilename))
 		return
 	}
 	ctx.ConfigFiles().UserIdentities = userIdentities
@@ -32,7 +32,7 @@ func AdminSecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	secret := &corev1.Secret{}
 	if err := ctx.Resources().Load(i.GetAdminSecretName(), secret, pipeline.SkipEventRec); err != nil {
 		if !errors.IsNotFound(err) {
-			ctx.RetryProcessing(err)
+			ctx.Requeue(err)
 		}
 		return
 	}
@@ -51,13 +51,13 @@ func AdminIdentities(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		// An existing secret was not found in the collect stage, so generate new credentials and define in the context
 		identities, err := security.GetAdminCredentials()
 		if err != nil {
-			ctx.RetryProcessing(err)
+			ctx.Requeue(err)
 			return
 		}
 
 		password, err := security.FindPassword(user, identities)
 		if err != nil {
-			ctx.RetryProcessing(err)
+			ctx.Requeue(err)
 			return
 		}
 
@@ -71,13 +71,13 @@ func AdminIdentities(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		if password == "" {
 			var usrErr error
 			if password, usrErr = security.FindPassword(user, configFiles.AdminIdentities.IdentitiesFile); usrErr != nil {
-				ctx.RetryProcessing(usrErr)
+				ctx.Requeue(usrErr)
 				return
 			}
 		}
 		identities, err := security.CreateIdentitiesFor(user, password)
 		if err != nil {
-			ctx.RetryProcessing(err)
+			ctx.Requeue(err)
 			return
 		}
 		configFiles.AdminIdentities.IdentitiesFile = identities
@@ -97,7 +97,7 @@ func UserIdentities(_ *ispnv1.Infinispan, ctx pipeline.Context) {
 	if configFiles.UserIdentities == nil {
 		identities, err := security.GetUserCredentials()
 		if err != nil {
-			ctx.RetryProcessing(err)
+			ctx.Requeue(err)
 			return
 		}
 		configFiles.UserIdentities = identities
@@ -110,7 +110,7 @@ func IdentitiesBatch(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	// Define admin identities on the server
 	batch, err := security.IdentitiesCliFileFromSecret(configFiles.AdminIdentities.IdentitiesFile, "admin", "cli-admin-users.properties", "cli-admin-groups.properties")
 	if err != nil {
-		ctx.RetryProcessing(fmt.Errorf("unable to read admin credentials: %w", err))
+		ctx.Requeue(fmt.Errorf("unable to read admin credentials: %w", err))
 		return
 	}
 
@@ -118,7 +118,7 @@ func IdentitiesBatch(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if i.IsAuthenticationEnabled() {
 		usersCliBatch, err := security.IdentitiesCliFileFromSecret(configFiles.UserIdentities, "default", "cli-users.properties", "cli-groups.properties")
 		if err != nil {
-			ctx.RetryProcessing(fmt.Errorf("unable to read user credentials: %w", err))
+			ctx.Requeue(fmt.Errorf("unable to read user credentials: %w", err))
 			return
 		}
 		batch += usersCliBatch

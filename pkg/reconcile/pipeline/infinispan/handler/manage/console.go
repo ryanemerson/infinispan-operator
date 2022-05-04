@@ -3,6 +3,7 @@ package manage
 import (
 	"fmt"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	routev1 "github.com/openshift/api/route/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -37,7 +38,7 @@ func ConsoleUrl(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		}
 		if len(externalService.Spec.Ports) > 0 && i.GetExposeType() == ispnv1.ExposeTypeNodePort {
 			if exposeHost, err := k.GetNodeHost(log, ctx.Ctx()); err != nil {
-				ctx.RetryProcessing(err)
+				ctx.Requeue(err)
 				return
 			} else {
 				exposeAddress = fmt.Sprintf("%s:%d", exposeHost, externalService.Spec.Ports[0].NodePort)
@@ -49,11 +50,11 @@ func ConsoleUrl(i *ispnv1.Infinispan, ctx pipeline.Context) {
 					errMsg := "LoadBalancer expose type is not supported on the target platform"
 					ctx.EventRecorder().Event(externalService, corev1.EventTypeWarning, EventLoadBalancerUnsupported, errMsg)
 					log.Info(errMsg)
-					ctx.RetryProcessing(nil)
+					ctx.RequeueAfter(consts.DefaultWaitOnCluster, nil)
 					return
 				}
 				log.Info("LoadBalancer address not ready yet. Waiting on value in reconcile loop")
-				ctx.RetryProcessing(nil)
+				ctx.RequeueAfter(consts.DefaultWaitOnCluster, nil)
 				return
 			}
 		}

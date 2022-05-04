@@ -69,15 +69,15 @@ package pipeline_test
 //		h1 := defHandler()
 //		h1.EXPECT().Handle(ctx)
 //		h2 := func(c pipeline.Context) {
-//			c.RetryProcessing(err)
+//			c.Requeue(err)
 //		}
 //		h3 := defHandler()
 //		p := builder.Builder().WithContextProvider(&ctxProvider{ctx: ctx}).WithHandlers(h1, pipeline.HandlerFunc(h2), h3).Build()
 //
-//		ctx.EXPECT().RetryProcessing(err)
+//		ctx.EXPECT().Requeue(err)
 //		ctx.EXPECT().Close().Return(nil)
 //		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{})
-//		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{Retry: true, Stop: true, Err: err})
+//		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{Requeue: true, Stop: true, Err: err})
 //
 //		retry, err := p.Process(&v1alpha1.ServiceBinding{})
 //		Expect(err).To(Equal(err))
@@ -95,10 +95,10 @@ package pipeline_test
 //		h3 := defHandler()
 //		p := builder.Builder().WithContextProvider(&ctxProvider{ctx: ctx}).WithHandlers(h1, pipeline.HandlerFunc(h2), h3).Build()
 //
-//		ctx.EXPECT().RetryProcessing(err)
+//		ctx.EXPECT().Requeue(err)
 //		ctx.EXPECT().Close().Return(nil)
 //		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{})
-//		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{Retry: true, Stop: true, Err: err})
+//		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{Requeue: true, Stop: true, Err: err})
 //
 //		retry, rerr := p.Process(&v1alpha1.ServiceBinding{})
 //		Expect(rerr).To(Equal(err))
@@ -109,15 +109,15 @@ package pipeline_test
 //		h1 := defHandler()
 //		h1.EXPECT().Handle(ctx)
 //		h2 := func(c pipeline.Context) {
-//			c.StopProcessing()
+//			c.Stop()
 //		}
 //		h3 := defHandler()
 //		p := builder.Builder().WithContextProvider(&ctxProvider{ctx: ctx}).WithHandlers(h1, pipeline.HandlerFunc(h2), h3).Build()
 //
-//		ctx.EXPECT().StopProcessing()
+//		ctx.EXPECT().Stop()
 //		ctx.EXPECT().Close().Return(nil)
 //		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{})
-//		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{Retry: false, Stop: true, Err: nil})
+//		ctx.EXPECT().FlowStatus().Return(pipeline.FlowStatus{Requeue: false, Stop: true, Err: nil})
 //
 //		retry, err := p.Process(&v1alpha1.ServiceBinding{})
 //		Expect(err).NotTo(HaveOccurred())

@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"os"
 	"runtime/debug"
+	"time"
 )
 
 var _ pipeline.Pipeline = &impl{}
@@ -22,7 +23,7 @@ type impl struct {
 	handlers    []pipeline.Handler
 }
 
-func (i *impl) Process(ctx context.Context) (retry bool, err error) {
+func (i *impl) Process(ctx context.Context) (retry bool, delay time.Duration, err error) {
 	defer func() {
 		if perr := recover(); perr != nil {
 			retry = true
@@ -31,7 +32,7 @@ func (i *impl) Process(ctx context.Context) (retry bool, err error) {
 	}()
 	ispnContext, err := i.ctxProvider.Get(ctx, i.ContextProviderConfig)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 
 	var status pipeline.FlowStatus
@@ -44,9 +45,9 @@ func (i *impl) Process(ctx context.Context) (retry bool, err error) {
 	}
 	err = ispnContext.Close()
 	if err != nil {
-		return true, err
+		return true, status.Delay, err
 	}
-	return status.Retry, status.Err
+	return status.Retry, status.Delay, status.Err
 }
 
 func invokeHandler(h pipeline.Handler, i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -54,7 +55,7 @@ func invokeHandler(h pipeline.Handler, i *ispnv1.Infinispan, ctx pipeline.Contex
 		if err := recover(); err != nil {
 			e := fmt.Errorf("panic occurred: %v", err)
 			ctx.Log().Error(e, string(debug.Stack()))
-			ctx.RetryProcessing(e)
+			ctx.Requeue(e)
 		}
 	}()
 	h.Handle(i, ctx)

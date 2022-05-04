@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 )
 
 // Pipeline for Infinispan reconciliation
@@ -22,7 +23,7 @@ type Pipeline interface {
 	// Process the pipeline
 	// Returns true if processing should be repeated and optional error if occurred
 	// important: even if error occurred it might not be needed to retry processing
-	Process(ctx context.Context) (bool, error)
+	Process(ctx context.Context) (bool, time.Duration, error)
 }
 
 // Handler an individual stage in the pipeline
@@ -41,10 +42,11 @@ type FlowStatus struct {
 	Retry bool
 	Stop  bool
 	Err   error
+	Delay time.Duration
 }
 
 func (f *FlowStatus) String() string {
-	return fmt.Sprintf("Retry=%t, Stop=%t, Err=%s", f.Retry, f.Stop, f.Err.Error())
+	return fmt.Sprintf("Requeue=%t, Stop=%t, Err=%s, Delay=%dms", f.Retry, f.Stop, f.Err.Error(), f.Delay.Milliseconds())
 }
 
 // ContextProvider interface used by Pipeline implementations to obtain a Context
@@ -107,15 +109,19 @@ type Context interface {
 	// If an error is encountered, then RetryProcessing is automatically set
 	UpdateInfinispan() error
 
-	// RetryProcessing indicates that the pipeline should stop once the current Handler has finished execution and
+	// Requeue indicates that the pipeline should stop once the current Handler has finished execution and
 	// reconciliation should be requeued
-	RetryProcessing(reason error)
+	Requeue(reason error)
 
-	// Error Indicates that en error has occurred while processing the cluster
+	// RequeueAfter indicates that the pipeline should stop once the current Handler has finished execution and
+	// reconciliation should be requeued after delay time
+	RequeueAfter(delay time.Duration, reason error)
+
+	// Error Indicates that en error has occurred while processing the cluster. Unless
 	Error(err error)
 
-	// StopProcessing indicates that the pipeline should stop once the current Handler has finished execution
-	StopProcessing()
+	// Stop indicates that the pipeline should stop once the current Handler has finished execution
+	Stop()
 
 	// Close the context and persist any changes to the Infinispan CR
 	Close() error
@@ -163,7 +169,7 @@ func IgnoreNotFound(config *ResourcesConfig) {
 	config.IgnoreNotFound = true
 }
 
-// RetryOnErr set Context#RetryProcessing(err) when an error is encountered
+// RetryOnErr set Context#Requeue(err) when an error is encountered
 func RetryOnErr(config *ResourcesConfig) {
 	config.RetryOnErr = true
 }

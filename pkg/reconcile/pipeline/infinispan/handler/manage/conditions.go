@@ -3,6 +3,7 @@ package manage
 import (
 	"fmt"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
+	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
 	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	appsv1 "k8s.io/api/apps/v1"
@@ -19,7 +20,7 @@ func PrelimChecksCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			i.ApplyMonitoringAnnotation()
 		}
 		i.SetCondition(ispnv1.ConditionPrelimChecksPassed, metav1.ConditionTrue, "")
-		ctx.RetryProcessing(nil)
+		ctx.Requeue(nil)
 	}
 }
 
@@ -48,6 +49,8 @@ func PodStatus(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		Starting: starting,
 		Ready:    ready,
 	}
+	i.Status.StatefulSetName = ss.GetName()
+	_ = ctx.UpdateInfinispan()
 }
 
 func AwaitWellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
@@ -116,6 +119,6 @@ func AwaitWellFormedCondition(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if i.NotClusterFormed(len(podList.Items), int(i.Spec.Replicas)) {
 		ctx.Log().Info("Cluster not well-formed, retrying ...")
 		ctx.Log().Info(fmt.Sprintf("podList.Items=%d, i.Spec.Replicas=%d", len(podList.Items), int(i.Spec.Replicas)))
-		ctx.RetryProcessing(nil)
+		ctx.RequeueAfter(consts.DefaultWaitClusterNotWellFormed, nil)
 	}
 }

@@ -62,7 +62,7 @@ func Truststore(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	// If Truststore and password already exist, nothing to do
 	if truststore, exists := trustSecret.Data[consts.EncryptTruststoreKey]; exists {
 		if !passwordProvided {
-			ctx.RetryProcessing(fmt.Errorf("the '%s' key must be provided when configuring an existing Truststore", consts.EncryptTruststorePasswordKey))
+			ctx.Requeue(fmt.Errorf("the '%s' key must be provided when configuring an existing Truststore", consts.EncryptTruststorePasswordKey))
 			return
 		}
 		ctx.ConfigFiles().Truststore = &pipeline.Truststore{
@@ -87,7 +87,7 @@ func Truststore(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 	truststore, err := security.GenerateTruststore(certs, password)
 	if err != nil {
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	}
 	ctx.ConfigFiles().Truststore = &pipeline.Truststore{

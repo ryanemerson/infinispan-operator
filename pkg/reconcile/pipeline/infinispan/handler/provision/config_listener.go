@@ -19,7 +19,7 @@ func ConfigListener(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	if constants.ConfigListenerImageName == "" {
 		err := fmt.Errorf("'%s' has not been defined", constants.ConfigListenerEnvName)
 		ctx.Log().Error(err, "unable to create ConfigListener deployment")
-		ctx.RetryProcessing(err)
+		ctx.Requeue(err)
 		return
 	}
 
