@@ -19,7 +19,7 @@ func AwaitPodIps(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 
 	if !kube.ArePodIPsReady(podList) {
-		ctx.Log().Info("Pods IPs are not ready yet")
+		ctx.Log().Info("Pod IPs are not ready yet")
 		i.SetCondition(ispnv1.ConditionWellFormed, metav1.ConditionUnknown, "Pods are not ready")
 		i.RemoveCondition(ispnv1.ConditionCrossSiteViewFormed)
 		ctx.RequeueAfter(consts.DefaultWaitClusterPodsNotReady, nil)
