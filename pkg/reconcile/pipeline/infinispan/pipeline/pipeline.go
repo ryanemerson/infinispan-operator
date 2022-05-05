@@ -61,7 +61,44 @@ func invokeHandler(h pipeline.Handler, i *ispnv1.Infinispan, ctx pipeline.Contex
 	h.Handle(i, ctx)
 }
 
+type handlerBuilder struct {
+	handlers []pipeline.HandlerFunc
+}
+
+func (h *handlerBuilder) Add(handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
+	h.handlers = append(h.handlers, handlerFunc...)
+	return h
+}
+
+func (h *handlerBuilder) AddFeatureSpecific(predicate bool, handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
+	if predicate {
+		return h.Add(handlerFunc...)
+	}
+	return h
+}
+
+func (h *handlerBuilder) AddEnvSpecific(envName, envValue string, handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
+	if val, ok := os.LookupEnv(envName); ok && val == envValue {
+		h.handlers = append(h.handlers, handlerFunc...)
+	}
+	return h
+}
+
+func (h *handlerBuilder) Build() []pipeline.Handler {
+	handlers := make([]pipeline.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler
+	}
+	return handlers
+}
+
 type builder impl
+
+func Builder() *builder {
+	return &builder{
+		ContextProviderConfig: &pipeline.ContextProviderConfig{},
+	}
+}
 
 func (b *builder) For(i *ispnv1.Infinispan) *builder {
 	b.Infinispan = i
@@ -107,7 +144,12 @@ func (b *builder) Build() pipeline.Pipeline {
 	// Apply default meta before doing anything else
 	handlers.Add(manage.PrelimChecksCondition)
 
+	// Provision/Remove the XSite service before performing configuration so that Remote site information can be retrieved
+	handlers.Add(provision.XSiteService)
+
 	// Configuration Handlers
+	handlers.AddFeatureSpecific(i.HasSites(), configure.XSite)
+	handlers.AddFeatureSpecific(i.IsSiteTLSEnabled(), configure.TransportTLS)
 	handlers.AddFeatureSpecific(i.IsAuthenticationEnabled(), configure.UserAuthenticationSecret)
 	handlers.AddFeatureSpecific(i.UserConfigDefined(), configure.UserConfigMap)
 	handlers.AddFeatureSpecific(i.IsEncryptionEnabled(), configure.Keystore)
@@ -125,6 +167,7 @@ func (b *builder) Build() pipeline.Pipeline {
 	handlers.AddFeatureSpecific(i.IsAuthenticationEnabled() && i.IsGeneratedSecret(), provision.UserAuthenticationSecret)
 	handlers.AddFeatureSpecific(i.IsClientCertEnabled(), provision.TruststoreSecret)
 	handlers.Add(
+		provision.GossipRouter,
 		provision.AdminSecret,
 		provision.InfinispanSecuritySecret,
 		provision.InfinispanConfigMap,
@@ -136,7 +179,6 @@ func (b *builder) Build() pipeline.Pipeline {
 	handlers.AddFeatureSpecific(i.IsExposed(), provision.ExternalService)
 
 	// Manage the created Cluster
-	// TODO set Status.StatefulSetName
 	handlers.Add(manage.PodStatus)
 	handlers.AddFeatureSpecific(i.GracefulShutdownUpgrades(), manage.GracefulShutdownUpgrade)
 	handlers.Add(
@@ -165,41 +207,4 @@ func (b *builder) Build() pipeline.Pipeline {
 
 	impl := impl(*b)
 	return &impl
-}
-
-func Builder() *builder {
-	return &builder{
-		ContextProviderConfig: &pipeline.ContextProviderConfig{},
-	}
-}
-
-type handlerBuilder struct {
-	handlers []pipeline.HandlerFunc
-}
-
-func (h *handlerBuilder) Add(handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
-	h.handlers = append(h.handlers, handlerFunc...)
-	return h
-}
-
-func (h *handlerBuilder) AddFeatureSpecific(predicate bool, handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
-	if predicate {
-		return h.Add(handlerFunc...)
-	}
-	return h
-}
-
-func (h *handlerBuilder) AddEnvSpecific(envName, envValue string, handlerFunc ...pipeline.HandlerFunc) *handlerBuilder {
-	if val, ok := os.LookupEnv(envName); ok && val == envValue {
-		h.handlers = append(h.handlers, handlerFunc...)
-	}
-	return h
-}
-
-func (h *handlerBuilder) Build() []pipeline.Handler {
-	handlers := make([]pipeline.Handler, len(h.handlers))
-	for i, handler := range h.handlers {
-		handlers[i] = handler
-	}
-	return handlers
 }

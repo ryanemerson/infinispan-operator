@@ -117,11 +117,8 @@ type Context interface {
 	// reconciliation should be requeued after delay time
 	RequeueAfter(delay time.Duration, reason error)
 
-	// Error Indicates that en error has occurred while processing the cluster. Unless
-	Error(err error)
-
 	// Stop indicates that the pipeline should stop once the current Handler has finished execution
-	Stop()
+	Stop(err error)
 
 	// Close the context and persist any changes to the Infinispan CR
 	Close() error
@@ -197,6 +194,8 @@ type ConfigFiles struct {
 	UserConfig      UserConfig
 	Keystore        *Keystore
 	Truststore      *Truststore
+	Transport       *Transport
+	XSite           *XSite
 }
 
 type UserConfig struct {
@@ -223,6 +222,23 @@ type Keystore struct {
 type Truststore struct {
 	File     []byte
 	Password string
+	Path     string
+}
+
+type Transport struct {
+	Keystore   *Keystore
+	Truststore *Truststore
+}
+
+type XSite struct {
+	MaxRelayNodes int32
+	Sites         []BackupSite
+}
+
+type BackupSite struct {
+	Address string
+	Name    string
+	Port    int32
 }
 
 var (

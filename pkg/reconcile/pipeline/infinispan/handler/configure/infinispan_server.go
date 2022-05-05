@@ -74,7 +74,37 @@ func InfinispanServer(i *ispnv1.Infinispan, ctx pipeline.Context) {
 			Authenticate: i.IsAuthenticationEnabled(),
 			ClientCert:   string(ispnv1.ClientCertNone),
 		},
-		//XSite: xsite,
+	}
+
+	if i.HasSites() {
+		// Convert the pipeline ConfigFiles to the config struct
+		xSite := &config.XSite{
+			MaxRelayNodes: configFiles.XSite.MaxRelayNodes,
+		}
+		sites := make([]config.BackupSite, len(configFiles.XSite.Sites))
+		for i, site := range configFiles.XSite.Sites {
+			sites[i] = config.BackupSite(site)
+		}
+
+		// Configure Transport TLS
+		ks := configFiles.Transport.Keystore
+		tlsConfig := config.TransportTLS{
+			Enabled: true,
+			KeyStore: config.Keystore{
+				Alias:    ks.Alias,
+				Password: ks.Password,
+				Path:     ks.Path,
+			},
+		}
+		ts := configFiles.Transport.Truststore
+		if ts != nil {
+			tlsConfig.TrustStore = config.Truststore{
+				Path:     ts.Path,
+				Password: ts.Password,
+			}
+		}
+		configSpec.Transport.TLS = tlsConfig
+		configSpec.XSite = xSite
 	}
 
 	// Apply settings for authentication and roles

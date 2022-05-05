@@ -295,6 +295,12 @@ func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.Stat
 }
 
 func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
+	if !i.IsSiteTLSEnabled() {
+		return
+	}
+	// TODO
+	// Mount GetSiteTransportSecretName
+	// Mount GetSiteTrustoreSecretName if exists/configured?
 
 	//if i.IsSiteTLSEnabled() {
 	//	AddSecretVolume(i.GetSiteTransportSecretName(), SiteTransportKeystoreVolumeName, consts.SiteTransportKeyStoreRoot, spec, InfinispanContainer)

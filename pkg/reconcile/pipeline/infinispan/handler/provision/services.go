@@ -136,7 +136,7 @@ func ExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		} else if ctx.IsTypeSupported(pipeline.IngressGVK) {
 			defineExternalIngress(i, ctx)
 		} else {
-			ctx.Error(fmt.Errorf("unable to expose cluster with type Route, as no implementations are supported"))
+			ctx.Stop(fmt.Errorf("unable to expose cluster with type Route, as no implementations are supported"))
 		}
 	}
 }
@@ -175,16 +175,7 @@ func defineExternalService(i *ispnv1.Infinispan, ctx pipeline.Context) {
 }
 
 func defineExternalRoute(i *ispnv1.Infinispan, ctx pipeline.Context) {
-	route := &routev1.Route{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "route.openshift.io/v1",
-			Kind:       "Route",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      i.GetServiceExternalName(),
-			Namespace: i.Namespace,
-		},
-	}
+	route := newRoute(i, i.GetServiceExternalName())
 	mutateFn := func() error {
 		route.Annotations = i.ServiceAnnotations()
 		route.Labels = i.ExternalServiceLabels()
@@ -254,11 +245,102 @@ func defineExternalIngress(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	_ = ctx.Resources().CreateOrUpdate(ingress, true, mutateFn, pipeline.RetryOnErr)
 }
 
+func XSiteService(i *ispnv1.Infinispan, ctx pipeline.Context) {
+	if !i.HasSites() {
+		_ = ctx.Resources().Delete(i.GetSiteServiceName(), &corev1.Service{}, pipeline.RetryOnErr)
+		return
+	}
+
+	exposeConf := i.Spec.Service.Sites.Local.Expose
+	exposeType := i.GetCrossSiteExposeType()
+	var svcType corev1.ServiceType
+	if exposeType == ispnv1.CrossSiteExposeTypeRoute {
+		svcType = corev1.ServiceTypeClusterIP
+	} else {
+		svcType = corev1.ServiceType(exposeType)
+	}
+
+	if exposeType == ispnv1.CrossSiteExposeTypeRoute {
+		if !ctx.IsTypeSupported(pipeline.RouteGVK) {
+			ctx.Stop(fmt.Errorf("route cross-site expose type is not supported"))
+			return
+		}
+	}
+
+	var annotations map[string]string
+	if exposeConf.Annotations != nil && len(exposeConf.Annotations) > 0 {
+		annotations = exposeConf.Annotations
+	} else {
+		annotations = i.ServiceAnnotations()
+		annotations["service.beta.kubernetes.io/aws-load-balancer-backend-protocol"] = "tcp"
+	}
+
+	svc := newService(i, i.GetSiteServiceName())
+	mutateFn := func() error {
+		svc.Annotations = annotations
+		svc.Labels = i.ServiceLabels("infinispan-service-xsite")
+		svc.Spec.Selector = i.GossipRouterPodSelectorLabels()
+		svc.Spec.Type = svcType
+
+		// We must utilise the existing ServicePort values if updating the service, to prevent the created ports being overwritten
+		if svc.CreationTimestamp.IsZero() {
+			svc.Spec.Ports = []corev1.ServicePort{{}}
+		}
+		servicePort := &svc.Spec.Ports[0]
+		if exposeType == ispnv1.CrossSiteExposeTypeLoadBalancer && exposeConf.Port > 0 {
+			servicePort.Port = exposeConf.Port
+		} else {
+			servicePort.Port = consts.CrossSitePort
+		}
+		servicePort.TargetPort = intstr.IntOrString{IntVal: consts.CrossSitePort}
+		return nil
+	}
+
+	if err := ctx.Resources().CreateOrUpdate(svc, true, mutateFn, pipeline.RetryOnErr); err != nil {
+		return
+	}
+
+	if exposeType == ispnv1.CrossSiteExposeTypeRoute {
+		// Provision Route resource to expose the service just created
+		route := newRoute(i, i.GetSiteRouteName())
+		mutateFn = func() error {
+			route.Annotations = i.ServiceAnnotations()
+			route.Labels = i.ServiceLabels("infinispan-route-xsite")
+			route.Spec.Host = strings.TrimSpace(exposeConf.RouteHostName)
+			route.Spec.Port = &routev1.RoutePort{
+				TargetPort: intstr.FromInt(consts.CrossSitePort),
+			}
+			route.Spec.To = routev1.RouteTargetReference{
+				Kind: "Service",
+				Name: i.GetSiteServiceName(),
+			}
+			route.Spec.TLS = &routev1.TLSConfig{
+				Termination: routev1.TLSTerminationPassthrough,
+			}
+			return nil
+		}
+		_ = ctx.Resources().CreateOrUpdate(route, true, mutateFn, pipeline.RetryOnErr)
+	}
+}
+
 func newService(i *ispnv1.Infinispan, name string) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Service",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: i.Namespace,
+		},
+	}
+}
+
+func newRoute(i *ispnv1.Infinispan, name string) *routev1.Route {
+	return &routev1.Route{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "route.openshift.io/v1",
+			Kind:       "Route",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,

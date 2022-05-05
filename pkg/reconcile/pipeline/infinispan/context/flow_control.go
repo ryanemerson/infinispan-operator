@@ -21,21 +21,17 @@ func (i *flowCtrl) FlowStatus() pipeline.FlowStatus {
 	}
 }
 
-func (i *flowCtrl) Requeue(reason error) {
-	i.RequeueAfter(0, reason)
+func (i *flowCtrl) Requeue(err error) {
+	i.RequeueAfter(0, err)
 }
 
-func (i *flowCtrl) RequeueAfter(delay time.Duration, reason error) {
+func (i *flowCtrl) RequeueAfter(delay time.Duration, err error) {
 	i.retry = true
-	i.stop = true
-	i.err = reason
 	i.delay = delay
+	i.Stop(err)
 }
 
-func (i *flowCtrl) Error(err error) {
-	i.err = err
-}
-
-func (i *flowCtrl) Stop() {
+func (i *flowCtrl) Stop(err error) {
 	i.stop = true
+	i.err = err
 }
