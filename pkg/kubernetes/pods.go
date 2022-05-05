@@ -2,11 +2,15 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	"reflect"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -160,4 +164,49 @@ func GetContainer(name string, spec *corev1.PodSpec) *corev1.Container {
 		}
 	}
 	return nil
+}
+
+func GetPodMemoryLimitBytes(container, podName, namespace string, kube *Kubernetes) (uint64, error) {
+	execOut, err := kube.ExecWithOptions(ExecOptions{
+		Container: container,
+		Command:   []string{"cat", "/sys/fs/cgroup/memory/memory.limit_in_bytes"},
+		PodName:   podName,
+		Namespace: namespace,
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("unexpected error getting memory limit bytes, err: %w", err)
+	}
+
+	result := strings.TrimSuffix(execOut.String(), "\n")
+	limitBytes, err := strconv.ParseUint(result, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return limitBytes, nil
+}
+
+func GetPodMaxMemoryUnboundedBytes(container, podName, namespace string, kube *Kubernetes) (uint64, error) {
+	execOut, err := kube.ExecWithOptions(ExecOptions{
+		Container: container,
+		Command:   []string{"cat", "/proc/meminfo"},
+		PodName:   podName,
+		Namespace: namespace,
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("unexpected error getting max unbounded memory, err: %w", err)
+	}
+
+	for _, line := range strings.Split(execOut.String(), "\n") {
+		if strings.Contains(line, "MemTotal:") {
+			tokens := strings.Fields(line)
+			maxUnboundKb, err := strconv.ParseUint(tokens[1], 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			return maxUnboundKb * 1024, nil
+		}
+	}
+	return 0, fmt.Errorf("meminfo lacking MemTotal information")
 }

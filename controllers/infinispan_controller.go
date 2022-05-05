@@ -13,9 +13,7 @@ import (
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	"github.com/infinispan/infinispan-operator/pkg/hash"
 	"github.com/infinispan/infinispan-operator/pkg/http/curl"
-	ispnApi "github.com/infinispan/infinispan-operator/pkg/infinispan/client"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
-	"github.com/infinispan/infinispan-operator/pkg/mime"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/prometheus/common/log"
@@ -599,26 +597,26 @@ func (reconciler *InfinispanReconciler) Reconcile(ctx context.Context, ctrlReque
 		}
 	}
 
-	ispnClient := ispnApi.New(curl)
-	// Create default cache if it doesn't exists.
-	if infinispan.IsCache() {
-		cacheClient := ispnClient.Cache(consts.DefaultCacheName)
-		if existsCache, err := cacheClient.Exists(); err != nil {
-			reqLogger.Error(err, "failed to validate default cache for cache service")
-			return ctrl.Result{}, err
-		} else if !existsCache {
-			reqLogger.Info("createDefaultCache")
-			defaultXml, err := DefaultCacheTemplateXML(podList.Items[0].Name, infinispan, r.kubernetes, reqLogger)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-
-			if err = cacheClient.Create(defaultXml, mime.ApplicationXml); err != nil {
-				reqLogger.Error(err, "failed to create default cache for cache service")
-				return ctrl.Result{}, err
-			}
-		}
-	}
+	//ispnClient := ispnApi.New(curl)
+	//// Create default cache if it doesn't exists.
+	//if infinispan.IsCache() {
+	//	cacheClient := ispnClient.Cache(consts.DefaultCacheName)
+	//	if existsCache, err := cacheClient.Exists(); err != nil {
+	//		reqLogger.Error(err, "failed to validate default cache for cache service")
+	//		return ctrl.Result{}, err
+	//	} else if !existsCache {
+	//		reqLogger.Info("createDefaultCache")
+	//		defaultXml, err := DefaultCacheTemplateXML(podList.Items[0].Name, infinispan, r.kubernetes, reqLogger)
+	//		if err != nil {
+	//			return ctrl.Result{}, err
+	//		}
+	//
+	//		if err = cacheClient.Create(defaultXml, mime.ApplicationXml); err != nil {
+	//			reqLogger.Error(err, "failed to create default cache for cache service")
+	//			return ctrl.Result{}, err
+	//		}
+	//	}
+	//}
 
 	if infinispan.IsExposed() {
 		var exposeAddress string

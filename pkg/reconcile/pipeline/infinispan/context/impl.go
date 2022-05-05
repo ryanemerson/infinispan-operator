@@ -96,14 +96,18 @@ func (i impl) InfinispanClientForPod(podName string) api.Infinispan {
 func (i impl) InfinispanPods() (*corev1.PodList, error) {
 	if i.ispnPods == nil {
 		statefulSet := &appsv1.StatefulSet{}
-		if err := i.Resources().Load(i.infinispan.GetStatefulSetName(), statefulSet, pipeline.RetryOnErr); err != nil {
-			return nil, fmt.Errorf("unable to list Infinispan pods as StatefulSet can't be loaded: %w", err)
+		if err := i.Resources().Load(i.infinispan.GetStatefulSetName(), statefulSet); err != nil {
+			err = fmt.Errorf("unable to list Infinispan pods as StatefulSet can't be loaded: %w", err)
+			i.Requeue(err)
+			return nil, err
 		}
 
 		podList := &corev1.PodList{}
 		labels := i.infinispan.PodSelectorLabels()
-		if err := i.Resources().List(labels, podList, pipeline.RetryOnErr); err != nil {
-			return nil, fmt.Errorf("unable to list Infinispan pods: %w", err)
+		if err := i.Resources().List(labels, podList); err != nil {
+			err = fmt.Errorf("unable to list Infinispan pods: %w", err)
+			i.Requeue(err)
+			return nil, err
 		}
 		kube.FilterPodsByOwnerUID(podList, statefulSet.GetUID())
 		i.ispnPods = podList

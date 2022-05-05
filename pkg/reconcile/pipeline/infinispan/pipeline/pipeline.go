@@ -153,12 +153,12 @@ func (b *builder) Build() pipeline.Pipeline {
 		// TODO add autoscaling equipment
 		manage.AwaitWellFormedCondition,
 		manage.ConfigureLoggers,
+		provision.ConfigListener,
 	)
-
-	// Provision any resources that require a running cluster
-	handlers.Add(provision.ConfigListener)
-	//handlers.AddFeatureSpecific(i.IsCache(), manage.CreateDefaultCache)
-	handlers.Add(manage.ConsoleUrl)
+	handlers.AddFeatureSpecific(i.IsCache(), manage.CacheService)
+	handlers.Add(
+		manage.ConsoleUrl,
+	)
 	// TODO add xsite view conditions
 
 	b.handlers = handlers.Build()
