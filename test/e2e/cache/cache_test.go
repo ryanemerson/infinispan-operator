@@ -536,6 +536,33 @@ func TestSameCacheNameInMultipleClusters(t *testing.T) {
 	testifyAssert.Equal(t, cluster2.Name, cluster2CR.Spec.ClusterName)
 }
 
+func TestDegradedCacheNotMarkedAsReady(t *testing.T) {
+	defer testKube.CleanNamespaceAndLogOnPanic(t, tutils.Namespace)
+
+	ispn := initCluster(t, true)
+
+	cache := cacheCR("cache", ispn)
+	cache.Spec.Template = `{"distributed-cache":{"partition-handling":{"when-split":"DENY_READ_WRITES"}}}`
+
+	testKube.Create(cache)
+	testKube.WaitForCacheConditionReady(cache.Spec.Name, cache.Spec.ClusterName, cache.Namespace)
+	client := tutils.HTTPClientForCluster(ispn, testKube)
+	cacheHelper := tutils.NewCacheHelper(cache.Spec.Name, client)
+	cacheHelper.WaitForCacheToExist()
+
+	cacheHelper.SetAvailable(false)
+	// Wait for the Cache CR to become unready as the cache is in DEGRADED_MODE
+	testKube.WaitForCacheCondition(cache.Spec.Name, cache.Spec.ClusterName, cache.Namespace, v2alpha1.CacheCondition{
+		Type:    v2alpha1.CacheConditionReady,
+		Status:  metav1.ConditionFalse,
+		Message: "cache is in 'DEGRADED_MODE'",
+	})
+
+	cacheHelper.SetAvailable(true)
+	// Wait for the Cache CR to be ready after the cache has been set to AVAILABLE
+	testKube.WaitForCacheConditionReady(cache.Spec.Name, cache.Spec.ClusterName, cache.Namespace)
+}
+
 func cacheCR(cacheName string, i *v1.Infinispan) *v2alpha1.Cache {
 	return &v2alpha1.Cache{
 		TypeMeta: metav1.TypeMeta{

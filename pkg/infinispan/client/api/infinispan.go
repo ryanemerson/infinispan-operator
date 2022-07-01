@@ -41,6 +41,13 @@ type Restores interface {
 	Status(name string) (Status, error)
 }
 
+type CacheAvailability string
+
+const (
+	CacheAvailabilityAvailable CacheAvailability = "AVAILABLE"
+	CacheAvailabilityDegraded  CacheAvailability = "DEGRADED_MODE"
+)
+
 // Cache contains all operations and sub-interfaces for manipulating a specific cache
 type Cache interface {
 	Config(contentType mime.MimeType) (string, error)
@@ -49,8 +56,10 @@ type Cache interface {
 	Delete() error
 	Exists() (bool, error)
 	Get(key string) (string, bool, error)
+	GetAvailability() (CacheAvailability, error)
 	Put(key, value string, contentType mime.MimeType) error
 	RollingUpgrade() RollingUpgrade
+	SetAvailability(availability CacheAvailability) error
 	Size() (int, error)
 	UpdateConfig(config string, contentType mime.MimeType) error
 }

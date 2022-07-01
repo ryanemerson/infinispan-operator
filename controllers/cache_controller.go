@@ -3,11 +3,12 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/manage"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan/handler/manage"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/go-logr/logr"
 	"github.com/iancoleman/strcase"
@@ -309,6 +310,16 @@ func (r *cacheRequest) reconcileCacheService(cacheExists bool, cache api.Cache) 
 func (r *cacheRequest) reconcileDataGrid(cacheExists bool, cache api.Cache) error {
 	spec := r.cache.Spec
 	if cacheExists {
+
+		availability, err := cache.GetAvailability()
+		if err != nil {
+			return fmt.Errorf("unable to obtain Cache avaialability: %w", err)
+		}
+
+		if availability != api.CacheAvailabilityAvailable {
+			return fmt.Errorf("cache is in '%s'", availability)
+		}
+
 		if spec.Template != "" {
 			err := cache.UpdateConfig(spec.Template, mime.GuessMarkup(spec.Template))
 			if err != nil {

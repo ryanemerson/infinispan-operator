@@ -113,3 +113,13 @@ func (c *CacheHelper) WaitForCacheToNotExist() {
 	})
 	ExpectNoError(err)
 }
+
+func (c *CacheHelper) SetAvailable(available bool) {
+	var availability api.CacheAvailability
+	if available {
+		availability = api.CacheAvailabilityAvailable
+	} else {
+		availability = api.CacheAvailabilityDegraded
+	}
+	ExpectNoError(c.CacheClient.SetAvailability(availability))
+}

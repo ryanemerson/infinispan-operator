@@ -16,6 +16,11 @@ import (
 
 const CachesPath = BasePath + "/caches"
 
+var (
+	_ api.Cache  = &cache{}
+	_ api.Caches = &caches{}
+)
+
 type cache struct {
 	httpClient.HttpClient
 	name string
@@ -169,6 +174,34 @@ func (c *cache) UpdateConfig(config string, contentType mime.MimeType) (err erro
 	}()
 	err = httpClient.ValidateResponse(rsp, err, "updating cache", http.StatusOK)
 	return
+}
+
+func (c *cache) GetAvailability() (availability api.CacheAvailability, err error) {
+	path := fmt.Sprintf("%s?action=get-availability", c.url())
+	rsp, err := c.HttpClient.Get(path, nil)
+	defer func() {
+		err = httpClient.CloseBody(rsp, err)
+	}()
+	if err = httpClient.ValidateResponse(rsp, err, "get cache availability", http.StatusOK); err != nil {
+		return
+	}
+	body, err := readResponseBody(rsp)
+	if err != nil {
+		return "", err
+	}
+	return api.CacheAvailability(body), nil
+}
+
+func (c *cache) SetAvailability(availability api.CacheAvailability) (err error) {
+	path := fmt.Sprintf("%s?action=set-availability&availability=%s", c.url(), availability)
+	rsp, err := c.HttpClient.Post(path, "", nil)
+	defer func() {
+		err = httpClient.CloseBody(rsp, err)
+	}()
+	if err = httpClient.ValidateResponse(rsp, err, "set cache availability", http.StatusNoContent); err != nil {
+		return
+	}
+	return nil
 }
 
 func (c *caches) ConvertConfiguration(config string, contentType mime.MimeType, reqType mime.MimeType) (transformed string, err error) {
