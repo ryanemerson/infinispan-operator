@@ -34,6 +34,7 @@ pipeline {
         SERVER_IMAGE = 'quay.io/infinispan/server:13.0'
         TEST_REPORT_DIR = "$WORKSPACE/test/reports"
         CHANGE_TARGET = "${env.CHANGE_TARGET}"
+        TEST_ENVIRONMENT = "true"
     }
 
     options {
