@@ -200,6 +200,11 @@ func datagridService(t *testing.T, name string, replicas int) *v1.Infinispan {
 	return tutils.DefaultSpec(t, testKube, func(i *v1.Infinispan) {
 		i.Name = name
 		i.Spec.Replicas = int32(replicas)
+		i.Spec.Logging = &v1.InfinispanLoggingSpec{
+			Categories: map[string]v1.LoggingLevelType{
+				"org.jgroups": v1.LoggingLevelTrace,
+			},
+		}
 
 		if tutils.CPU != "" {
 			i.Spec.Container.CPU = tutils.CPU
