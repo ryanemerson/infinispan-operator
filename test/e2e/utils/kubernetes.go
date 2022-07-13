@@ -331,12 +331,11 @@ func (k TestKubernetes) DeleteBatch(batch *ispnv2.Batch) {
 
 // DeleteResource deletes the k8 resource and waits that all the pods and pvs associated with that resource are gone
 func (k TestKubernetes) DeleteResource(namespace string, selector labels.Selector, obj client.Object, timeout time.Duration) {
-	err := k.Kubernetes.Client.Delete(context.TODO(), obj, DeleteOpts...)
-	ExpectMaybeNotFound(err)
+	k.Delete(obj)
 
 	listOps := &client.ListOptions{Namespace: namespace, LabelSelector: selector}
 	podList := &corev1.PodList{}
-	err = wait.Poll(DefaultPollPeriod, timeout, func() (done bool, err error) {
+	err := wait.Poll(DefaultPollPeriod, timeout, func() (done bool, err error) {
 		err = k.Kubernetes.Client.List(context.TODO(), podList, listOps)
 		if err != nil || len(podList.Items) != 0 {
 			return false, nil
@@ -354,6 +353,11 @@ func (k TestKubernetes) DeleteResource(namespace string, selector labels.Selecto
 		return true, nil
 	})
 	ExpectNoError(err)
+}
+
+func (k TestKubernetes) Delete(obj client.Object) {
+	err := k.Kubernetes.Client.Delete(context.TODO(), obj, DeleteOpts...)
+	ExpectMaybeNotFound(err)
 }
 
 // GracefulShutdownInfinispan deletes the infinispan resource
