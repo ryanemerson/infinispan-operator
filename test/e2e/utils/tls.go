@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	KeystorePassword   = "secret"
-	TruststorePassword = "secret"
+	KeystorePassword   = "SuperSecret22"
+	TruststorePassword = "SuperSecret22"
 	keyBits            = 2048
 	tmpDir             = "/tmp/infinispan/operator/tls"
 )
@@ -64,6 +64,10 @@ func CreateKeystore(serverName string) (keystore []byte, clientTLSConf *tls.Conf
 	clientTLSConf = &tls.Config{
 		RootCAs:    certpool,
 		ServerName: serverName,
+		//CipherSuites: []uint16{
+		//	tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		//},
+		MaxVersion: tls.VersionTLS12,
 	}
 	return
 }

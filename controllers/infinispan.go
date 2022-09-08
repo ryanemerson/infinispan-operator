@@ -116,7 +116,7 @@ func (r *InfinispanReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Ma
 	if err != nil {
 		r.log.Error(err, "unable to determine if FIPS enabled")
 	}
-	r.fipsEnabled = fips
+	r.fipsEnabled = true
 	r.log.Info("FIPS", "enabled", fips)
 
 	return ctrl.NewControllerManagedBy(mgr).

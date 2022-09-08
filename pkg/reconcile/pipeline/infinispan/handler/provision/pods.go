@@ -8,6 +8,7 @@ import (
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	consts "github.com/infinispan/infinispan-operator/controllers/constants"
 	kube "github.com/infinispan/infinispan-operator/pkg/kubernetes"
+	pipeline "github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -101,7 +102,7 @@ func PodEnv(i *ispnv1.Infinispan, systemEnv *[]corev1.EnvVar) []corev1.EnvVar {
 		{Name: "MANAGED_ENV", Value: "TRUE"},
 		{Name: "JAVA_OPTIONS", Value: i.GetJavaOptions()},
 		{Name: "EXTRA_JAVA_OPTIONS", Value: i.Spec.Container.ExtraJvmOpts},
-		{Name: "CLI_JAVA_OPTIONS", Value: i.Spec.Container.CliExtraJvmOpts},
+		{Name: "CLI_JAVA_OPTIONS", Value: "-Dcom.redhat.fips=false"},
 	}
 
 	// Adding additional variables listed in ADDITIONAL_VARS env var
@@ -170,7 +171,7 @@ func chmodInitContainer(containerName, volumeName, mountPath string) corev1.Cont
 	}
 }
 
-func AddVolumesForEncryption(i *ispnv1.Infinispan, spec *corev1.PodSpec) {
+func AddVolumesForEncryption(ctx pipeline.Context, i *ispnv1.Infinispan, spec *corev1.PodSpec) {
 	AddSecretVolume(i.GetKeystoreSecretName(), EncryptKeystoreVolumeName, consts.ServerEncryptKeystoreRoot, spec, InfinispanContainer)
 
 	if i.IsClientCertEnabled() {

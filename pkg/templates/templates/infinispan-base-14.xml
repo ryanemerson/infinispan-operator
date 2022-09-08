@@ -37,7 +37,7 @@
         <socket-binding name="default" port="${infinispan.bind.port:11222}"/>
     </socket-bindings>
     <security>
-        {{ if or .Keystore.Password .Truststore.Path }}
+        {{ if and (not .FIPS) (or .Keystore.Password .Truststore.Path) }}
         <credential-stores>
           <credential-store name="credentials" path="credentials.pfx">
             <clear-text-credential clear-text="secret"/>
@@ -49,7 +49,7 @@
                 <server-identities>
 				{{ if or .Keystore.Path .Truststore.Path}}
                 <ssl>
-                        {{ if.Keystore.NSS }}
+                        {{ if .FIPS }}
                         <keystore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
                         {{ else if .Keystore.Path }}
                             {{ if .Keystore.Password }}
@@ -61,7 +61,7 @@
                             {{ end }}
                         {{ end }}
 
-                        {{ if .Truststore.NSS }}
+                        {{ if .FIPS }}
                             <truststore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
                         {{ else if  .Truststore.Path }}
                             <truststore path="{{ .Truststore.Path }}">
@@ -86,7 +86,7 @@
             <security-realm name="transport">
                 <server-identities>
                     <ssl>
-                        {{ if .Transport.TLS.KeyStore.NSS }}
+                        {{ if .FIPS }}
                         <keystore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
                         {{ else if .Transport.TLS.KeyStore.Path }}
                         <keystore path="{{ .Transport.TLS.KeyStore.Path }}"
@@ -94,7 +94,7 @@
                                     alias="{{ .Transport.TLS.KeyStore.Alias }}" />
                         {{ end }}
 
-                        {{ if .Transport.TLS.TrustStore.NSS }}
+                        {{ if .FIPS }}
                         <truststore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
                         {{ else if .Transport.TLS.TrustStore.Path }}
                         <truststore path="{{ .Transport.TLS.TrustStore.Path }}"

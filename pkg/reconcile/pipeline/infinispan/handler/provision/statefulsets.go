@@ -100,9 +100,10 @@ func ClusterStatefulSetSpec(statefulSetName string, i *ispnv1.Infinispan, ctx pi
 				Spec: corev1.PodSpec{
 					Affinity: i.Spec.Affinity,
 					Containers: []corev1.Container{{
-						Image: i.ImageName(),
-						Args:  BuildServerContainerArgs(ctx.ConfigFiles().UserConfig, ctx.FIPS()),
-						Name:  InfinispanContainer,
+						Image:   i.ImageName(),
+						Command: BuildServerContainerCmd(ctx),
+						Args:    BuildServerContainerArgs(ctx),
+						Name:    InfinispanContainer,
 						Env: PodEnv(i, &[]corev1.EnvVar{
 							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerBaseConfig, configFiles.ServerAdminConfig)},
 							{Name: "ADMIN_IDENTITIES_HASH", Value: hash.HashByte(configFiles.AdminIdentities.IdentitiesFile)},
@@ -255,11 +256,24 @@ func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulse
 	})
 }
 
-func BuildServerContainerArgs(userConfig pipeline.UserConfig, fips bool) []string {
+func BuildServerContainerCmd(ctx pipeline.Context) []string {
+	if ctx.FIPS() {
+		return []string{"/bin/sh", "-c"}
+	}
+	return nil
+}
+
+func BuildServerContainerArgs(ctx pipeline.Context) []string {
+	userConfig := ctx.ConfigFiles().UserConfig
 	var args strings.Builder
 
 	// Preallocate a buffer to speed up string building (saves code from growing the memory dynamically)
 	args.Grow(110)
+
+	if ctx.FIPS() {
+		// Execute FIPS init script before launching the server
+		args.WriteString("echo hello; ./bin/launch.sh")
+	}
 
 	// Check if the user defined a custom log4j config
 	args.WriteString(" -l ")
@@ -281,15 +295,16 @@ func BuildServerContainerArgs(userConfig pipeline.UserConfig, fips bool) []strin
 	args.WriteString(" -c operator/infinispan-admin.xml")
 
 	// If running in FIPS mode disable OpenSSL as it's incompatible with the NSS PKCS#11 store
-	if fips {
+	if ctx.FIPS() {
 		args.WriteString(" -Dorg.infinispan.openssl=false")
+		return []string{args.String()}
 	}
 	return strings.Fields(args.String())
 }
 
 func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet) {
 	if i.IsEncryptionEnabled() {
-		AddVolumesForEncryption(i, &statefulSet.Spec.Template.Spec)
+		AddVolumesForEncryption(ctx, i, &statefulSet.Spec.Template.Spec)
 		configFiles := ctx.ConfigFiles()
 		ispnContainer := kube.GetContainer(InfinispanContainer, &statefulSet.Spec.Template.Spec)
 		ispnContainer.Env = append(ispnContainer.Env,
@@ -303,7 +318,15 @@ func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.Stat
 			ks := ctx.ConfigFiles().Keystore
 			// The FIPS scripts only requires the directory containing the keystore file(s)
 			ksPath := filepath.Dir(ks.Path)
-			addFipsInitContainer("keystore-nss-database", ksPath, ks.Password, EncryptKeystoreVolumeName, consts.ServerEncryptKeystoreRoot, i, statefulSet)
+			addFipsInitContainer("keystore-nss-database", ksPath, ks.Password, i, statefulSet,
+				[]corev1.VolumeMount{{
+					Name:      InfinispanSecurityVolumeName,
+					MountPath: consts.ServerOperatorSecurity,
+				}, {
+					Name:      EncryptKeystoreVolumeName,
+					MountPath: consts.ServerEncryptKeystoreRoot,
+				}},
+			)
 		}
 
 		if i.IsClientCertEnabled() {
@@ -315,24 +338,15 @@ func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.Stat
 
 			if ctx.FIPS() {
 				ts := ctx.ConfigFiles().Truststore
-				addFipsInitContainer("truststore-nss-database", consts.ServerEncryptTruststoreRoot, ts.Password, EncryptTruststoreVolumeName, consts.ServerEncryptTruststoreRoot, i, statefulSet)
+				addFipsInitContainer("truststore-nss-database", consts.ServerEncryptTruststoreRoot, ts.Password, i, statefulSet,
+					[]corev1.VolumeMount{{
+						Name:      EncryptTruststoreVolumeName,
+						MountPath: consts.ServerEncryptTruststoreRoot,
+					}},
+				)
 			}
 		}
 	}
-}
-
-func addFipsInitContainer(name, ksPath, ksSecret, mountName, mountPath string, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet) {
-	initContainers := &statefulSet.Spec.Template.Spec.InitContainers
-	*initContainers = append(*initContainers, corev1.Container{
-		Name:    name,
-		Image:   i.ImageName(),
-		Command: []string{"/opt/infinispan/bin/init_fips_keystore.sh"},
-		Args:    []string{"-p", ksSecret, ksPath},
-		VolumeMounts: []corev1.VolumeMount{{
-			Name:      mountName,
-			MountPath: mountPath,
-		}},
-	})
 }
 
 func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet) {
@@ -342,7 +356,12 @@ func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1
 
 		if ctx.FIPS() {
 			ks := ctx.ConfigFiles().Transport.Keystore
-			addFipsInitContainer("transport-keystore-nss-database", consts.SiteTransportKeyStoreRoot, ks.Password, SiteTransportKeystoreVolumeName, consts.SiteTransportKeyStoreRoot, i, statefulSet)
+			addFipsInitContainer("transport-keystore-nss-database", consts.SiteTransportKeyStoreRoot, ks.Password, i, statefulSet,
+				[]corev1.VolumeMount{{
+					Name:      SiteTransportKeystoreVolumeName,
+					MountPath: consts.SiteTransportKeyStoreRoot,
+				}},
+			)
 		}
 
 		if ctx.ConfigFiles().Transport.Truststore != nil {
@@ -350,8 +369,26 @@ func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1
 
 			if ctx.FIPS() {
 				ts := ctx.ConfigFiles().Transport.Truststore
-				addFipsInitContainer("transport-truststore-nss-database", consts.SiteTrustStoreRoot, ts.Password, SiteTruststoreVolumeName, consts.SiteTrustStoreRoot, i, statefulSet)
+				addFipsInitContainer("transport-truststore-nss-database", consts.SiteTrustStoreRoot, ts.Password, i, statefulSet,
+					[]corev1.VolumeMount{{
+						Name:      SiteTruststoreVolumeName,
+						MountPath: consts.SiteTrustStoreRoot,
+					}},
+				)
 			}
 		}
 	}
+}
+
+func addFipsInitContainer(name, ksPath, ksSecret string, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet, vm []corev1.VolumeMount) {
+	//initContainers := &statefulSet.Spec.Template.Spec.InitContainers
+	//*initContainers = append(*initContainers, corev1.Container{
+	//	Name:  name,
+	//	Image: i.ImageName(),
+	//	//Command:      []string{"/opt/infinispan/bin/init_fips_keystore.sh"},
+	//	//Args:         []string{"-p", ksSecret, "-w", "/tmp", ksPath},
+	//	Command:      []string{"sleep"},
+	//	Args:         []string{"100000000"},
+	//	VolumeMounts: vm,
+	//})
 }

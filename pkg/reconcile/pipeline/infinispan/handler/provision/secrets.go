@@ -44,8 +44,16 @@ func InfinispanSecuritySecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 		secret.Data = map[string][]byte{
 			consts.ServerIdentitiesBatchFilename: []byte(configFiles.IdentitiesBatch),
 		}
-		if i.IsEncryptionEnabled() && len(configFiles.Keystore.PemFile) > 0 {
-			secret.Data["keystore.pem"] = configFiles.Keystore.PemFile
+		if i.IsEncryptionEnabled() {
+			if len(configFiles.Keystore.PemFile) > 0 {
+				secret.Data["keystore.pem"] = configFiles.Keystore.PemFile
+			}
+
+			if ctx.FIPS() {
+				// TODO add FIPS initialisation script from template
+				// Passwords for all stores should be in ConfigFiles
+				// MountPath and store locations also available same as with initContainer approach
+			}
 		}
 		return nil
 	}
