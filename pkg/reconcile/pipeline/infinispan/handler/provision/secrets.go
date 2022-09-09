@@ -62,7 +62,7 @@ func InfinispanSecuritySecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 				// Add FIPS startup script to secret so that it can be executed before server startup
 				script, err := createFipsScript(i, ctx)
 				if err != nil {
-					return fmt.Errorf("unable to create init-fips.sh: %v", err)
+					return fmt.Errorf("unable to create init-fips.sh: %w", err)
 				}
 
 				secret.StringData = map[string]string{
@@ -78,7 +78,7 @@ func InfinispanSecuritySecret(i *ispnv1.Infinispan, ctx pipeline.Context) {
 func createFipsScript(i *ispnv1.Infinispan, ctx pipeline.Context) (string, error) {
 	tpl, err := template.New("fips").Parse(initFipsTpl)
 	if err != nil {
-		return "", fmt.Errorf("unable to parse template: %v", err)
+		return "", fmt.Errorf("unable to parse template: %w", err)
 	}
 
 	type Keystore struct {
@@ -114,7 +114,7 @@ func createFipsScript(i *ispnv1.Infinispan, ctx pipeline.Context) (string, error
 
 	buff := new(bytes.Buffer)
 	if err := tpl.Execute(buff, keystores); err != nil {
-		return "", fmt.Errorf("unable to execute template: %v", err)
+		return "", fmt.Errorf("unable to execute template: %w", err)
 	}
 	return buff.String(), nil
 }
