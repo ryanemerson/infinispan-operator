@@ -2,7 +2,6 @@ package provision
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -272,7 +271,9 @@ func BuildServerContainerArgs(ctx pipeline.Context) []string {
 
 	if ctx.FIPS() {
 		// Execute FIPS init script before launching the server
-		args.WriteString("echo hello; ./bin/launch.sh")
+		args.WriteString("sh ")
+		args.WriteString(consts.ServerOperatorSecurity)
+		args.WriteString("/init-fips.sh; ./bin/launch.sh")
 	}
 
 	// Check if the user defined a custom log4j config
@@ -304,7 +305,7 @@ func BuildServerContainerArgs(ctx pipeline.Context) []string {
 
 func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet) {
 	if i.IsEncryptionEnabled() {
-		AddVolumesForEncryption(ctx, i, &statefulSet.Spec.Template.Spec)
+		AddVolumesForEncryption(i, &statefulSet.Spec.Template.Spec)
 		configFiles := ctx.ConfigFiles()
 		ispnContainer := kube.GetContainer(InfinispanContainer, &statefulSet.Spec.Template.Spec)
 		ispnContainer.Env = append(ispnContainer.Env,
@@ -314,81 +315,22 @@ func addTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.Stat
 				Value: hash.HashByte(configFiles.Keystore.PemFile) + hash.HashByte(configFiles.Keystore.File),
 			})
 
-		if ctx.FIPS() {
-			ks := ctx.ConfigFiles().Keystore
-			// The FIPS scripts only requires the directory containing the keystore file(s)
-			ksPath := filepath.Dir(ks.Path)
-			addFipsInitContainer("keystore-nss-database", ksPath, ks.Password, i, statefulSet,
-				[]corev1.VolumeMount{{
-					Name:      InfinispanSecurityVolumeName,
-					MountPath: consts.ServerOperatorSecurity,
-				}, {
-					Name:      EncryptKeystoreVolumeName,
-					MountPath: consts.ServerEncryptKeystoreRoot,
-				}},
-			)
-		}
-
 		if i.IsClientCertEnabled() {
 			ispnContainer.Env = append(ispnContainer.Env,
 				corev1.EnvVar{
 					Name:  "TRUSTSTORE_HASH",
 					Value: hash.HashByte(configFiles.Truststore.File),
 				})
-
-			if ctx.FIPS() {
-				ts := ctx.ConfigFiles().Truststore
-				addFipsInitContainer("truststore-nss-database", consts.ServerEncryptTruststoreRoot, ts.Password, i, statefulSet,
-					[]corev1.VolumeMount{{
-						Name:      EncryptTruststoreVolumeName,
-						MountPath: consts.ServerEncryptTruststoreRoot,
-					}},
-				)
-			}
 		}
 	}
 }
 
-func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet) {
+func addXSiteTLS(ctx pipeline.Context, i *ispnv1.Infinispan, statefulset *appsv1.StatefulSet) {
 	if i.IsSiteTLSEnabled() {
-		spec := &statefulSet.Spec.Template.Spec
+		spec := &statefulset.Spec.Template.Spec
 		AddSecretVolume(i.GetSiteTransportSecretName(), SiteTransportKeystoreVolumeName, consts.SiteTransportKeyStoreRoot, spec, InfinispanContainer)
-
-		if ctx.FIPS() {
-			ks := ctx.ConfigFiles().Transport.Keystore
-			addFipsInitContainer("transport-keystore-nss-database", consts.SiteTransportKeyStoreRoot, ks.Password, i, statefulSet,
-				[]corev1.VolumeMount{{
-					Name:      SiteTransportKeystoreVolumeName,
-					MountPath: consts.SiteTransportKeyStoreRoot,
-				}},
-			)
-		}
-
 		if ctx.ConfigFiles().Transport.Truststore != nil {
 			AddSecretVolume(i.GetSiteTrustoreSecretName(), SiteTruststoreVolumeName, consts.SiteTrustStoreRoot, spec, InfinispanContainer)
-
-			if ctx.FIPS() {
-				ts := ctx.ConfigFiles().Transport.Truststore
-				addFipsInitContainer("transport-truststore-nss-database", consts.SiteTrustStoreRoot, ts.Password, i, statefulSet,
-					[]corev1.VolumeMount{{
-						Name:      SiteTruststoreVolumeName,
-						MountPath: consts.SiteTrustStoreRoot,
-					}},
-				)
-			}
 		}
 	}
-}
-
-func addFipsInitContainer(name, ksPath, ksSecret string, i *ispnv1.Infinispan, statefulSet *appsv1.StatefulSet, vm []corev1.VolumeMount) {
-	//initContainers := &statefulSet.Spec.Template.Spec.InitContainers
-	//*initContainers = append(*initContainers, corev1.Container{
-	//	Name:  name,
-	//	Image: i.ImageName(),
-	//	//Command:      []string{"/opt/infinispan/bin/init_fips_keystore.sh"},
-	//	//Args:         []string{"-p", ksSecret, "-w", "/tmp", ksPath},
-	//	Command:      []string{"sleep"},
-	//	Args:         []string{"100000000"},
-	//	VolumeMounts: vm,
-	//})
 }

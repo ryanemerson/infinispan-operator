@@ -140,7 +140,7 @@ func StatefulSetRollingUpgrade(i *ispnv1.Infinispan, ctx pipeline.Context) {
 	}
 
 	if i.IsEncryptionEnabled() {
-		provision.AddVolumesForEncryption(ctx, i, spec)
+		provision.AddVolumesForEncryption(i, spec)
 		updateNeeded = updateStatefulSetEnv(container, statefulSet, "KEYSTORE_HASH", hash.HashByte(configFiles.Keystore.PemFile)+hash.HashByte(configFiles.Keystore.File)) || updateNeeded
 
 		if i.IsClientCertEnabled() {
