@@ -34,7 +34,7 @@ var (
 	RunSaOperator     = strings.ToUpper(constants.GetEnvWithDefault("RUN_SA_OPERATOR", "false"))
 	CleanupInfinispan = strings.ToUpper(constants.GetEnvWithDefault("CLEANUP_INFINISPAN_ON_FINISH", "true"))
 	SuiteMode, _      = strconv.ParseBool(constants.GetEnvWithDefault("SUITE_MODE", "false"))
-	ExposeServiceType = constants.GetEnvWithDefault("EXPOSE_SERVICE_TYPE", string(ispnv1.ExposeTypeRoute))
+	ExposeServiceType = constants.GetEnvWithDefault("EXPOSE_SERVICE_TYPE", string(ispnv1.ExposeTypeNodePort))
 
 	WebServerName       = "external-libs-web-server"
 	WebServerImageName  = "quay.io/openshift-scale/nginx"

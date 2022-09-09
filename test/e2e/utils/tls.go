@@ -64,10 +64,6 @@ func CreateKeystore(serverName string) (keystore []byte, clientTLSConf *tls.Conf
 	clientTLSConf = &tls.Config{
 		RootCAs:    certpool,
 		ServerName: serverName,
-		//CipherSuites: []uint16{
-		//	tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-		//},
-		MaxVersion: tls.VersionTLS12,
 	}
 	return
 }
