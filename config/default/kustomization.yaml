@@ -1,5 +1,5 @@
 # Adds namespace to all resources.
-namespace: infinispan-operator-system
+namespace: namespace-for-testing-xsite1
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
