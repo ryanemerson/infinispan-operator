@@ -82,24 +82,39 @@ func createFipsScript(i *ispnv1.Infinispan, ctx pipeline.Context) (string, error
 	}
 
 	type Keystore struct {
+		Alias  string
 		Path   string
 		Secret string
 	}
 	cf := ctx.ConfigFiles()
 	ks := cf.Keystore
-	keystores := []Keystore{
-		{Path: filepath.Dir(ks.Path), Secret: ks.Password},
+	keystores := []Keystore{{
+		Alias:  ks.Alias,
+		Path:   filepath.Dir(ks.Path),
+		Secret: ks.Password,
+	}}
+
+	if i.IsEncryptionCertFromService() {
+		keystores[0].Secret = ""
 	}
 
+	// TODO only first keystore imported is ever output by certutil
+	keystores = []Keystore{}
 	if i.IsClientCertEnabled() {
 		keystores = append(keystores, Keystore{
 			Path:   consts.ServerEncryptTruststoreRoot,
 			Secret: cf.Truststore.Password,
 		})
 	}
+	keystores = append(keystores, Keystore{
+		Alias:  ks.Alias,
+		Path:   filepath.Dir(ks.Path),
+		Secret: ks.Password,
+	})
 
 	if i.IsSiteTLSEnabled() {
 		keystores = append(keystores, Keystore{
+			Alias:  cf.Transport.Keystore.Alias,
 			Path:   consts.SiteTransportKeyStoreRoot,
 			Secret: cf.Transport.Keystore.Password,
 		})

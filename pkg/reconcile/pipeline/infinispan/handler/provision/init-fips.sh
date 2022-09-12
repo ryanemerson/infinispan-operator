@@ -5,6 +5,7 @@
 
 function initKeystores() {
   NSSDB=/etc/pki/nssdb
+  KEYSTORE_ALIAS=""
   KEYSTORE_SECRET=""
   WORKING_DIR=""
 
@@ -12,6 +13,10 @@ function initKeystores() {
 
   while [ $# -gt 0 ]; do
     case $1 in
+      -a|--alias)
+        KEYSTORE_ALIAS="$2"
+        shift 2
+        ;;
       -d|--database)
         NSSDB="$2"
         shift 2
@@ -86,7 +91,7 @@ function initKeystores() {
   for P12 in $KEYSTORE_PATH/*.p12 $WORKING_DIR/*.p12; do
     if [ -f "$P12" ]; then
       echo "Importing $P12"
-      if ! pk12util -i "$P12" -d "$NSSDB" -W "$KEYSTORE_SECRET" -K "$KEYSTORE_SECRET"; then
+      if ! pk12util -v -i "$P12" -d "$NSSDB" -W "$KEYSTORE_SECRET" -n "$KEYSTORE_ALIAS"; then
         echo "An error occurred. Aborting."
         exit 1
       fi
@@ -97,7 +102,8 @@ function initKeystores() {
 }
 
 set -e
+set -x
 
 {{ range . }}
-initKeystores -p {{ .Secret }} -w /tmp {{ .Path }}
+initKeystores {{ if .Secret }}-p {{ .Secret }}{{ end }} {{ if .Alias }}-a {{ .Alias }}{{end}} -w /tmp {{ .Path }}
 {{ end }}

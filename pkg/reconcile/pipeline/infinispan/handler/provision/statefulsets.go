@@ -100,8 +100,8 @@ func ClusterStatefulSetSpec(statefulSetName string, i *ispnv1.Infinispan, ctx pi
 					Affinity: i.Spec.Affinity,
 					Containers: []corev1.Container{{
 						Image:   i.ImageName(),
-						Command: BuildServerContainerCmd(ctx),
-						Args:    BuildServerContainerArgs(ctx),
+						Command: BuildServerContainerCmd(i, ctx),
+						Args:    BuildServerContainerArgs(i, ctx),
 						Name:    InfinispanContainer,
 						Env: PodEnv(i, &[]corev1.EnvVar{
 							{Name: "CONFIG_HASH", Value: hash.HashString(configFiles.ServerBaseConfig, configFiles.ServerAdminConfig)},
@@ -255,21 +255,22 @@ func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulse
 	})
 }
 
-func BuildServerContainerCmd(ctx pipeline.Context) []string {
-	if ctx.FIPS() {
+func BuildServerContainerCmd(i *ispnv1.Infinispan, ctx pipeline.Context) []string {
+	if ctx.FIPS() && i.IsEncryptionEnabled() {
 		return []string{"/bin/sh", "-c"}
 	}
 	return nil
 }
 
-func BuildServerContainerArgs(ctx pipeline.Context) []string {
+func BuildServerContainerArgs(i *ispnv1.Infinispan, ctx pipeline.Context) []string {
 	userConfig := ctx.ConfigFiles().UserConfig
 	var args strings.Builder
 
 	// Preallocate a buffer to speed up string building (saves code from growing the memory dynamically)
 	args.Grow(110)
 
-	if ctx.FIPS() {
+	fipsEncryption := ctx.FIPS() && i.IsEncryptionEnabled()
+	if fipsEncryption {
 		// Execute FIPS init script before launching the server
 		args.WriteString("sh ")
 		args.WriteString(consts.ServerOperatorSecurity)
@@ -296,7 +297,7 @@ func BuildServerContainerArgs(ctx pipeline.Context) []string {
 	args.WriteString(" -c operator/infinispan-admin.xml")
 
 	// If running in FIPS mode disable OpenSSL as it's incompatible with the NSS PKCS#11 store
-	if ctx.FIPS() {
+	if fipsEncryption {
 		args.WriteString(" -Dorg.infinispan.openssl=false")
 		return []string{args.String()}
 	}

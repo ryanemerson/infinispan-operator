@@ -178,7 +178,7 @@ func (c contextImpl) DefaultLabels() map[string]string {
 }
 
 func (c contextImpl) FIPS() bool {
-	return c.ContextProviderConfig.Fips
+	return c.ContextProviderConfig.Fips && c.infinispan.IsEncryptionEnabled()
 }
 
 func (c contextImpl) IsTypeSupported(gvk schema.GroupVersionKind) bool {
