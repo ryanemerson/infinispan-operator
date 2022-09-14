@@ -59,6 +59,8 @@ func TestUpgrade(t *testing.T) {
 	spec := tutils.DefaultSpec(t, testKube, func(i *ispnv1.Infinispan) {
 		i.Spec.Replicas = int32(replicas)
 		i.Spec.Service.Container.EphemeralStorage = false
+		i.Spec.Container.CliExtraJvmOpts = "-Dcom.redhat.fips=false"
+		i.Spec.Container.ExtraJvmOpts = "-Dcom.redhat.fips=false"
 	})
 	testKube.CreateInfinispan(spec, tutils.Namespace)
 	testKube.WaitForInfinispanPods(replicas, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)

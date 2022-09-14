@@ -3,9 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
-	"strconv"
 
 	"github.com/infinispan/infinispan-operator/pkg/infinispan/version"
 	"github.com/infinispan/infinispan-operator/pkg/reconcile/pipeline/infinispan"
@@ -36,7 +34,7 @@ type InfinispanReconciler struct {
 	contextProvider    infinispan.ContextProvider
 	defaultLabels      map[string]string
 	defaultAnnotations map[string]string
-	fipsEnabled        bool
+	FipsEnabled        bool
 	supportedTypes     map[schema.GroupVersionKind]struct{}
 	versionManager     *version.Manager
 }
@@ -105,19 +103,6 @@ func (r *InfinispanReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Ma
 		r.defaultAnnotations = defaultAnnotations
 		r.log.Info("Defaults:", "Annotations", defaultAnnotations, "Labels", defaultLabels)
 	}
-
-	fips, err := func() (bool, error) {
-		bytes, err := os.ReadFile("/proc/sys/crypto/fips_enabled")
-		if err != nil {
-			return false, err
-		}
-		return strconv.ParseBool(string(bytes)[0:1])
-	}()
-	if err != nil {
-		r.log.Error(err, "unable to determine if FIPS enabled")
-	}
-	r.fipsEnabled = true
-	r.log.Info("FIPS", "enabled", fips)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infinispanv1.Infinispan{}).
@@ -241,7 +226,7 @@ func (r *InfinispanReconciler) Reconcile(ctx context.Context, ctrlRequest ctrl.R
 		For(instance).
 		WithAnnotations(r.defaultAnnotations).
 		WithContextProvider(r.contextProvider).
-		WithFIPS(r.fipsEnabled).
+		WithFIPS(r.FipsEnabled).
 		WithLabels(r.defaultLabels).
 		WithLogger(reqLogger).
 		WithSupportedTypes(r.supportedTypes).

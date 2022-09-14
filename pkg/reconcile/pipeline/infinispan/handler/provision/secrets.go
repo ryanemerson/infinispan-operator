@@ -98,19 +98,13 @@ func createFipsScript(i *ispnv1.Infinispan, ctx pipeline.Context) (string, error
 		keystores[0].Secret = ""
 	}
 
-	// TODO only first keystore imported is ever output by certutil
-	keystores = []Keystore{}
+	//keystores := []Keystore{}
 	if i.IsClientCertEnabled() {
 		keystores = append(keystores, Keystore{
 			Path:   consts.ServerEncryptTruststoreRoot,
 			Secret: cf.Truststore.Password,
 		})
 	}
-	keystores = append(keystores, Keystore{
-		Alias:  ks.Alias,
-		Path:   filepath.Dir(ks.Path),
-		Secret: ks.Password,
-	})
 
 	if i.IsSiteTLSEnabled() {
 		keystores = append(keystores, Keystore{

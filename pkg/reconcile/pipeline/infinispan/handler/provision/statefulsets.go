@@ -256,7 +256,7 @@ func addUserConfigVolumes(ctx pipeline.Context, i *ispnv1.Infinispan, statefulse
 }
 
 func BuildServerContainerCmd(i *ispnv1.Infinispan, ctx pipeline.Context) []string {
-	if ctx.FIPS() && i.IsEncryptionEnabled() {
+	if ctx.FIPS() && i.IsEncryptionEnabled() && ctx.Operand().UpstreamVersion.Major > 13 {
 		return []string{"/bin/sh", "-c"}
 	}
 	return nil
@@ -269,7 +269,7 @@ func BuildServerContainerArgs(i *ispnv1.Infinispan, ctx pipeline.Context) []stri
 	// Preallocate a buffer to speed up string building (saves code from growing the memory dynamically)
 	args.Grow(110)
 
-	fipsEncryption := ctx.FIPS() && i.IsEncryptionEnabled()
+	fipsEncryption := ctx.FIPS() && i.IsEncryptionEnabled() && ctx.Operand().UpstreamVersion.Major > 13
 	if fipsEncryption {
 		// Execute FIPS init script before launching the server
 		args.WriteString("sh ")
@@ -298,6 +298,7 @@ func BuildServerContainerArgs(i *ispnv1.Infinispan, ctx pipeline.Context) []stri
 
 	// If running in FIPS mode disable OpenSSL as it's incompatible with the NSS PKCS#11 store
 	if fipsEncryption {
+		args.WriteString(" -Djavax.net.debug=ssl,handshake")
 		args.WriteString(" -Dorg.infinispan.openssl=false")
 		return []string{args.String()}
 	}
