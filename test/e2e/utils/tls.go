@@ -79,6 +79,9 @@ func CreateKeystoreAndClientCerts(serverName string) (keystore []byte, caPem []b
 
 	caPem = ca.getCertPEM()
 	clientPem = client.getCertPEM()
+	ExpectNoError(ioutil.WriteFile("/tmp/ca.crt", ca.getCertPEM(), 0666))
+	ExpectNoError(ioutil.WriteFile("/tmp/tls.crt", client.getCertPEM(), 0666))
+	ExpectNoError(ioutil.WriteFile("/tmp/tls.key", client.getPrivateKeyPEM(), 0666))
 	clientTLSConf = &tls.Config{
 		GetClientCertificate: func(t *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			certificate, err := tls.X509KeyPair(client.getCertPEM(), client.getPrivateKeyPEM())
