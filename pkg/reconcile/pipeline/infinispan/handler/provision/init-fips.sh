@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 # ===================================================================================
 # Init script which sets up certificates in NSSDB for FIPS.
 # ===================================================================================
 
 function initKeystores() {
-  NSSDB=/etc/pki/nssdb
+  NSSDB=""
   KEYSTORE_ALIAS=""
   KEYSTORE_SECRET=""
   WORKING_DIR=""
@@ -102,11 +102,32 @@ function initKeystores() {
   certutil -L -d "$NSSDB"
 }
 
+function createNSSConfig() {
+cat << EOF > $3
+name = $1
+nssDbMode = readWrite
+attributes = compatibility
+nssSecmodDirectory = sql:$2
+EOF
+
+  cat $3
+  ls -l $3
+}
+
 set -e
 #set -x
 
 # TODO remove alias logic as no longer required
 {{ range . }}
-initKeystores {{ if .Secret }}-p {{ .Secret }}{{ end }} {{ if .Alias }}-a {{ .Alias }}{{end}} -w /tmp {{ .Path }}
-#ls -l "$NSSDB"
+
+mkdir -p {{ .Database }}
+
+# Create NSS database
+certutil -N -d {{ .Database }}
+
+# Create Provider configuration
+createNSSConfig {{ .Name }} {{ .Database }} /tmp/{{ .Name }}.cfg
+
+# Import keystores into database
+initKeystores {{ if .Secret }}-p {{ .Secret }}{{ end }} -d {{ .Database }} -w /tmp {{ .Path }}
 {{ end }}

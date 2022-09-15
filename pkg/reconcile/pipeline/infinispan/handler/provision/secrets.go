@@ -82,16 +82,20 @@ func createFipsScript(i *ispnv1.Infinispan, ctx pipeline.Context) (string, error
 	}
 
 	type Keystore struct {
-		Alias  string
-		Path   string
-		Secret string
+		Alias    string
+		Database string // TODO
+		Name     string // TODO
+		Path     string
+		Secret   string
 	}
 	cf := ctx.ConfigFiles()
 	ks := cf.Keystore
 	keystores := []Keystore{{
-		Alias:  ks.Alias,
-		Path:   filepath.Dir(ks.Path),
-		Secret: ks.Password,
+		Alias:    ks.Alias,
+		Name:     "server-keystore",
+		Database: "/tmp/keystores/server",
+		Path:     filepath.Dir(ks.Path),
+		Secret:   ks.Password,
 	}}
 
 	if i.IsEncryptionCertFromService() {
@@ -101,22 +105,28 @@ func createFipsScript(i *ispnv1.Infinispan, ctx pipeline.Context) (string, error
 	//keystores := []Keystore{}
 	if i.IsClientCertEnabled() {
 		keystores = append(keystores, Keystore{
-			Path:   consts.ServerEncryptTruststoreRoot,
-			Secret: cf.Truststore.Password,
+			Name:     "server-truststore",
+			Database: "/tmp/truststores/server",
+			Path:     consts.ServerEncryptTruststoreRoot,
+			Secret:   cf.Truststore.Password,
 		})
 	}
 
 	if i.IsSiteTLSEnabled() {
 		keystores = append(keystores, Keystore{
-			Alias:  cf.Transport.Keystore.Alias,
-			Path:   consts.SiteTransportKeyStoreRoot,
-			Secret: cf.Transport.Keystore.Password,
+			Alias:    cf.Transport.Keystore.Alias,
+			Name:     "transport-keystore",
+			Database: "/tmp/keystore/transport",
+			Path:     consts.SiteTransportKeyStoreRoot,
+			Secret:   cf.Transport.Keystore.Password,
 		})
 
 		if cf.Transport.Truststore != nil {
 			keystores = append(keystores, Keystore{
-				Path:   consts.SiteTrustStoreRoot,
-				Secret: cf.Transport.Truststore.Password,
+				Name:     "transport-truststore",
+				Database: "/tmp/truststore/transport",
+				Path:     consts.SiteTrustStoreRoot,
+				Secret:   cf.Transport.Truststore.Password,
 			})
 		}
 	}

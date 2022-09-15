@@ -37,7 +37,27 @@
         <socket-binding name="default" port="${infinispan.bind.port:11222}"/>
     </socket-bindings>
     <security>
-        {{ if and (not .FIPS) (or .Keystore.Password .Truststore.Path) }}
+        {{ if .FIPS }}
+        <providers>
+            {{ if .Keystore.Path }}
+            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/server-keystore.cfg"/>
+            {{ end }}
+
+            {{ if .Truststore.Path }}
+<!--            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/server-truststore.cfg"/>-->
+            {{ end }}
+
+            {{ if and .Transport.TLS.Enabled }}
+            {{ if .Transport.TLS.KeyStore.Path}}
+            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/transport-truststore.cfg"/>
+            {{ end }}
+
+            {{ if .Transport.TLS.TrustStore.Path}}
+            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/transport-truststore.cfg"/>
+            {{ end }}
+            {{ end }}
+        </providers>
+        {{ else if or .Keystore.Password .Truststore.Path }}
         <credential-stores>
           <credential-store name="credentials" path="credentials.pfx">
             <clear-text-credential clear-text="secret"/>
@@ -50,7 +70,7 @@
 				{{ if or .Keystore.Path .Truststore.Path}}
                 <ssl>
                         {{ if .FIPS }}
-                        <keystore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
+                        <keystore provider="SunPKCS11-server-keystore" type="PKCS11"/>
                         {{ else if .Keystore.Path }}
                             {{ if .Keystore.Password }}
                                 <keystore path="{{  .Keystore.Path }}" {{if .Keystore.Alias }} alias="{{ .Keystore.Alias }}" {{ end }}>
@@ -62,7 +82,7 @@
                         {{ end }}
 
                         {{ if .FIPS }}
-                            <truststore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
+<!--                            <truststore provider="SunPKCS11-server-truststore" type="PKCS11"/>-->
                         {{ else if  .Truststore.Path }}
                             <truststore path="{{ .Truststore.Path }}">
                                 <credential-reference store="credentials" alias="truststore"/>
@@ -87,7 +107,7 @@
                 <server-identities>
                     <ssl>
                         {{ if .FIPS }}
-                        <keystore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
+                        <keystore provider="SunPKCS11-transport-keystore" type="PKCS11"/>
                         {{ else if .Transport.TLS.KeyStore.Path }}
                         <keystore path="{{ .Transport.TLS.KeyStore.Path }}"
                                     keystore-password="{{ .Transport.TLS.KeyStore.Password }}"
@@ -95,7 +115,7 @@
                         {{ end }}
 
                         {{ if .FIPS }}
-                        <truststore provider="SunPKCS11-NSS-FIPS" type="PKCS11"/>
+                        <truststore provider="SunPKCS11-transport-truststore" type="PKCS11"/>
                         {{ else if .Transport.TLS.TrustStore.Path }}
                         <truststore path="{{ .Transport.TLS.TrustStore.Path }}"
                                     password="{{ .Transport.TLS.TrustStore.Password }}" />
