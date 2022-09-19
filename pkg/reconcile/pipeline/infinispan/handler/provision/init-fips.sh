@@ -105,28 +105,51 @@ function initKeystores() {
 function createNSSConfig() {
 cat << EOF > $3
 name = $1
-nssDbMode = readWrite
-attributes = compatibility
+nssLibraryDirectory = /usr/lib64
 nssSecmodDirectory = sql:$2
+nssModule = fips
+nssDbMode = readOnly
+#library = /usr/lib64/p11-kit-trust.so
+#library = /usr/lib64/pkcs11/p11-kit-trust.so
+#nssDbMode = readWrite
+#attributes = compatibility
+#nssSecmodDirectory = sql:$2
 EOF
 
   cat $3
+  ls -l /usr/lib64/pkcs11/p11-kit-trust.so
+  ls -l $2
   ls -l $3
 }
 
 set -e
 #set -x
 
+# Disable default FIPS providers
+#sed -i '/fips\.provider/s/^/#/' /etc/java/**/**/conf/security/java.security
+#SECURITY=/etc/java/java-17-openjdk/java-17-openjdk-17.0.4.0.8-2.el8_6.x86_64/conf/security/java.security
+#ls -l $SECURITY
+#cat $SECURITY
+#sed -i '/fips\.provider/s/^/#/' $SECURITY
+
+cat << EOF > /tmp/java.security.properties
+fips.provider.1=SunPKCS11 /tmp/server-keystore.cfg
+fips.provider.2=SunPKCS11 /tmp/server-truststore.cfg
+EOF
+
 # TODO remove alias logic as no longer required
 {{ range . }}
 
+set -x
 mkdir -p {{ .Database }}
 
 # Create NSS database
-certutil -N -d {{ .Database }}
+certutil -N -d {{ .Database }} --empty-password
 
 # Create Provider configuration
 createNSSConfig {{ .Name }} {{ .Database }} /tmp/{{ .Name }}.cfg
+
+set +x
 
 # Import keystores into database
 initKeystores {{ if .Secret }}-p {{ .Secret }}{{ end }} -d {{ .Database }} -w /tmp {{ .Path }}

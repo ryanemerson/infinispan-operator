@@ -40,7 +40,7 @@
         {{ if .FIPS }}
         <providers>
             {{ if .Keystore.Path }}
-            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/server-keystore.cfg"/>
+<!--            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/server-keystore.cfg"/>-->
             {{ end }}
 
             {{ if .Truststore.Path }}
@@ -49,11 +49,11 @@
 
             {{ if and .Transport.TLS.Enabled }}
             {{ if .Transport.TLS.KeyStore.Path}}
-            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/transport-truststore.cfg"/>
+<!--            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/transport-truststore.cfg"/>-->
             {{ end }}
 
             {{ if .Transport.TLS.TrustStore.Path}}
-            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/transport-truststore.cfg"/>
+<!--            <provider class-name="sun.security.pkcs11.SunPKCS11" configuration="/tmp/transport-truststore.cfg"/>-->
             {{ end }}
             {{ end }}
         </providers>
@@ -82,7 +82,7 @@
                         {{ end }}
 
                         {{ if .FIPS }}
-<!--                            <truststore provider="SunPKCS11-server-truststore" type="PKCS11"/>-->
+                            <truststore provider="SunPKCS11-server-truststore" type="PKCS11"/>
                         {{ else if  .Truststore.Path }}
                             <truststore path="{{ .Truststore.Path }}">
                                 <credential-reference store="credentials" alias="truststore"/>
