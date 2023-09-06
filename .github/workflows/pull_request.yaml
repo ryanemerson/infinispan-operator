@@ -48,7 +48,16 @@ jobs:
           key: ${{ runner.os }}-bin-${{ hashFiles('Makefile') }}
 
       - name: Lint
-        run: make lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          args: --enable errorlint --timeout 3m0s --verbose
+          version: v1.49.0
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          args: --disable-all --enable bodyclose --skip-dirs test
+          version: v1.49.0
 
       - name: Unit Tests
         run: make test
