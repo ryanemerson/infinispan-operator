@@ -137,7 +137,7 @@ undeploy:
 
 .PHONY: manifests
 ## Generate manifests locally e.g. CRD, RBAC etc.
-manifests: controller-gen
+manifests: controller-gen operator-sdk
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 	$(OPERATOR_SDK) generate kustomize manifests -q
 
