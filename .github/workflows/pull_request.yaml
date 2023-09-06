@@ -1,0 +1,95 @@
+name: Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - gh_action_ci
+  pull_request:
+
+env:
+  TESTING_LOG_DIR: ${{ github.workspace }}/test/reports
+  CONFIG_LISTENER_IMAGE: localhost:5001/infinispan-operator
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Init variables action variables
+        id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+
+      # Cache go build cache, used to speedup go test
+      - name: Go Build Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+
+      # Cache go mod cache, used to speedup builds
+      - name: Go Mod Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+
+      # Cache local bin dependencies
+      - name: Local Dependencies Cache
+        uses: actions/cache@v2
+        with:
+          path: bin
+          key: ${{ runner.os }}-bin-${{ hashFiles('Makefile') }}
+
+      - name: Lint
+        run: make lint
+
+      - name: Unit Tests
+        run: make test
+
+      - name: Check for unstaged changes
+        run: git diff --name-only --exit-code
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Install Local Dependencies
+        run: |
+          make oc operator-sdk
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+
+      - name: Install Kind
+        run: go install sigs.k8s.io/kind@v0.18.0
+
+      - name: Create Kind Cluster
+        run: ./scripts/ci/kind.sh
+
+      - name: Build Image
+        run: make operator-build operator-push IMG=${{ env.CONFIG_LISTENER_IMAGE }}
+
+      - name: E2E Integration tests
+        run: make infinispan-test PARALLEL_COUNT=5
+
+      - name: Inspect Cluster
+        if: failure()
+        run: oc adm inspect ns
+
+      - name: Inspect Artifacts
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: oc-inspect
+          path: inspect.*
+
+      - name: Test Logs
+        uses: actions/upload-artifact@v3
+        if: success() || failure()
+        with:
+          name: test-results
+          path: ${{ env.TESTING_LOG_DIR }}
