@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/pointer"
@@ -174,6 +175,46 @@ func createGenericTLSSecret(data []byte, secretName, namespace, password, filena
 		},
 	}
 	return secret
+}
+
+func lookupServiceAccountTokenSecret(name, namespace string, _client client.Client, ctx context.Context) *corev1.Secret {
+	var secret *corev1.Secret
+	err := wait.Poll(tutils.DefaultPollPeriod, tutils.TestTimeout, func() (bool, error) {
+		serviceAccount := &corev1.ServiceAccount{}
+		if err := _client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, serviceAccount); client.IgnoreNotFound(err) != nil {
+			return false, err
+		}
+		for _, secretReference := range serviceAccount.Secrets {
+			if err := _client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: secretReference.Name}, secret); err != nil {
+				continue
+			}
+			if isServiceAccountToken(secret, serviceAccount) {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	panic(fmt.Errorf("could not find a service account token secret for service account %q: %w", name, err))
+}
+
+// isServiceAccountToken returns true if the secret is a valid api token for the service account
+func isServiceAccountToken(secret *corev1.Secret, sa *corev1.ServiceAccount) bool {
+	if secret.Type != corev1.SecretTypeServiceAccountToken {
+		return false
+	}
+
+	name := secret.Annotations[corev1.ServiceAccountNameKey]
+	uid := secret.Annotations[corev1.ServiceAccountUIDKey]
+	if name != sa.Name {
+		// Name must match
+		return false
+	}
+	if len(uid) > 0 && uid != string(sa.UID) {
+		// If UID is specified, it must match
+		return false
+	}
+
+	return true
 }
 
 func TestCrossSiteViewInternal(t *testing.T) {
@@ -462,11 +503,9 @@ func testCrossSiteView(t *testing.T, isMultiCluster bool, schemeType ispnv1.Cros
 		} else if schemeType == ispnv1.CrossSiteSchemeTypeOpenShift {
 			serviceAccount := tutils.OperatorSAName
 			operatorNamespaceSite1 := constants.GetWithDefault(tutils.OperatorNamespace, tesKubes["xsite1"].namespace)
-			tokenSecretXsite1, err := kube.LookupServiceAccountTokenSecret(serviceAccount, operatorNamespaceSite1, tesKubes["xsite1"].kube.Kubernetes.Client, context.TODO())
-			tutils.ExpectNoError(err)
+			tokenSecretXsite1 := lookupServiceAccountTokenSecret(serviceAccount, operatorNamespaceSite1, tesKubes["xsite1"].kube.Kubernetes.Client, context.TODO())
 			operatorNamespaceSite2 := constants.GetWithDefault(tutils.OperatorNamespace, tesKubes["xsite2"].namespace)
-			tokenSecretXsite2, err := kube.LookupServiceAccountTokenSecret(serviceAccount, operatorNamespaceSite2, tesKubes["xsite2"].kube.Kubernetes.Client, context.TODO())
-			tutils.ExpectNoError(err)
+			tokenSecretXsite2 := lookupServiceAccountTokenSecret(serviceAccount, operatorNamespaceSite2, tesKubes["xsite2"].kube.Kubernetes.Client, context.TODO())
 
 			tesKubes["xsite1"].kube.CreateSecret(crossSiteTokenSecret("xsite2", tesKubes["xsite1"].namespace, tokenSecretXsite2.Data["token"]))
 			tesKubes["xsite2"].kube.CreateSecret(crossSiteTokenSecret("xsite1", tesKubes["xsite2"].namespace, tokenSecretXsite1.Data["token"]))
