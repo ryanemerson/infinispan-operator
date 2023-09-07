@@ -77,7 +77,7 @@ jobs:
         run: go install sigs.k8s.io/kind@v0.14.0
 
       - name: Create Kind Cluster
-        run: ./scripts/ci/kind.sh
+        run: ./scripts/ci/kind-with-olm.sh
 
       - name: Build Image
         run: make operator-build operator-push IMG=${{ env.CONFIG_LISTENER_IMAGE }}
