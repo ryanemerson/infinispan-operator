@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -o errexit
 
+if [[ "$RUNNER_DEBUG" == "1" ]]; then
+  set -x
+fi
+
 SCRIPT_DIR=$(dirname "$0")
 
 OLM_VERSION="v0.21.2"

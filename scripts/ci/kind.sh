@@ -2,8 +2,12 @@
 # Modified version of the script found at https://kind.sigs.k8s.io/docs/user/local-registry/#create-a-cluster-and-registry
 set -o errexit
 
+if [[ "$RUNNER_DEBUG" == "1" ]]; then
+  set -x
+fi
+
 SERVER_TAGS=${SERVER_TAGS:-'13.0.10.Final 14.0.1.Final 14.0.6.Final 14.0.9.Final 14.0.13.Final 14.0.17.Final 14.0'}
-KINDEST_NODE_VERSION=${KINDEST_NODE_VERSION:-'v1.17.17'}
+KINDEST_NODE_VERSION=${KINDEST_NODE_VERSION:-'v1.24.7'}
 KIND_SUBNET=${KIND_SUBNET-172.172.0.0}
 
 docker network create kind --subnet "${KIND_SUBNET}/16" || true

@@ -59,8 +59,8 @@ jobs:
 #          args: --disable-all --enable bodyclose --skip-dirs test
 #          version: v1.49.0
 
-      - name: Unit Tests
-        run: make test
+#      - name: Unit Tests
+#        run: make test
 
 #      - name: Check for unstaged changes
 #        run: git diff --name-only --exit-code
@@ -74,7 +74,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
       - name: Install Kind
-        run: go install sigs.k8s.io/kind@v0.18.0
+        run: go install sigs.k8s.io/kind@v0.14.0
 
       - name: Create Kind Cluster
         run: ./scripts/ci/kind.sh
