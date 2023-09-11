@@ -21,6 +21,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: CPU info
+        run: cat /proc/cpuinfo
+
       - name: Init variables action variables
         id: go-cache-paths
         run: |
@@ -77,29 +80,29 @@ jobs:
       - name: Install Kind
         run: go install sigs.k8s.io/kind@v0.14.0
 
-#      - name: Create Kind Cluster
-#        run: ./scripts/ci/kind-with-olm.sh
+      - name: Create Kind Cluster
+        run: ./scripts/ci/kind-with-olm.sh
 
-#      - name: Build Image
-#        run: make operator-build operator-push IMG=${{ env.CONFIG_LISTENER_IMAGE }}
+      - name: Build Image
+        run: make operator-build operator-push IMG=${{ env.CONFIG_LISTENER_IMAGE }}
 
 #      - name: E2E Integration tests
 #        run: make infinispan-test PARALLEL_COUNT=5
 
-#      - name: Create OLM Catalog Source
-#        run: ./scripts/ci/install-catalog-source.sh
+      - name: Create OLM Catalog Source
+        run: ./scripts/ci/install-catalog-source.sh
+
+      - name: Run Upgrade Tests
+        run: make upgrade-test SUBSCRIPTION_CHANNEL_SOURCE=2.2.x SUBSCRIPTION_STARTING_CSV=infinispan-operator.v2.2.5
+
+#      - name: Build Image but don't push
+#        run: make operator-build IMG=${{ env.CONFIG_LISTENER_IMAGE }}
 #
-#      - name: Run Upgrade Tests
-#        run: make upgrade-test SUBSCRIPTION_CHANNEL_SOURCE=2.2.x SUBSCRIPTION_STARTING_CSV=infinispan-operator.v2.2.5
-
-      - name: Build Image but don't push
-        run: make operator-build IMG=${{ env.CONFIG_LISTENER_IMAGE }}
-
-      - name: Run XSite Tests
-        run: |
-          docker pull quay.io/infinispan/server:14.0
-          scripts/ci/configure-xsite.sh
-          make xsite-test
+#      - name: Run XSite Tests
+#        run: |
+#          docker pull quay.io/infinispan/server:14.0
+#          scripts/ci/configure-xsite.sh
+#          make xsite-test
 
       - name: Inspect Cluster
         if: failure()
