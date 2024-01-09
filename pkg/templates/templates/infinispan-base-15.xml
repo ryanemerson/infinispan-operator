@@ -10,7 +10,7 @@
 <cache-container name="default" statistics="true">
     {{ if .Infinispan.Authorization.Enabled }}
     <security>
-        <authorization>
+        <authorization group-only-mapping="false">
             {{if eq .Infinispan.Authorization.RoleMapper "commonName" }}
             <common-name-role-mapper />
             {{ else }}
