@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -97,6 +98,10 @@ func CreateKeyAndTruststore(serverName string, authenticate bool) (keystore []by
 
 	certpool := x509.NewCertPool()
 	certpool.AddCert(ca.cert)
+
+	ExpectNoError(ioutil.WriteFile("/tmp/ca.pem", ca.getCertPEM(), 0644))
+	ExpectNoError(ioutil.WriteFile("/tmp/client.pem", client.getCertPEM(), 0644))
+	ExpectNoError(ioutil.WriteFile("/tmp/client.key", client.getPrivateKeyPEM(), 0644))
 
 	clientTLSConf = &tls.Config{
 		GetClientCertificate: func(t *tls.CertificateRequestInfo) (*tls.Certificate, error) {

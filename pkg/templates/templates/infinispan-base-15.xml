@@ -12,7 +12,8 @@
     <security>
         <authorization group-only-mapping="false">
             {{if eq .Infinispan.Authorization.RoleMapper "commonName" }}
-            <common-name-role-mapper />
+<!--            <common-name-role-mapper />-->
+            <identity-role-mapper />
             {{ else }}
             <cluster-role-mapper />
             {{ end }}
@@ -73,9 +74,19 @@
                 </ssl>
 				{{ end }}
                 </server-identities>
+                <properties-realm name="properties" groups-attribute="Roles">
+                    <user-properties path="cli-users.properties" relative-to="infinispan.server.config.path"/>
+                    <group-properties path="cli-groups.properties" relative-to="infinispan.server.config.path"/>
+                </properties-realm>
+                <truststore-realm name="trust"/>
+                <aggregate-realm authentication-realm="trust" authorization-realms="properties">
+                    <name-rewriter>
+                        <common-name-principal-transformer/>
+                    </name-rewriter>
+                </aggregate-realm>
                 {{if .Endpoints.Authenticate }}
                 {{if eq .Endpoints.ClientCert "Authenticate" }}
-                <truststore-realm/>
+<!--                <truststore-realm name="trust"/>-->
                 {{ else }}
                 <properties-realm groups-attribute="Roles">
                     <user-properties path="cli-users.properties" relative-to="infinispan.server.config.path"/>
