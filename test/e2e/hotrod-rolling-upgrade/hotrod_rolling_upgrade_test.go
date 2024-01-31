@@ -72,6 +72,9 @@ func TestRollingUpgrade(t *testing.T) {
 		i.Spec.Upgrades = &ispnv1.InfinispanUpgradesSpec{
 			Type: ispnv1.UpgradeTypeHotRodRolling,
 		}
+		i.Spec.Security.Authorization = &ispnv1.Authorization{
+			Enabled: true,
+		}
 	})
 	// Explicitly reset the Version so that it will be set by the Operator webhook
 	spec.Spec.Version = ""
@@ -82,6 +85,16 @@ func TestRollingUpgrade(t *testing.T) {
 	client := tutils.HTTPClientForCluster(spec, testKube)
 
 	// Create caches
+	proto := "package book_sample;\n\n/* @Indexed */\nmessage Book {\n\n    /* @Text(projectable = true) */\n    optional string title = 1;\n\n    /* @Text(projectable = true) */\n    optional string description = 2;\n\n    // no native Date type available in Protobuf\n    optional int32 publicationYear = 3;\n\n    repeated Author authors = 4;\n}\n\nmessage Author {\n    optional string name = 1;\n    optional string surname = 2;\n}"
+	headers := map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+	}
+	_, err := client.Post("rest/v2/caches/___protobuf_metadata/schema.proto", proto, headers)
+	tutils.ExpectNoError(err)
+
+	config := "{\"distributed-cache\":{\"owners\":\"2\",\"mode\":\"SYNC\",\"statistics\":true,\"encoding\":{\"media-type\":\"application/x-protostream\"},\"persistence\":{\"passivation\":false,\"file-store\":{\"data\":{\"path\":\"data\"},\"index\":{\"path\":\"index\"}}},\"indexing\":{\"enabled\":true,\"storage\":\"filesystem\",\"startup-mode\":\"AUTO\",\"index-reader\":{\"refresh-interval\":\"100\"},\"indexed-entities\":[\"book_sample.Book\"]}}}"
+	tutils.NewCacheHelper("test", client).Create(config, mime.ApplicationJson)
+
 	createCache("textCache", mime.TextPlain, client)
 	createCache("jsonCache", mime.ApplicationJson, client)
 	createCache("javaCache", mime.ApplicationJavaObject, client)
