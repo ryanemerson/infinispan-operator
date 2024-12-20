@@ -11,6 +11,11 @@ on:
         description: 'The name of the GH artifact containing the Operand image'
         required: false
         type: string
+      upgradeDepth:
+        description: 'The number of previous Operator versions to be installed before the latest version. Defaults to -1 which indicates all Operators in the OLM update graph should be applied.'
+        default: -1
+        required: false
+        type: number
       ref:
         type: string
         required: false
@@ -65,7 +70,17 @@ jobs:
           kind load docker-image ${{ inputs.operand }}
 
       - name: Run GracefulShutdown Upgrade Tests
-        run: make upgrade-test SUBSCRIPTION_STARTING_CSV=infinispan-operator.v2.3.2
+        run: |
+          export SUBSCRIPTION_STARTING_CSV=$(cat scripts/test-catalog.yml | yq "select(document_index == 1) | .entries[${DEPTH}].name")
+          if [ "${DEPTH}" -gt -1 ]; then
+            if [ "${SUBSCRIPTION_STARTING_CSV}" == "null"; then
+              echo "No CSV found in test catalog for upgradeDepth '${DEPTH}'"
+              exit 1
+            fi
+          fi
+          make upgrade-test
+        env:
+          DEPTH: ${{ inputs.upgradeDepth }}
 
       - name: Inspect Cluster
         if: failure()

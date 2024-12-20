@@ -2,8 +2,11 @@ package upgrade
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/blang/semver"
 	ispnv1 "github.com/infinispan/infinispan-operator/api/v1"
 	"github.com/infinispan/infinispan-operator/controllers/constants"
 	tutils "github.com/infinispan/infinispan-operator/test/e2e/utils"
@@ -12,11 +15,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const DroppedOperandVersionEnv = "TESTING_DROPPED_OPERAND_VERSION"
+
 func TestUpgradeFromDroppedOperand(t *testing.T) {
 	olm := testKube.OLMTestEnv()
 	olm.PrintManifest()
 	sourceChannel := olm.SourceChannel
 	targetChannel := olm.TargetChannel
+
+	// Skip the test when the specified starting CSV makes the test invalid
+	if os.Getenv("DroppedOperandVersionEnv") == "" && strings.HasPrefix(olm.SubStartingCSV, "infinispan") {
+		csv := semver.MustParse(strings.Split(olm.SubStartingCSV, "infinispan-operator.v")[1])
+		if csv.Major >= 2 && csv.Minor >= 4 && csv.Patch >= 3 {
+			t.Skipf("Skipping test as specified CSV '%s' does not contain dropped Operand 13.0.10", olm.SubStartingCSV)
+		}
+	}
 
 	testKube.NewNamespace(tutils.Namespace)
 	sub := &coreos.Subscription{
@@ -49,7 +62,7 @@ func TestUpgradeFromDroppedOperand(t *testing.T) {
 	replicas := 1
 	spec := tutils.DefaultSpec(t, testKube, func(i *ispnv1.Infinispan) {
 		i.Spec.Replicas = int32(replicas)
-		i.Spec.Version = constants.GetEnvWithDefault("TESTING_DROPPED_OPERAND_VERSION", "13.0.10")
+		i.Spec.Version = constants.GetEnvWithDefault(DroppedOperandVersionEnv, "13.0.10")
 	})
 	testKube.CreateInfinispan(spec, tutils.Namespace)
 	testKube.WaitForInfinispanPods(replicas, tutils.SinglePodTimeout, spec.Name, tutils.Namespace)
