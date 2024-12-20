@@ -23,6 +23,28 @@ on:
         type: string
         required: false
 
+  workflow_dispatch:
+    inputs:
+      operand:
+        description: 'The FQN of the Operand image to be used. If left blank the most recent Operand defined in the Operator repository is used.'
+        required: false
+        type: string
+      operandArtifact:
+        description: 'The name of the GH artifact containing the Operand image'
+        required: false
+        type: string
+      upgradeDepth:
+        description: 'The number of previous Operator versions to be installed before the latest version. Defaults to -1 which indicates all Operators in the OLM update graph should be applied.'
+        default: -1
+        required: false
+        type: number
+      ref:
+        type: string
+        required: false
+      repository:
+        type: string
+        required: false
+
 env:
   TESTING_LOG_DIR: ${{ github.workspace }}/test/reports
 
