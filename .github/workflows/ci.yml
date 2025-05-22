@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 2.4.12_patch
   pull_request:
     branches:
       - main
